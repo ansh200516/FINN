@@ -1,0 +1,62 @@
+{
+  "name": "finn",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FINN — a brief that remembers what management promised. ENAM AI Engineer Build Challenge.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check",
+    "lint:fix": "biome check --write",
+    "format": "biome format --write",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/db/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx data/seed/seed.ts",
+    "ingest:companies": "tsx scripts/ingest/companies.ts",
+    "ingest:announcements": "tsx scripts/ingest/announcements.ts",
+    "ingest:prices": "tsx scripts/ingest/prices.ts",
+    "ingest:results": "tsx scripts/ingest/results.ts",
+    "ingest:documents": "tsx scripts/ingest/documents.ts",
+    "ingest:research": "tsx scripts/ingest/research.ts",
+    "ingest:digest": "tsx scripts/ingest/digest.ts",
+    "llm:smoke": "tsx scripts/llm-smoke.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^3.0.0",
+    "@libsql/client": "^0.18.0",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
+    "drizzle-orm": "^0.45.4",
+    "fast-xml-parser": "^5.12.0",
+    "next": "16.4.5",
+    "pino": "^10.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "unpdf": "^2.1.0",
+    "web-push": "^4.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.2",
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
+    "drizzle-kit": "^0.31.11",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.0"
+  },
+  "packageManager": "pnpm@10.17.1"
+}

@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+/.pnp
+.pnp.*
+
+# next.js
+.next/
+out/
+dist/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# testing
+coverage/
+
+# env (real values live in .env.local; .env.example is committed)
+.env
+.env.*
+!.env.example
+
+# python scratch
+.venv/
+__pycache__/
+*.pyc
+
+# local database + raw downloads (regenerable; seed snapshot in data/seed is committed)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/raw/
+data/cache/
+
+# misc
+.DS_Store
+*.log
+*.pem
+.vercel/

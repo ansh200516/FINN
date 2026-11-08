@@ -23,10 +23,11 @@ import { filedStamp } from "@/ui/FilingCard";
 import { LedgerList, VerdictLegend } from "@/ui/LedgerList";
 import type { QuarterRow } from "@/ui/model";
 import { priceHeadline, volumeWord } from "@/ui/prices";
+import { snapshotChip } from "@/ui/ResultsGrid";
 import { SectionAccordion } from "@/ui/SectionAccordion";
 import { Sparkline } from "@/ui/Sparkline";
 import { TierHeader } from "@/ui/TierHeader";
-import { TranscriptPending } from "@/ui/TranscriptPending";
+import { documentRowStatus, TranscriptPending } from "@/ui/TranscriptPending";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,16 @@ const DOC_KIND: Record<string, string> = {
   press_release: "Press release",
   other: "Filing",
 };
+
+function documentDetail(d: {
+  textStatus: string;
+  fetchedAt: number | null;
+}): string {
+  const base = documentRowStatus(d.textStatus) ?? "fetch pending";
+  if (d.textStatus === "ok" && d.fetchedAt)
+    return `${base} · ${formatIst(d.fetchedAt, "d MMM HH:mm")}`;
+  return base;
+}
 
 function Metric({
   label,
@@ -212,8 +223,19 @@ export default async function CompanyPage({
     getAskBudget(),
   ]);
   if (!model) notFound();
-  const { company, snapshot, prices, ledger, quarters, events, documents } =
-    model;
+  const {
+    company,
+    snapshot,
+    prices,
+    ledger,
+    quarters,
+    events,
+    documents: storedDocuments,
+  } = model;
+  const documents = storedDocuments.filter(
+    (d) => documentRowStatus(d.textStatus) !== null,
+  );
+  const chip = snapshotChip(snapshot);
   const transcriptPendingBy = await loadTranscriptPendingBy(company.isin);
   const now = Date.now();
   const consolidated = quarters.filter((q) => q.basis === "consolidated");
@@ -344,13 +366,10 @@ export default async function CompanyPage({
             </p>
             {snapshot.periodEnd ? (
               <span
-                className={`chip ${snapshot.checksum === "exchange_xbrl" ? "chip-up" : "chip-warn"}`}
+                className={`chip min-w-0 shrink ${chip.tone === "up" ? "chip-up" : "chip-warn"}`}
+                title={chip.title ?? undefined}
               >
-                <span>
-                  {snapshot.checksum === "exchange_xbrl"
-                    ? "XBRL verified"
-                    : "Preliminary"}
-                </span>
+                <span>{chip.label}</span>
               </span>
             ) : null}
           </div>
@@ -654,11 +673,7 @@ export default async function CompanyPage({
                       </span>
                       <span className="meta text-ink-3 block truncate">
                         {d.pages ? `${d.pages} pp · ` : ""}
-                        {d.textStatus === "ok"
-                          ? `text extracted${d.fetchedAt ? ` · ${formatIst(d.fetchedAt, "d MMM HH:mm")}` : ""}`
-                          : d.textStatus === "failed"
-                            ? "could not read (scanned?) — open the PDF"
-                            : "fetch pending"}
+                        {documentDetail(d)}
                       </span>
                     </span>
                     <span className="chip chip-accent">

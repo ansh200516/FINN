@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { istTimeOn } from "@/lib/time";
 import {
+  documentRowStatus,
   TranscriptPending,
   transcriptPendingExpectedBy,
 } from "@/ui/TranscriptPending";
@@ -63,6 +64,25 @@ describe("transcriptPendingExpectedBy", () => {
       ),
     ).toBeNull();
     expect(transcriptPendingExpectedBy(null, false)).toBeNull();
+  });
+});
+
+describe("documentRowStatus", () => {
+  it("reads a cover letter as a cover letter and omits duplicates", () => {
+    expect(documentRowStatus("cover_only")).toBe("cover letter only");
+    expect(documentRowStatus("duplicate")).toBeNull();
+    expect(documentRowStatus("pending")).toBe("fetch pending");
+    expect(documentRowStatus("ok")).toBe("text extracted");
+    expect(documentRowStatus("failed")).toBe(
+      "could not read (scanned?) — open the PDF",
+    );
+  });
+
+  it("does not call an extracted transcript a pending fetch", () => {
+    // IndusInd Q2 FY27: the cover letter sits beside a recovered ok transcript.
+    const rows = ["cover_only", "ok"].map((s) => documentRowStatus(s));
+    expect(rows).not.toContain("fetch pending");
+    expect(rows).toContain("text extracted");
   });
 });
 

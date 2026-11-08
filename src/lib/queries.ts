@@ -34,12 +34,14 @@ import {
   UserPrefs,
 } from "@/db/json";
 import * as t from "@/db/schema";
+import { computeResultsCard } from "@/engine/analyse/results";
 import type {
   Anomaly,
   Category,
   GuidanceDirection,
   GuidanceStatus,
   ResultsQuarter,
+  ResultsVerification,
   Verdict,
 } from "@/engine/types";
 import { CATEGORIES } from "@/engine/types";
@@ -916,13 +918,37 @@ function pct(
   return ((now - base) / Math.abs(base)) * 100;
 }
 
-export async function getQuarters(isin: string): Promise<QuarterRow[]> {
+async function loadCompanyQuarters(isin: string): Promise<{
+  quarters: QuarterRow[];
+  engine: ResultsQuarter[];
+}> {
   const rows = await db
     .select()
     .from(t.resultsQuarters)
     .where(eq(t.resultsQuarters.isin, isin))
     .orderBy(asc(t.resultsQuarters.periodEnd));
-  return rows.map(toQuarterRow);
+  return {
+    quarters: rows.map(toQuarterRow),
+    engine: rows.map(rowToResultsQuarter),
+  };
+}
+
+export async function getQuarters(isin: string): Promise<QuarterRow[]> {
+  return (await loadCompanyQuarters(isin)).quarters;
+}
+
+/**
+ * Verification already computed for the results card of this snapshot quarter.
+ * Null when that basis has no card, or the card is for a different period.
+ */
+export function verificationForSnapshot(
+  quarters: ResultsQuarter[],
+  latest: { periodEnd: string; basis: "consolidated" | "standalone" } | null,
+): ResultsVerification | null {
+  if (!latest) return null;
+  const card = computeResultsCard(quarters, latest.basis);
+  if (!card?.verification || card.periodEnd !== latest.periodEnd) return null;
+  return card.verification;
 }
 
 export async function getPriceSeries(
@@ -1051,13 +1077,14 @@ export async function getCompanyPage(
 ): Promise<CompanyPageModel | null> {
   const c = await getCompanyBySymbol(symbol);
   if (!c) return null;
-  const [quarters, prices, ledger, events, documents] = await Promise.all([
-    getQuarters(c.isin),
+  const [loaded, prices, ledger, events, documents] = await Promise.all([
+    loadCompanyQuarters(c.isin),
     getPriceSeries(c.isin),
     getLedger(c.isin),
     getCompanyEvents(c.isin),
     getDocuments(c.isin),
   ]);
+  const { quarters } = loaded;
   const consolidated = quarters.filter((q) => q.basis === "consolidated");
   const pool = consolidated.length ? consolidated : quarters;
   const latest = pool.at(-1);
@@ -1083,6 +1110,7 @@ export async function getCompanyPage(
         ? "exchange_xbrl"
         : "preliminary"
       : null,
+    verification: verificationForSnapshot(loaded.engine, latest ?? null),
   };
   return {
     company: {

@@ -13,7 +13,8 @@ import {
   ytdCheck,
 } from "@/engine/analyse/results";
 import type { ResultsBasis, ResultsQuarter } from "@/engine/types";
-import { ResultsGrid } from "@/ui/ResultsGrid";
+import { verificationForSnapshot } from "@/lib/queries";
+import { ResultsGrid, snapshotChip } from "@/ui/ResultsGrid";
 
 const CR = 1e7;
 
@@ -676,6 +677,20 @@ describe("HDFC consolidated half-year", () => {
     expect(html).toContain("minority interest of 1137.98 cr in Q1 FY27");
     expect(html).toContain("44,464");
     expect(html).toContain("20,700");
+    const verification = verificationForSnapshot([q2, q1, standQ2, standQ1], {
+      periodEnd: q2.periodEnd,
+      basis: "consolidated",
+    });
+    const chip = snapshotChip({
+      checksum: "exchange_xbrl",
+      verification,
+    });
+    expect(chip.label).toBe("H1 check failed");
+    expect(chip.label).not.toContain("XBRL verified");
+    expect(chip.tone).toBe("warn");
+    expect(chip.title).toMatch(
+      /H1 check failed on pbt 55018\.64 vs 53880\.66 cr; pat 41082\.72 vs 39944\.74 cr/,
+    );
     expect(
       ytdCheck(
         standQ2,
@@ -710,5 +725,18 @@ describe("HDFC consolidated half-year", () => {
     expect(html).toContain("Exchange XBRL verified");
     expect(html).toContain("Q1 + Q2 = H1");
     expect(html).not.toContain("H1 check failed");
+    const verification = verificationForSnapshot(
+      [Q4FY26, Q2FY26, Q2FY27, Q1FY27, Q3FY26],
+      { periodEnd: "2026-09-30", basis: "consolidated" },
+    );
+    const chip = snapshotChip({
+      checksum: "exchange_xbrl",
+      verification,
+    });
+    expect(chip.label).toBe("XBRL verified");
+    expect(chip.tone).toBe("up");
+    expect(snapshotChip({ checksum: "preliminary", verification }).label).toBe(
+      "Preliminary",
+    );
   });
 });

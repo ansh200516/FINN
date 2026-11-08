@@ -11,6 +11,7 @@ import type {
   Category,
   LedgerRow,
   ResultsCard,
+  ResultsVerification,
   Tier,
 } from "@/engine/types";
 
@@ -199,6 +200,12 @@ export interface Snapshot {
   ppop: number | null;
   isBank: boolean;
   checksum: "exchange_xbrl" | "preliminary" | null;
+  /**
+   * Results-card verification for this quarter. The chip is "XBRL verified"
+   * only when identities pass and the half-year check passes (or there is
+   * no half-year to check). Null when no card was built.
+   */
+  verification: ResultsVerification | null;
 }
 
 export interface PriceSeries {

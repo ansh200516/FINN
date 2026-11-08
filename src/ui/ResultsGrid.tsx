@@ -1,5 +1,5 @@
 import { resultsVerified } from "@/engine/analyse/results";
-import type { ResultsCard } from "@/engine/types";
+import type { ResultsCard, ResultsVerification } from "@/engine/types";
 import { formatCrore, groupIndian, quarterLabel } from "@/lib/format";
 import { DeltaChip } from "./DeltaChip";
 import { FormulaPopover } from "./FormulaPopover";
@@ -67,11 +67,16 @@ function fmtCr(v: number | null): string {
  * 4 rows × [value, QoQ, YoY] with tabular numerals and an optional
  * five-quarter sparkline; the unit "₹ cr" is said once in the header.
  */
+type VerifyCard = {
+  checksum: "exchange_xbrl" | "preliminary";
+  verification?: ResultsVerification;
+};
+
 /**
  * The one line a failed check already has a place for: the half-year or
  * identity note. Null when the card is verified or merely preliminary.
  */
-export function checkFailureLine(card: ResultsCard): string | null {
+export function checkFailureLine(card: VerifyCard): string | null {
   if (resultsVerified(card)) return null;
   const notes = card.verification?.notes ?? [];
   if (card.verification?.h1Check === false)
@@ -84,6 +89,34 @@ export function checkFailureLine(card: ResultsCard): string | null {
       "identity checks failed"
     );
   return null;
+}
+
+/**
+ * Company snapshot chip. Same gate as the results card: verified only when
+ * identities pass and the half-year check passes, or there is no half-year
+ * to check. A failure is that one note, not "XBRL verified".
+ */
+export function snapshotChip(snapshot: {
+  checksum: "exchange_xbrl" | "preliminary" | null;
+  verification?: ResultsVerification | null;
+}): { label: string; tone: "up" | "warn"; title: string | null } {
+  if (snapshot.checksum !== "exchange_xbrl")
+    return { label: "Preliminary", tone: "warn", title: null };
+  const card: VerifyCard = {
+    checksum: "exchange_xbrl",
+    verification: snapshot.verification ?? undefined,
+  };
+  if (resultsVerified(card))
+    return { label: "XBRL verified", tone: "up", title: null };
+  const failed = checkFailureLine(card);
+  if (!failed) return { label: "Preliminary", tone: "warn", title: null };
+  // The note carries the rupee gap. The chip only has room for the failure.
+  const short = failed.split(/ on |:| — /)[0]?.trim() || failed;
+  return {
+    label: short,
+    tone: "warn",
+    title: failed === short ? null : failed,
+  };
 }
 
 /** One-line receipt for the brief card: "Consolidated · ₹ cr · XBRL ✓ · bank format". */

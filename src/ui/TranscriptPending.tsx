@@ -27,6 +27,20 @@ export function transcriptPendingExpectedBy(
   return typeof expectedBy === "number" ? expectedBy : null;
 }
 
+/**
+ * Status line for one row in the company documents list.
+ * `null` omits the row (a duplicate filing). A cover letter is not a
+ * download still in progress; `pending` stays "fetch pending".
+ */
+export function documentRowStatus(textStatus: string): string | null {
+  if (textStatus === "duplicate") return null;
+  if (textStatus === "ok") return "text extracted";
+  if (textStatus === "failed")
+    return "could not read (scanned?) — open the PDF";
+  if (textStatus === "cover_only") return "cover letter only";
+  return "fetch pending";
+}
+
 /** One receipt line on the paper page. No glyph — the words are the status. */
 export function TranscriptPending({
   expectedBy,

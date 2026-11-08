@@ -93,6 +93,15 @@ Architectural consequences (binding for synthesis): the strong Flash tier is a *
 
 **Announcement feed reliability (agent 05, measured):** NSE 40/40 calls 200 (p50 0.20 s), full per-symbol history back to 2004 in one call, market-wide windows up to 365 days; NSE vs BSE 298/306 items matched within ±30 min (median 26 s apart) → NSE primary, BSE enrichment/failover. New since ~7 Nov 2026: NSE items carry a `voiceSummary` (100–150-word summary) on 453/455 live items. Classification: NSE `desc` alone labels 69%, regex over `desc`+`attchmntText` another 27%, BSE sub-category 2%, **~1.6% residue needs an LLM**. Failure modes are deterministic: default `python-requests` UA gets tarpitted (hangs), no-UA attachment downloads hang, Brotli garbage if `br` advertised without decoder → always set UA, Accept-Encoding gzip, hard timeouts.
 
+**Portfolio verification (agent 21, `docs/research/21-portfolio-verification.md`, `data/seed/portfolio.json`) — gaps every builder must handle:**
+
+1. Transcript discovery must UNION screener + NSE announcements + BSE (screener misses VEDL/MARUTI quarters; links may point to company IR domains). 7 Q2 FY27 transcripts are still pending → a "call held, transcript pending" state is required.
+2. XBRL varies 14–140 KB; `ProfitLossAttributableToOwnersOfParent = 0` trap (RAJESHEXPO); HAL files *Audited* quarterlies; `NONINDAS` label exists; `Revision` rows exist (RAJESHEXPO has 10 revisions) → prefer the latest revision per (period, basis).
+3. No-concall names (RAJESHEXPO, TRENT, ITC) need an AR-only degradation path for Pull.
+4. Short histories (OLAELEC: 3 legacy quarters) break "trajectory to 2021" → trajectory must render whatever depth exists.
+5. Zero portfolio filings in the last 24 h over the Diwali weekend → the default window must auto-widen (and say so). Muhurat bar is 0.03–0.5× normal volume for every name → exclude special sessions from baselines.
+6. Best demo material: THERMAX −17.3% on 17.3× volume (6 Nov, day after results); PIIND −19.1% on 30× (5 Nov); MARICO +10% on 8.2× (3 Nov); results in-window: KALYANKJIL 10 Nov (a holiday!), IDEA/AMBER/OLAELEC 12 Nov, TMPV/INOXWIND 13 Nov; HDFCBANK has two "Change in Management" filings (31 Oct, 6 Nov).
+
 ## Human actions required before submission (cannot be done by agents)
 
 1. `vercel login` (interactive browser auth) — needed for the deployed mobile link. Alternative: connect the GitHub repo in the Vercel dashboard for auto-deploys.

@@ -1,0 +1,2289 @@
+{
+  "generated_at": "2026-11-08T18:50:00+05:30",
+  "source": "docs/research/21-portfolio-verification.md — verified from NSE EQUITY_L, NSE integrated-filing-results, NSE announcements, NSE event-calendar, screener.in Documents, NSE bhavcopies 1 Oct–8 Nov 2026",
+  "swaps": [
+    {
+      "out": "HAL",
+      "in": "INOXWIND",
+      "reason": "HAL has 1 transcript in the last 6 quarters (annual May call only); INOXWIND has 5/6, results 13 Nov, ENAM-book, 2 Nov +8.3%/4.4x"
+    }
+  ],
+  "companies": [
+    {
+      "isin": "INE002A01018",
+      "nseSymbol": "RELIANCE",
+      "bseCode": "500325",
+      "name": "Reliance Industries Limited",
+      "sector": "Oil, Gas & Consumable Fuels",
+      "industry": "Refineries & Marketing",
+      "aliases": [],
+      "screenerSlug": "RELIANCE",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "RELIANCE",
+      "bse_code": "500325",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "mega-cap anchor; 2 Nov +11.6%/5.8×; credit-rating filing 4 Nov"
+    },
+    {
+      "isin": "INE040A01034",
+      "nseSymbol": "HDFCBANK",
+      "bseCode": "500180",
+      "name": "HDFC Bank Limited",
+      "sector": "Financial Services",
+      "industry": "Private Sector Bank",
+      "aliases": [],
+      "screenerSlug": "HDFCBANK",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "HDFCBANK",
+      "bse_code": "500180",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "bank",
+      "why": "the bank format; 2× 'Change in Management' (31 Oct, 6 Nov); 5–6 Nov 2.2–2.3× vol"
+    },
+    {
+      "isin": "INE095A01012",
+      "nseSymbol": "INDUSINDBK",
+      "bseCode": "532187",
+      "name": "IndusInd Bank Limited",
+      "sector": "Financial Services",
+      "industry": "Private Sector Bank",
+      "aliases": [],
+      "screenerSlug": "INDUSINDBK",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "INDUSINDBK",
+      "bse_code": "532187",
+      "cap_bucket": "mid",
+      "role": "portfolio",
+      "format": "bank",
+      "why": "2nd bank, the distressed-bank story; 5 Nov +5.3%/3.5×, 6 Nov 3.1×; mgmt change 23 Oct"
+    },
+    {
+      "isin": "INE296A01032",
+      "nseSymbol": "BAJFINANCE",
+      "bseCode": "500034",
+      "name": "Bajaj Finance Limited",
+      "sector": "Financial Services",
+      "industry": "Non Banking Financial Company (NBFC)",
+      "aliases": [],
+      "screenerSlug": "BAJFINANCE",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "BAJFINANCE",
+      "bse_code": "500034",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "nbfc",
+      "why": "the NBFC format; 5 Nov +7.7%/3.45×; 'PI 2026 Special Committee' meeting 10 Nov (preferential issue)"
+    },
+    {
+      "isin": "INE009A01021",
+      "nseSymbol": "INFY",
+      "bseCode": "500209",
+      "name": "Infosys Limited",
+      "sector": "Information Technology",
+      "industry": "Computers - Software & Consulting",
+      "aliases": [],
+      "screenerSlug": "INFY",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "INFY",
+      "bse_code": "500209",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "guidance-heavy ledger name; dividend/record-date filings"
+    },
+    {
+      "isin": "INE04I401011",
+      "nseSymbol": "KPITTECH",
+      "bseCode": "542651",
+      "name": "KPIT Technologies Limited",
+      "sector": "Information Technology",
+      "industry": "Computers - Software & Consulting",
+      "aliases": [],
+      "screenerSlug": "KPITTECH",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "KPITTECH",
+      "bse_code": "542651",
+      "cap_bucket": "small",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "mid-cap IT, guides explicitly; 13 Oct +6.8%/4.2×; acquisition + 2 mgmt-change filings"
+    },
+    {
+      "isin": "INE044A01036",
+      "nseSymbol": "SUNPHARMA",
+      "bseCode": "524715",
+      "name": "Sun Pharmaceutical Industries Limited",
+      "sector": "Healthcare",
+      "industry": "Pharmaceuticals",
+      "aliases": [],
+      "screenerSlug": "SUNPHARMA",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "SUNPHARMA",
+      "bse_code": "524715",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "3 mgmt-change filings, rating, 30 Oct 3.5× vol"
+    },
+    {
+      "isin": "INE947Q01028",
+      "nseSymbol": "LAURUSLABS",
+      "bseCode": "540222",
+      "name": "Laurus Labs Limited",
+      "sector": "Healthcare",
+      "industry": "Pharmaceuticals",
+      "aliases": [],
+      "screenerSlug": "LAURUSLABS",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "LAURUSLABS",
+      "bse_code": "540222",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "ENAM book; 30 Oct +7.2%/4.8×; 3 M&A filings"
+    },
+    {
+      "isin": "INE155A01022",
+      "nseSymbol": "TMPV",
+      "bseCode": "500570",
+      "name": "Tata Motors Passenger Vehicles Limited",
+      "sector": "Automobile and Auto Components",
+      "industry": "Passenger Cars & Utility Vehicles",
+      "aliases": [
+        "TATAMOTORS"
+      ],
+      "screenerSlug": "TMPV",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "TMPV",
+      "bse_code": "500570",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "results 13 Nov; symbol-churn case (TATAMOTORS→TMPV); 5 Nov +5.5%/2.1×"
+    },
+    {
+      "isin": "INE018A01030",
+      "nseSymbol": "LT",
+      "bseCode": "500510",
+      "name": "Larsen & Toubro Limited",
+      "sector": "Construction",
+      "industry": "Civil Construction",
+      "aliases": [],
+      "screenerSlug": "LT",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "LT",
+      "bse_code": "500510",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "order-win press releases; 28 Oct +3.7%/3.25×"
+    },
+    {
+      "isin": "INE152A01029",
+      "nseSymbol": "THERMAX",
+      "bseCode": "500411",
+      "name": "Thermax Limited",
+      "sector": "Capital Goods",
+      "industry": "Heavy Electrical Equipment",
+      "aliases": [],
+      "screenerSlug": "THERMAX",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "THERMAX",
+      "bse_code": "500411",
+      "cap_bucket": "mid",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "6 Nov −17.3% on 17.3× volume (day after Q2 results + 'orders passed'); Q2 transcript lands this week"
+    },
+    {
+      "isin": "INE030A01027",
+      "nseSymbol": "HINDUNILVR",
+      "bseCode": "500696",
+      "name": "Hindustan Unilever Limited",
+      "sector": "Fast Moving Consumer Goods",
+      "industry": "Diversified FMCG",
+      "aliases": [],
+      "screenerSlug": "HINDUNILVR",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "HINDUNILVR",
+      "bse_code": "500696",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "interim dividend + record date (dividend card); 3 quiet-volume anomalies"
+    },
+    {
+      "isin": "INE196A01026",
+      "nseSymbol": "MARICO",
+      "bseCode": "531642",
+      "name": "Marico Limited",
+      "sector": "Fast Moving Consumer Goods",
+      "industry": "Edible Oil",
+      "aliases": [],
+      "screenerSlug": "MARICO",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "MARICO",
+      "bse_code": "531642",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "3 Nov +10.0% on 8.2×; 2 M&A + 2 mgmt filings"
+    },
+    {
+      "isin": "INE397D01024",
+      "nseSymbol": "BHARTIARTL",
+      "bseCode": "532454",
+      "name": "Bharti Airtel Limited",
+      "sector": "Telecommunication",
+      "industry": "Telecom - Cellular & Fixed line services",
+      "aliases": [],
+      "screenerSlug": "BHARTIARTL",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "BHARTIARTL",
+      "bse_code": "532454",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "5 'orders passed' (litigation) filings; 16 Oct 3.7×; Q2 transcript pending"
+    },
+    {
+      "isin": "INE669E01016",
+      "nseSymbol": "IDEA",
+      "bseCode": "532822",
+      "name": "Vodafone Idea Limited",
+      "sector": "Telecommunication",
+      "industry": "Telecom - Cellular & Fixed line services",
+      "aliases": [],
+      "screenerSlug": "IDEA",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "IDEA",
+      "bse_code": "532822",
+      "cap_bucket": "large",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "results 12 Nov, earnings call 13 Nov; distressed telecom (PBT −₹3,747 cr in Q1); 4/6 transcripts (≥3 ok)"
+    },
+    {
+      "isin": "INE09N301011",
+      "nseSymbol": "FLUOROCHEM",
+      "bseCode": "542812",
+      "name": "Gujarat Fluorochemicals Limited",
+      "sector": "Chemicals",
+      "industry": "Specialty Chemicals",
+      "aliases": [],
+      "screenerSlug": "FLUOROCHEM",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "FLUOROCHEM",
+      "bse_code": "542812",
+      "cap_bucket": "mid",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "ENAM book; 3 Nov 3.2× vol; quiet but complete (6/6 transcripts)"
+    },
+    {
+      "isin": "INE371P01015",
+      "nseSymbol": "AMBER",
+      "bseCode": "540902",
+      "name": "Amber Enterprises India Limited",
+      "sector": "Consumer Durables",
+      "industry": "Household Appliances",
+      "aliases": [],
+      "screenerSlug": "AMBER",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "AMBER",
+      "bse_code": "540902",
+      "cap_bucket": "small",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "ENAM book; results 12 Nov; 6 acquisition filings (IL JIN) + resignation"
+    },
+    {
+      "isin": "INE195A01028",
+      "nseSymbol": "SUPREMEIND",
+      "bseCode": "509930",
+      "name": "Supreme Industries Limited",
+      "sector": "Capital Goods",
+      "industry": "Plastic Products - Industrial",
+      "aliases": [],
+      "screenerSlug": "SUPREMEIND",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "SUPREMEIND",
+      "bse_code": "509930",
+      "cap_bucket": "mid",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "26 Oct −4.1%/4.3×, 6 Nov −4.1%/2.4×; 3 dividend filings"
+    },
+    {
+      "isin": "INE303R01014",
+      "nseSymbol": "KALYANKJIL",
+      "bseCode": "543278",
+      "name": "Kalyan Jewellers India Limited",
+      "sector": "Consumer Durables",
+      "industry": "Gems, Jewellery And Watches",
+      "aliases": [],
+      "screenerSlug": "KALYANKJIL",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "KALYANKJIL",
+      "bse_code": "543278",
+      "cap_bucket": "mid",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "results 10 Nov (trading holiday!); 6 Nov +5.5% on 5.5×"
+    },
+    {
+      "isin": "INE066P01011",
+      "nseSymbol": "INOXWIND",
+      "bseCode": "539083",
+      "name": "Inox Wind Limited",
+      "sector": "Capital Goods",
+      "industry": "Heavy Electrical Equipment",
+      "aliases": [],
+      "screenerSlug": "INOXWIND",
+      "inPortfolio": true,
+      "isAdhoc": false,
+      "symbol": "INOXWIND",
+      "bse_code": "539083",
+      "cap_bucket": "small",
+      "role": "portfolio",
+      "format": "corporate",
+      "why": "Swapped in for HAL: ENAM-book wind-energy mid cap, results 13 Nov, 5/6 transcripts, 2 Nov +8.3% on 4.4× volume."
+    },
+    {
+      "isin": "INE0LXG01040",
+      "nseSymbol": "OLAELEC",
+      "bseCode": "544225",
+      "name": "Ola Electric Mobility Limited",
+      "sector": "Automobile and Auto Components",
+      "industry": "2/3 Wheelers",
+      "aliases": [],
+      "screenerSlug": "OLAELEC",
+      "inPortfolio": false,
+      "isAdhoc": true,
+      "symbol": "OLAELEC",
+      "bse_code": "544225",
+      "cap_bucket": "small",
+      "role": "adhoc",
+      "format": "corporate",
+      "why": "results 12 Nov; 27 Oct +16.2%/6.5×, 28 Oct +5.3%/5.3×; rights-issue allotment (370 M partly-paid shares) 2 Nov; only 3 legacy quarters (IPO Aug-24)"
+    },
+    {
+      "isin": "INE531F01023",
+      "nseSymbol": "NUVAMA",
+      "bseCode": "543988",
+      "name": "Nuvama Wealth Management Limited",
+      "sector": "Financial Services",
+      "industry": "Stockbroking & Allied",
+      "aliases": [],
+      "screenerSlug": "NUVAMA",
+      "inPortfolio": false,
+      "isAdhoc": true,
+      "symbol": "NUVAMA",
+      "bse_code": "543988",
+      "cap_bucket": "mid",
+      "role": "adhoc",
+      "format": "nbfc",
+      "why": "2nd NBFC taxonomy; results filed 6 Nov, Q2 transcript pending; pledge story = PAG's Reg 31(1)/31(4) SAST disclosures (24 Sep, 19 Jun 2026)"
+    },
+    {
+      "isin": "INE205A01025",
+      "nseSymbol": "VEDL",
+      "bseCode": "500295",
+      "name": "Vedanta Limited",
+      "sector": "Metals & Mining",
+      "industry": "Diversified Metals",
+      "aliases": [],
+      "screenerSlug": "VEDL",
+      "inPortfolio": false,
+      "isAdhoc": true,
+      "symbol": "VEDL",
+      "bse_code": "500295",
+      "cap_bucket": "large",
+      "role": "adhoc",
+      "format": "corporate",
+      "why": "6/6 transcripts only via NSE (screener misses Q1/Q2 FY27); credit rating 16 Oct; 2 'News Verification' items"
+    },
+    {
+      "isin": "INE603J01030",
+      "nseSymbol": "PIIND",
+      "bseCode": "523642",
+      "name": "PI Industries Limited",
+      "sector": "Chemicals",
+      "industry": "Pesticides & Agrochemicals",
+      "aliases": [],
+      "screenerSlug": "PIIND",
+      "inPortfolio": false,
+      "isAdhoc": true,
+      "symbol": "PIIND",
+      "bse_code": "523642",
+      "cap_bucket": "small",
+      "role": "adhoc",
+      "format": "corporate",
+      "why": "5 Nov −19.1% on 30.1× volume (day after Q2 results); 5/6 + Q2 transcript pending"
+    },
+    {
+      "isin": "INE343B01030",
+      "nseSymbol": "RAJESHEXPO",
+      "bseCode": "531500",
+      "name": "Rajesh Exports Limited",
+      "sector": "Consumer Durables",
+      "industry": "Gems, Jewellery And Watches",
+      "aliases": [],
+      "screenerSlug": "RAJESHEXPO",
+      "inPortfolio": false,
+      "isAdhoc": true,
+      "symbol": "RAJESHEXPO",
+      "bse_code": "531500",
+      "cap_bucket": "small",
+      "role": "adhoc",
+      "format": "corporate",
+      "why": "the degradation case: 0 transcripts ever, BZ series, 10 XBRL revisions, no Q2 board meeting intimated, `OwnersOfParent=0` trap, 1.26 MB AR"
+    }
+  ],
+  "portfolio": [
+    {
+      "symbol": "RELIANCE",
+      "isin": "INE002A01018",
+      "name": "Reliance Industries Limited",
+      "bse_code": "500325",
+      "sector": "Refineries & Marketing",
+      "sector_chain": [
+        "Energy",
+        "Oil, Gas & Consumable Fuels",
+        "Petroleum Products",
+        "Refineries & Marketing"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 1794290.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "mega-cap anchor; 2 Nov +11.6%/5.8×; credit-rating filing 4 Nov",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 20,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29285_RELIANCE_2025_2026_A_11007429_28052026133947.pdf",
+        "announcements_30d": 19,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-11-02",
+            "pct": 11.6,
+            "vol_ratio": 5.83
+          },
+          {
+            "date": "2026-11-03",
+            "pct": 0.61,
+            "vol_ratio": 2.27
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "HDFCBANK",
+      "isin": "INE040A01034",
+      "name": "HDFC Bank Limited",
+      "bse_code": "500180",
+      "sector": "Private Sector Bank",
+      "sector_chain": [
+        "Financial Services",
+        "Financial Services",
+        "Banks",
+        "Private Sector Bank"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 1211977.0,
+      "role": "portfolio",
+      "format": "bank",
+      "series": "EQ",
+      "why": "the bank format; 2× 'Change in Management' (31 Oct, 6 Nov); 5–6 Nov 2.2–2.3× vol",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "BANKING"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 21,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29735_HDFCBANK_2025_2026_A_12667766_11072026001055.pdf",
+        "announcements_30d": 16,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-11-05",
+            "pct": 3.16,
+            "vol_ratio": 2.17
+          },
+          {
+            "date": "2026-11-06",
+            "pct": 3.72,
+            "vol_ratio": 2.31
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "INDUSINDBK",
+      "isin": "INE095A01012",
+      "name": "IndusInd Bank Limited",
+      "bse_code": "532187",
+      "sector": "Private Sector Bank",
+      "sector_chain": [
+        "Financial Services",
+        "Financial Services",
+        "Banks",
+        "Private Sector Bank"
+      ],
+      "cap_bucket": "mid",
+      "mcap_cr": 70376.0,
+      "role": "portfolio",
+      "format": "bank",
+      "series": "EQ",
+      "why": "2nd bank, the distressed-bank story; 5 Nov +5.3%/3.5×, 6 Nov 3.1×; mgmt change 23 Oct",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "BANKING"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 35,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30216_INDUSINDBK_2025_2026_A_9505621_05082026211258.pdf",
+        "announcements_30d": 12,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-12",
+            "pct": -1.0,
+            "vol_ratio": 2.59
+          },
+          {
+            "date": "2026-10-13",
+            "pct": 2.85,
+            "vol_ratio": 2.17
+          },
+          {
+            "date": "2026-11-05",
+            "pct": 5.35,
+            "vol_ratio": 3.46
+          },
+          {
+            "date": "2026-11-06",
+            "pct": -0.13,
+            "vol_ratio": 3.09
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "BAJFINANCE",
+      "isin": "INE296A01032",
+      "name": "Bajaj Finance Limited",
+      "bse_code": "500034",
+      "sector": "Non Banking Financial Company (NBFC)",
+      "sector_chain": [
+        "Financial Services",
+        "Financial Services",
+        "Finance",
+        "Non Banking Financial Company (NBFC)"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 675200.0,
+      "role": "portfolio",
+      "format": "nbfc",
+      "series": "EQ",
+      "why": "the NBFC format; 5 Nov +7.7%/3.45×; 'PI 2026 Special Committee' meeting 10 Nov (preferential issue)",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "NBFC_INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 39,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29642_BAJFINANCE_2025_2026_A_23098027_07072026220255.pdf",
+        "announcements_30d": 17,
+        "events_9_14_nov": [
+          "2026-11-10 Other business matters"
+        ],
+        "anomalies": [
+          {
+            "date": "2026-10-21",
+            "pct": -3.27,
+            "vol_ratio": 2.27
+          },
+          {
+            "date": "2026-11-05",
+            "pct": 7.65,
+            "vol_ratio": 3.45
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "INFY",
+      "isin": "INE009A01021",
+      "name": "Infosys Limited",
+      "bse_code": "500209",
+      "sector": "Computers - Software & Consulting",
+      "sector_chain": [
+        "Information Technology",
+        "Information Technology",
+        "IT - Software",
+        "Computers - Software & Consulting"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 475772.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "guidance-heavy ledger name; dividend/record-date filings",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 38,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29313_INFY_2025_2026_U_8985411_30052026200413.pdf",
+        "announcements_30d": 16,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-23",
+            "pct": 0.04,
+            "vol_ratio": 2.15
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "KPITTECH",
+      "isin": "INE04I401011",
+      "name": "KPIT Technologies Limited",
+      "bse_code": "542651",
+      "sector": "Computers - Software & Consulting",
+      "sector_chain": [
+        "Information Technology",
+        "Information Technology",
+        "IT - Software",
+        "Computers - Software & Consulting"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 14923.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "mid-cap IT, guides explicitly; 13 Oct +6.8%/4.2×; acquisition + 2 mgmt-change filings",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 20,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30212_KPITTECH_2025_2026_A_10301220_05082026200744.pdf",
+        "announcements_30d": 16,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-13",
+            "pct": 6.81,
+            "vol_ratio": 4.16
+          },
+          {
+            "date": "2026-10-14",
+            "pct": 1.96,
+            "vol_ratio": 2.41
+          },
+          {
+            "date": "2026-10-16",
+            "pct": 5.51,
+            "vol_ratio": 2.14
+          },
+          {
+            "date": "2026-10-28",
+            "pct": 3.87,
+            "vol_ratio": 2.87
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "SUNPHARMA",
+      "isin": "INE044A01036",
+      "name": "Sun Pharmaceutical Industries Limited",
+      "bse_code": "524715",
+      "sector": "Pharmaceuticals",
+      "sector_chain": [
+        "Healthcare",
+        "Healthcare",
+        "Pharmaceuticals & Biotechnology",
+        "Pharmaceuticals"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 459473.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "3 mgmt-change filings, rating, 30 Oct 3.5× vol",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 27,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29590_SUNPHARMA_2025_2026_A_19925421_06072026185825.pdf",
+        "announcements_30d": 20,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-30",
+            "pct": 0.95,
+            "vol_ratio": 3.54
+          },
+          {
+            "date": "2026-11-02",
+            "pct": -0.43,
+            "vol_ratio": 2.12
+          },
+          {
+            "date": "2026-11-04",
+            "pct": 0.2,
+            "vol_ratio": 2.8
+          },
+          {
+            "date": "2026-11-05",
+            "pct": 3.14,
+            "vol_ratio": 2.03
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "LAURUSLABS",
+      "isin": "INE947Q01028",
+      "name": "Laurus Labs Limited",
+      "bse_code": "540222",
+      "sector": "Pharmaceuticals",
+      "sector_chain": [
+        "Healthcare",
+        "Healthcare",
+        "Pharmaceuticals & Biotechnology",
+        "Pharmaceuticals"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 128328.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "ENAM book; 30 Oct +7.2%/4.8×; 3 M&A filings",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 41,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29364_LAURUSLABS_2025_2026_A_19085196_08062026160805.pdf",
+        "announcements_30d": 15,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-27",
+            "pct": 4.04,
+            "vol_ratio": 2.14
+          },
+          {
+            "date": "2026-10-30",
+            "pct": 7.2,
+            "vol_ratio": 4.77
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "TMPV",
+      "isin": "INE155A01022",
+      "name": "Tata Motors Passenger Vehicles Limited",
+      "bse_code": "500570",
+      "sector": "Passenger Cars & Utility Vehicles",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Automobile and Auto Components",
+        "Automobiles",
+        "Passenger Cars & Utility Vehicles"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 108759.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "results 13 Nov; symbol-churn case (TATAMOTORS→TMPV); 5 Nov +5.5%/2.1×",
+      "verified": {
+        "xbrl_quarters": 6,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-06-30",
+        "q2fy27_filed": false,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 30,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29395_TMPV_2025_2026_A_21445169_15062026215933.pdf",
+        "announcements_30d": 4,
+        "events_9_14_nov": [
+          "2026-11-13 Financial Results"
+        ],
+        "anomalies": [
+          {
+            "date": "2026-11-05",
+            "pct": 5.46,
+            "vol_ratio": 2.12
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "LT",
+      "isin": "INE018A01030",
+      "name": "Larsen & Toubro Limited",
+      "bse_code": "500510",
+      "sector": "Civil Construction",
+      "sector_chain": [
+        "Industrials",
+        "Construction",
+        "Construction",
+        "Civil Construction"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 565337.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "order-win press releases; 28 Oct +3.7%/3.25×",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 35,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29259_LT_2025_2026_A_29793480_14052026183032.pdf",
+        "announcements_30d": 15,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-28",
+            "pct": 3.72,
+            "vol_ratio": 3.25
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "THERMAX",
+      "isin": "INE152A01029",
+      "name": "Thermax Limited",
+      "bse_code": "500411",
+      "sector": "Heavy Electrical Equipment",
+      "sector_chain": [
+        "Industrials",
+        "Capital Goods",
+        "Electrical Equipment",
+        "Heavy Electrical Equipment"
+      ],
+      "cap_bucket": "mid",
+      "mcap_cr": 33868.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "6 Nov −17.3% on 17.3× volume (day after Q2 results + 'orders passed'); Q2 transcript lands this week",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 42,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29561_THERMAX_2025_2026_A_12575457_03072026171607.pdf",
+        "announcements_30d": 8,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-09",
+            "pct": 3.77,
+            "vol_ratio": 3.22
+          },
+          {
+            "date": "2026-11-06",
+            "pct": -17.27,
+            "vol_ratio": 17.28
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "HINDUNILVR",
+      "isin": "INE030A01027",
+      "name": "Hindustan Unilever Limited",
+      "bse_code": "500696",
+      "sector": "Diversified FMCG",
+      "sector_chain": [
+        "Fast Moving Consumer Goods",
+        "Fast Moving Consumer Goods",
+        "Diversified FMCG",
+        "Diversified FMCG"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 470013.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "interim dividend + record date (dividend card); 3 quiet-volume anomalies",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 22,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29330_HINDUNILVR_2025_2026_A_21643813_02062026215058.pdf",
+        "announcements_30d": 14,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-14",
+            "pct": 1.07,
+            "vol_ratio": 2.54
+          },
+          {
+            "date": "2026-10-27",
+            "pct": -0.03,
+            "vol_ratio": 2.71
+          },
+          {
+            "date": "2026-10-28",
+            "pct": -0.12,
+            "vol_ratio": 2.18
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "MARICO",
+      "isin": "INE196A01026",
+      "name": "Marico Limited",
+      "bse_code": "531642",
+      "sector": "Edible Oil",
+      "sector_chain": [
+        "Fast Moving Consumer Goods",
+        "Fast Moving Consumer Goods",
+        "Agricultural Food & other Products",
+        "Edible Oil"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 116238.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "3 Nov +10.0% on 8.2×; 2 M&A + 2 mgmt filings",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 44,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29675_MARICO_2025_2026_A_25834811_09072026124936.pdf",
+        "announcements_30d": 13,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-29",
+            "pct": 4.32,
+            "vol_ratio": 2.07
+          },
+          {
+            "date": "2026-11-03",
+            "pct": 10.0,
+            "vol_ratio": 8.17
+          },
+          {
+            "date": "2026-11-04",
+            "pct": 1.32,
+            "vol_ratio": 2.56
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "BHARTIARTL",
+      "isin": "INE397D01024",
+      "name": "Bharti Airtel Limited",
+      "bse_code": "532454",
+      "sector": "Telecom - Cellular & Fixed line services",
+      "sector_chain": [
+        "Telecommunication",
+        "Telecommunication",
+        "Telecom - Services",
+        "Telecom - Cellular & Fixed line services"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 1308488.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "5 'orders passed' (litigation) filings; 16 Oct 3.7×; Q2 transcript pending",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 18,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29749_BHARTIARTL_2025_2026_A_22716516_11072026235841.pdf",
+        "announcements_30d": 20,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-16",
+            "pct": 2.75,
+            "vol_ratio": 3.68
+          },
+          {
+            "date": "2026-11-03",
+            "pct": 3.77,
+            "vol_ratio": 2.06
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "IDEA",
+      "isin": "INE669E01016",
+      "name": "Vodafone Idea Limited",
+      "bse_code": "532822",
+      "sector": "Telecom - Cellular & Fixed line services",
+      "sector_chain": [
+        "Telecommunication",
+        "Telecommunication",
+        "Telecom - Services",
+        "Telecom - Cellular & Fixed line services"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 138896.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "results 12 Nov, earnings call 13 Nov; distressed telecom (PBT −₹3,747 cr in Q1); 4/6 transcripts (≥3 ok)",
+      "verified": {
+        "xbrl_quarters": 6,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-06-30",
+        "q2fy27_filed": false,
+        "transcripts_last6q": 4,
+        "transcripts_total_screener": 32,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30194_IDEA_2025_2026_A_7288659_04082026202915.pdf",
+        "announcements_30d": 4,
+        "events_9_14_nov": [
+          "2026-11-12 Financial Results"
+        ],
+        "anomalies": [
+          {
+            "date": "2026-10-21",
+            "pct": -5.21,
+            "vol_ratio": 1.58
+          },
+          {
+            "date": "2026-10-26",
+            "pct": 5.19,
+            "vol_ratio": 1.33
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "FLUOROCHEM",
+      "isin": "INE09N301011",
+      "name": "Gujarat Fluorochemicals Limited",
+      "bse_code": "542812",
+      "sector": "Specialty Chemicals",
+      "sector_chain": [
+        "Commodities",
+        "Chemicals",
+        "Chemicals & Petrochemicals",
+        "Specialty Chemicals"
+      ],
+      "cap_bucket": "mid",
+      "mcap_cr": 50377.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "ENAM book; 3 Nov 3.2× vol; quiet but complete (6/6 transcripts)",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 22,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30736_FLUOROCHEM_2025_2026_A_20597566_27082026184348.pdf",
+        "announcements_30d": 6,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-11-03",
+            "pct": 3.23,
+            "vol_ratio": 3.16
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "AMBER",
+      "isin": "INE371P01015",
+      "name": "Amber Enterprises India Limited",
+      "bse_code": "540902",
+      "sector": "Household Appliances",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Consumer Durables",
+        "Consumer Durables",
+        "Household Appliances"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 22392.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "ENAM book; results 12 Nov; 6 acquisition filings (IL JIN) + resignation",
+      "verified": {
+        "xbrl_quarters": 6,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-06-30",
+        "q2fy27_filed": false,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 40,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30632_AMBER_2025_2026_A_19660457_25082026232047.pdf",
+        "announcements_30d": 10,
+        "events_9_14_nov": [
+          "2026-11-12 Financial Results"
+        ],
+        "anomalies": [
+          {
+            "date": "2026-10-23",
+            "pct": -2.84,
+            "vol_ratio": 2.02
+          },
+          {
+            "date": "2026-10-30",
+            "pct": -5.93,
+            "vol_ratio": 1.99
+          },
+          {
+            "date": "2026-11-02",
+            "pct": 6.1,
+            "vol_ratio": 1.66
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "SUPREMEIND",
+      "isin": "INE195A01028",
+      "name": "Supreme Industries Limited",
+      "bse_code": "509930",
+      "sector": "Plastic Products - Industrial",
+      "sector_chain": [
+        "Industrials",
+        "Capital Goods",
+        "Industrial Products",
+        "Plastic Products - Industrial"
+      ],
+      "cap_bucket": "mid",
+      "mcap_cr": 40888.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "26 Oct −4.1%/4.3×, 6 Nov −4.1%/2.4×; 3 dividend filings",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 18,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29321_SUPREMEIND_2025_2026_A_7275995_01062026164639.pdf",
+        "announcements_30d": 12,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-14",
+            "pct": 2.85,
+            "vol_ratio": 2.14
+          },
+          {
+            "date": "2026-10-26",
+            "pct": -4.13,
+            "vol_ratio": 4.3
+          },
+          {
+            "date": "2026-11-06",
+            "pct": -4.07,
+            "vol_ratio": 2.39
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "KALYANKJIL",
+      "isin": "INE303R01014",
+      "name": "Kalyan Jewellers India Limited",
+      "bse_code": "543278",
+      "sector": "Gems, Jewellery And Watches",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Consumer Durables",
+        "Consumer Durables",
+        "Gems, Jewellery And Watches"
+      ],
+      "cap_bucket": "mid",
+      "mcap_cr": 61217.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "results 10 Nov (trading holiday!); 6 Nov +5.5% on 5.5×",
+      "verified": {
+        "xbrl_quarters": 6,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-06-30",
+        "q2fy27_filed": false,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 19,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30447_KALYANKJIL_2025_2026_A_6283776_20082026113008.pdf",
+        "announcements_30d": 2,
+        "events_9_14_nov": [
+          "2026-11-10 Financial Results"
+        ],
+        "anomalies": [
+          {
+            "date": "2026-11-05",
+            "pct": 5.85,
+            "vol_ratio": 1.15
+          },
+          {
+            "date": "2026-11-06",
+            "pct": 5.49,
+            "vol_ratio": 5.5
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "INOXWIND",
+      "isin": "INE066P01011",
+      "name": "Inox Wind Limited",
+      "bse_code": "539083",
+      "sector": "Heavy Electrical Equipment",
+      "sector_chain": [
+        "Industrials",
+        "Capital Goods",
+        "Electrical Equipment",
+        "Heavy Electrical Equipment"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 11299.0,
+      "role": "portfolio",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "Swapped in for HAL: ENAM-book wind-energy mid cap, results 13 Nov, 5/6 transcripts, 2 Nov +8.3% on 4.4× volume.",
+      "verified": {
+        "xbrl_quarters": 6,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-06-30",
+        "q2fy27_filed": false,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 31,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_31331_INOXWIND_2025_2026_A_8279078_03092026221810.pdf",
+        "announcements_30d": 2,
+        "events_9_14_nov": [
+          "2026-11-13 Financial Results"
+        ],
+        "anomalies": [
+          {
+            "date": "2026-10-09",
+            "pct": 6.76,
+            "vol_ratio": 3.2
+          },
+          {
+            "date": "2026-10-23",
+            "pct": -5.12,
+            "vol_ratio": 1.24
+          },
+          {
+            "date": "2026-10-30",
+            "pct": -6.73,
+            "vol_ratio": 1.3
+          },
+          {
+            "date": "2026-11-02",
+            "pct": 8.3,
+            "vol_ratio": 4.36
+          },
+          {
+            "date": "2026-11-04",
+            "pct": 6.87,
+            "vol_ratio": 1.24
+          }
+        ]
+      }
+    }
+  ],
+  "adhoc": [
+    {
+      "symbol": "OLAELEC",
+      "isin": "INE0LXG01040",
+      "name": "Ola Electric Mobility Limited",
+      "bse_code": "544225",
+      "sector": "2/3 Wheelers",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Automobile and Auto Components",
+        "Automobiles",
+        "2/3 Wheelers"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 17230.0,
+      "role": "adhoc",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "results 12 Nov; 27 Oct +16.2%/6.5×, 28 Oct +5.3%/5.3×; rights-issue allotment (370 M partly-paid shares) 2 Nov; only 3 legacy quarters (IPO Aug-24)",
+      "verified": {
+        "xbrl_quarters": 6,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-06-30",
+        "q2fy27_filed": false,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 10,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_31975_OLAELEC_2025_2026_A_20107852_08092026222027.pdf",
+        "announcements_30d": 7,
+        "events_9_14_nov": [
+          "2026-11-12 Financial Results"
+        ],
+        "anomalies": [
+          {
+            "date": "2026-10-23",
+            "pct": -6.29,
+            "vol_ratio": 1.21
+          },
+          {
+            "date": "2026-10-27",
+            "pct": 16.23,
+            "vol_ratio": 6.53
+          },
+          {
+            "date": "2026-10-28",
+            "pct": 5.34,
+            "vol_ratio": 5.33
+          },
+          {
+            "date": "2026-10-30",
+            "pct": -5.63,
+            "vol_ratio": 0.72
+          },
+          {
+            "date": "2026-11-02",
+            "pct": 5.52,
+            "vol_ratio": 1.24
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "NUVAMA",
+      "isin": "INE531F01023",
+      "name": "Nuvama Wealth Management Limited",
+      "bse_code": "543988",
+      "sector": "Stockbroking & Allied",
+      "sector_chain": [
+        "Financial Services",
+        "Financial Services",
+        "Capital Markets",
+        "Stockbroking & Allied"
+      ],
+      "cap_bucket": "mid",
+      "mcap_cr": 34759.0,
+      "role": "adhoc",
+      "format": "nbfc",
+      "series": "EQ",
+      "why": "2nd NBFC taxonomy; results filed 6 Nov, Q2 transcript pending; pledge story = PAG's Reg 31(1)/31(4) SAST disclosures (24 Sep, 19 Jun 2026)",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "NBFC_INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 12,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_31290_NUVAMA_2025_2026_A_10223359_03092026191229.pdf",
+        "announcements_30d": 5,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-12",
+            "pct": 5.92,
+            "vol_ratio": 0.69
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "VEDL",
+      "isin": "INE205A01025",
+      "name": "Vedanta Limited",
+      "bse_code": "500295",
+      "sector": "Diversified Metals",
+      "sector_chain": [
+        "Commodities",
+        "Metals & Mining",
+        "Diversified Metals",
+        "Diversified Metals"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 102256.0,
+      "role": "adhoc",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "6/6 transcripts only via NSE (screener misses Q1/Q2 FY27); credit rating 16 Oct; 2 'News Verification' items",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 33,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_32042_VEDL_2025_2026_A_10111875_16092026144013.pdf",
+        "announcements_30d": 15,
+        "events_9_14_nov": [],
+        "anomalies": []
+      }
+    },
+    {
+      "symbol": "PIIND",
+      "isin": "INE603J01030",
+      "name": "PI Industries Limited",
+      "bse_code": "523642",
+      "sector": "Pesticides & Agrochemicals",
+      "sector_chain": [
+        "Commodities",
+        "Chemicals",
+        "Fertilizers & Agrochemicals",
+        "Pesticides & Agrochemicals"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 26561.0,
+      "role": "adhoc",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "5 Nov −19.1% on 30.1× volume (day after Q2 results); 5/6 + Q2 transcript pending",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 44,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29899_PIIND_2025_2026_A_15366965_20072026150521.pdf",
+        "announcements_30d": 8,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-14",
+            "pct": 4.17,
+            "vol_ratio": 2.47
+          },
+          {
+            "date": "2026-10-21",
+            "pct": -2.8,
+            "vol_ratio": 2.45
+          },
+          {
+            "date": "2026-10-27",
+            "pct": 3.27,
+            "vol_ratio": 2.02
+          },
+          {
+            "date": "2026-11-02",
+            "pct": 3.15,
+            "vol_ratio": 2.43
+          },
+          {
+            "date": "2026-11-04",
+            "pct": 0.09,
+            "vol_ratio": 3.22
+          },
+          {
+            "date": "2026-11-05",
+            "pct": -19.07,
+            "vol_ratio": 30.11
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "RAJESHEXPO",
+      "isin": "INE343B01030",
+      "name": "Rajesh Exports Limited",
+      "bse_code": "531500",
+      "sector": "Gems, Jewellery And Watches",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Consumer Durables",
+        "Consumer Durables",
+        "Gems, Jewellery And Watches"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 1536.0,
+      "role": "adhoc",
+      "format": "corporate",
+      "series": "BZ",
+      "why": "the degradation case: 0 transcripts ever, BZ series, 10 XBRL revisions, no Q2 board meeting intimated, `OwnersOfParent=0` trap, 1.26 MB AR",
+      "verified": {
+        "xbrl_quarters": 5,
+        "taxonomies": [
+          "INDAS",
+          "NONINDAS"
+        ],
+        "latest_qe": "2026-06-30",
+        "q2fy27_filed": false,
+        "transcripts_last6q": 0,
+        "transcripts_total_screener": 0,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_32077_RAJESHEXPO_2025_2026_A_1318800_23092026173358.pdf",
+        "announcements_30d": 2,
+        "events_9_14_nov": [],
+        "anomalies": []
+      }
+    }
+  ],
+  "alternates": [
+    {
+      "symbol": "HAL",
+      "isin": "INE066F01020",
+      "name": "Hindustan Aeronautics Limited",
+      "bse_code": "541154",
+      "sector": "Aerospace & Defense",
+      "sector_chain": [
+        "Industrials",
+        "Capital Goods",
+        "Aerospace & Defense",
+        "Aerospace & Defense"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 333542.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "Alternate only: PSU defence large cap with results 12 Nov and clean XBRL, but a single annual (May) concall — 1 transcript in the last 6 quarters, so the promise ledger would be empty.",
+      "verified": {
+        "xbrl_quarters": 6,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-06-30",
+        "q2fy27_filed": false,
+        "transcripts_last6q": 1,
+        "transcripts_total_screener": 8,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30166_HAL_2025_2026_U_12603450_04082026103759.pdf",
+        "announcements_30d": 3,
+        "events_9_14_nov": [
+          "2026-11-12 Financial Results"
+        ],
+        "anomalies": []
+      }
+    },
+    {
+      "symbol": "ELGIEQUIP",
+      "isin": "INE285A01027",
+      "name": "Elgi Equipments Limited",
+      "bse_code": "522074",
+      "sector": "Compressors, Pumps & Diesel Engines",
+      "sector_chain": [
+        "Industrials",
+        "Capital Goods",
+        "Industrial Products",
+        "Compressors, Pumps & Diesel Engines"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 17793.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "ENAM (Nemish Shah); 6 Nov 11.5× volume on +1.8% (pure volume anomaly); results filed 6 Nov; rating 15 Oct",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 28,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29898_ELGIEQUIP_2025_2026_A_11230253_20072026133144.pdf",
+        "announcements_30d": 8,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-11-04",
+            "pct": 5.57,
+            "vol_ratio": 1.72
+          },
+          {
+            "date": "2026-11-06",
+            "pct": 1.79,
+            "vol_ratio": 11.46
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "DIXON",
+      "isin": "INE935N01020",
+      "name": "Dixon Technologies (India) Limited",
+      "bse_code": "540699",
+      "sector": "Consumer Electronics",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Consumer Durables",
+        "Consumer Durables",
+        "Consumer Electronics"
+      ],
+      "cap_bucket": "mid",
+      "mcap_cr": 77251.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "6/6; 2 Nov +12.0%/6.0×; strong but duplicates AMBER's bucket",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 37,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_31329_DIXON_2025_2026_A_15487496_03092026220551.pdf",
+        "announcements_30d": 13,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-16",
+            "pct": -2.57,
+            "vol_ratio": 2.46
+          },
+          {
+            "date": "2026-10-21",
+            "pct": -3.4,
+            "vol_ratio": 2.21
+          },
+          {
+            "date": "2026-11-02",
+            "pct": 11.99,
+            "vol_ratio": 5.95
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "RKFORGE",
+      "isin": "INE399G01023",
+      "name": "Ramkrishna Forgings Limited",
+      "bse_code": "532527",
+      "sector": "Auto Components & Equipments",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Automobile and Auto Components",
+        "Auto Components",
+        "Auto Components & Equipments"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 13413.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "ENAM book; 2 Nov +7.6%/11.1×; 6/6; 4 dividend filings",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 31,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30215_RKFORGE_2025_2026_A_6751431_05082026210237.pdf",
+        "announcements_30d": 17,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-21",
+            "pct": -7.19,
+            "vol_ratio": 1.99
+          },
+          {
+            "date": "2026-10-29",
+            "pct": 3.46,
+            "vol_ratio": 2.29
+          },
+          {
+            "date": "2026-10-30",
+            "pct": -3.76,
+            "vol_ratio": 2.28
+          },
+          {
+            "date": "2026-11-02",
+            "pct": 7.61,
+            "vol_ratio": 11.06
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "HINDALCO",
+      "isin": "INE038A01020",
+      "name": "Hindalco Industries Limited",
+      "bse_code": "500440",
+      "sector": "Aluminium",
+      "sector_chain": [
+        "Commodities",
+        "Metals & Mining",
+        "Non - Ferrous Metals",
+        "Aluminium"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 214317.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "metals gap-filler; 6 Nov 3.3×; 2 rating filings; 5/6",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 39,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29503_HINDALCO_2025_2026_A_17392633_30062026203313.pdf",
+        "announcements_30d": 12,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-23",
+            "pct": -1.78,
+            "vol_ratio": 2.02
+          },
+          {
+            "date": "2026-11-06",
+            "pct": 2.19,
+            "vol_ratio": 3.29
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "SBIN",
+      "isin": "INE062A01020",
+      "name": "State Bank of India",
+      "bse_code": "500112",
+      "sector": "Public Sector Bank",
+      "sector_chain": [
+        "Financial Services",
+        "Financial Services",
+        "Banks",
+        "Public Sector Bank"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 938307.0,
+      "role": "alternate",
+      "format": "bank",
+      "series": "EQ",
+      "why": "3rd bank; 6/6; transcript filed 7 Nov 18:10 (last candidate filing before the 24h cut-off)",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "BANKING"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 22,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29279_SBIN_2025_2026_A_22551017_26052026223038.pdf",
+        "announcements_30d": 11,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-11-03",
+            "pct": -1.7,
+            "vol_ratio": 3.08
+          },
+          {
+            "date": "2026-11-05",
+            "pct": 2.8,
+            "vol_ratio": 2.43
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "PERSISTENT",
+      "isin": "INE262H01021",
+      "name": "Persistent Systems Limited",
+      "bse_code": "533179",
+      "sector": "Computers - Software & Consulting",
+      "sector_chain": [
+        "Information Technology",
+        "Information Technology",
+        "IT - Software",
+        "Computers - Software & Consulting"
+      ],
+      "cap_bucket": "mid",
+      "mcap_cr": 99980.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "6/6; 26 filings in 30d (QIP, ratings); duplicates KPITTECH/INFY",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 34,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29736_PERSISTENT_2025_2026_A_5858358_11072026074434.pdf",
+        "announcements_30d": 26,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-09",
+            "pct": 5.52,
+            "vol_ratio": 1.78
+          },
+          {
+            "date": "2026-10-13",
+            "pct": 3.47,
+            "vol_ratio": 2.16
+          },
+          {
+            "date": "2026-10-15",
+            "pct": -0.98,
+            "vol_ratio": 2.44
+          },
+          {
+            "date": "2026-10-16",
+            "pct": -1.7,
+            "vol_ratio": 3.51
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "DRREDDY",
+      "isin": "INE089A01031",
+      "name": "Dr. Reddy's Laboratories Limited",
+      "bse_code": "500124",
+      "sector": "Pharmaceuticals",
+      "sector_chain": [
+        "Healthcare",
+        "Healthcare",
+        "Pharmaceuticals & Biotechnology",
+        "Pharmaceuticals"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 114582.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "26 Oct +6.6%/5.4×; 6/6",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 33,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29502_DRREDDY_2025_2026_A_25681937_30062026191727.pdf",
+        "announcements_30d": 15,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-26",
+            "pct": 6.62,
+            "vol_ratio": 5.38
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "MARUTI",
+      "isin": "INE585B01010",
+      "name": "Maruti Suzuki India Limited",
+      "bse_code": "532500",
+      "sector": "Passenger Cars & Utility Vehicles",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Automobile and Auto Components",
+        "Automobiles",
+        "Passenger Cars & Utility Vehicles"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 403350.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "5 Nov +5.5%/2.6×; 6/6 via NSE (screener 4)",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 37,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30271_MARUTI_2025_2026_A_19335803_08082026213212.pdf",
+        "announcements_30d": 15,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-11-05",
+            "pct": 5.48,
+            "vol_ratio": 2.59
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "POLYCAB",
+      "isin": "INE455K01017",
+      "name": "Polycab India Limited",
+      "bse_code": "542652",
+      "sector": "Cables - Electricals",
+      "sector_chain": [
+        "Industrials",
+        "Capital Goods",
+        "Industrial Products",
+        "Cables - Electricals"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 118546.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "6 litigation (CIRP) filings; 6/6",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 35,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29368_POLYCAB_2025_2026_A_20879015_09062026002210.pdf",
+        "announcements_30d": 20,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-14",
+            "pct": 0.54,
+            "vol_ratio": 2.49
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "VBL",
+      "isin": "INE200M01039",
+      "name": "Varun Beverages Limited",
+      "bse_code": "540180",
+      "sector": "Other Beverages",
+      "sector_chain": [
+        "Fast Moving Consumer Goods",
+        "Fast Moving Consumer Goods",
+        "Beverages",
+        "Other Beverages"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 147813.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "6/6; 30 Oct −5.5%/3.0×",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 40,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29236_VBL_2025_2025_A_12339974_09032026143558.pdf",
+        "announcements_30d": 10,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-30",
+            "pct": -5.5,
+            "vol_ratio": 3.04
+          },
+          {
+            "date": "2026-11-05",
+            "pct": 3.06,
+            "vol_ratio": 2.29
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "SUDARSCHEM",
+      "isin": "INE659A01023",
+      "name": "Sudarshan Chemical Industries Limited",
+      "bse_code": "506655",
+      "sector": "Dyes And Pigments",
+      "sector_chain": [
+        "Commodities",
+        "Chemicals",
+        "Chemicals & Petrochemicals",
+        "Dyes And Pigments"
+      ],
+      "cap_bucket": "small",
+      "mcap_cr": 8491.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "ENAM book; 6 Nov 3.5×, 30 Oct −7.9%; 5/6",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 5,
+        "transcripts_total_screener": 39,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30019_SUDARSCHEM_2025_2026_A_15732022_27072026171720.pdf",
+        "announcements_30d": 12,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-14",
+            "pct": -0.37,
+            "vol_ratio": 3.14
+          },
+          {
+            "date": "2026-10-30",
+            "pct": -7.86,
+            "vol_ratio": 0.8
+          },
+          {
+            "date": "2026-11-06",
+            "pct": -1.7,
+            "vol_ratio": 3.54
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "ETERNAL",
+      "isin": "INE758T01015",
+      "name": "ETERNAL LIMITED",
+      "bse_code": "543320",
+      "sector": "E-Retail/ E-Commerce",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Consumer Services",
+        "Retailing",
+        "E-Retail/ E-Commerce"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 351804.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "symbol-churn case (ZOMATO→ETERNAL); 6/6; 22 Oct 4.0×",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 6,
+        "transcripts_total_screener": 21,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30059_ETERNAL_2025_2026_A_48211721_29072026204435.pdf",
+        "announcements_30d": 6,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-22",
+            "pct": -2.53,
+            "vol_ratio": 4.0
+          },
+          {
+            "date": "2026-10-23",
+            "pct": 4.25,
+            "vol_ratio": 2.12
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "TRENT",
+      "isin": "INE849A01020",
+      "name": "Trent Limited",
+      "bse_code": "500251",
+      "sector": "Speciality Retail",
+      "sector_chain": [
+        "Consumer Discretionary",
+        "Consumer Services",
+        "Retailing",
+        "Speciality Retail"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 163248.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "0 transcripts (PPT only); Noel Tata retirement + 2 appointments 29 Oct; 30 Oct +5.4%/3.8×",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 0,
+        "transcripts_total_screener": 0,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29305_TRENT_2025_2026_A_21152615_30052026111245.pdf",
+        "announcements_30d": 14,
+        "events_9_14_nov": [],
+        "anomalies": [
+          {
+            "date": "2026-10-30",
+            "pct": 5.44,
+            "vol_ratio": 3.8
+          }
+        ]
+      }
+    },
+    {
+      "symbol": "ITC",
+      "isin": "INE154A01025",
+      "name": "ITC Limited",
+      "bse_code": "500875",
+      "sector": "Diversified FMCG",
+      "sector_chain": [
+        "Fast Moving Consumer Goods",
+        "Fast Moving Consumer Goods",
+        "Diversified FMCG",
+        "Diversified FMCG"
+      ],
+      "cap_bucket": "large",
+      "mcap_cr": 355405.0,
+      "role": "alternate",
+      "format": "corporate",
+      "series": "EQ",
+      "why": "0 transcripts (PPT only); amalgamation filing 2 Nov",
+      "verified": {
+        "xbrl_quarters": 7,
+        "taxonomies": [
+          "INDAS"
+        ],
+        "latest_qe": "2026-09-30",
+        "q2fy27_filed": true,
+        "transcripts_last6q": 0,
+        "transcripts_total_screener": 0,
+        "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29459_ITC_2025_2026_A_14678177_26062026165422.pdf",
+        "announcements_30d": 6,
+        "events_9_14_nov": [],
+        "anomalies": []
+      }
+    }
+  ]
+}

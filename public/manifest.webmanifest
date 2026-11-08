@@ -1,16 +1,17 @@
 {
-  "name": "FINN",
+  "name": "FINN — a brief that remembers",
   "short_name": "FINN",
-  "description": "A brief that remembers what management promised.",
+  "description": "A brief that remembers what management promised. Filings filtered, promises settled against exchange numbers.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F6F2EA",
   "theme_color": "#F6F2EA",
   "lang": "en-IN",
-  "categories": ["finance"],
+  "dir": "ltr",
+  "categories": ["finance", "productivity"],
   "icons": [
     {
       "src": "/icons/icon.svg",
@@ -28,7 +29,30 @@
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Brief",
+      "url": "/",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Alerts",
+      "url": "/alerts",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Inbox",
+      "url": "/inbox",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

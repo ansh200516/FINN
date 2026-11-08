@@ -25,7 +25,8 @@
   --font-mono:
     var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
     monospace;
-  --font-serif: "Newsreader", "IBM Plex Serif", Georgia, serif;
+  --font-serif:
+    var(--font-newsreader), "Newsreader", "IBM Plex Serif", Georgia, serif;
   --fs-eyebrow: 11px;
   --lh-eyebrow: 14px;
   --ls-eyebrow: 0.08em;
@@ -142,56 +143,506 @@
   --radius-sheet: var(--r-sheet);
 }
 
-html {
-  font-family: var(--font-sans);
-  font-variant-numeric: tabular-nums lining-nums;
-  background: var(--bg);
-  color: var(--ink);
-  -webkit-text-size-adjust: 100%;
-}
-body {
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  background: var(--bg);
-  color: var(--ink);
+/* Element resets live in the base layer so Tailwind utilities (layer utilities) win. */
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums lining-nums;
+    background: var(--bg);
+    color: var(--ink);
+    color-scheme: light dark;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+  }
+  [data-theme="paper"] {
+    color-scheme: light;
+  }
+  [data-theme="ink"] {
+    color-scheme: dark;
+  }
+  body {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100dvh;
+    overflow-x: clip;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--r-chip);
+  }
+  summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  details {
+    interpolate-size: allow-keywords;
+  }
+  details::details-content {
+    block-size: 0;
+    overflow-y: clip;
+    transition:
+      block-size var(--dur-2) var(--ease-out),
+      content-visibility var(--dur-2) allow-discrete;
+  }
+  details[open]::details-content {
+    block-size: auto;
+  }
+  .chev {
+    display: inline-block;
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+  details[open] > summary .chev {
+    transform: rotate(90deg);
+  }
 }
 
-.num {
-  font-variant-numeric: tabular-nums lining-nums;
-  letter-spacing: 0;
+/* Ledger component classes live in the components layer for the same reason. */
+@layer components {
+  /* ------------------------------------------------------------------------
+     App shell — a 430 px column on every viewport, hairline-edged on desktop
+     ------------------------------------------------------------------------ */
+  .shell {
+    width: 100%;
+    max-width: 430px;
+    margin-inline: auto;
+    min-height: 100dvh;
+    padding-bottom: calc(
+      var(--bar-h) +
+      env(safe-area-inset-bottom) +
+      var(--s-6)
+    );
+    background: var(--bg);
+  }
+  @media (min-width: 480px) {
+    .shell {
+      border-inline: var(--hairline) solid var(--rule);
+    }
+  }
+  .bar-fixed {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 430px;
+    z-index: var(--z-bar);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-top: var(--hairline) solid var(--rule);
+  }
+  @media (min-width: 480px) {
+    .bar-fixed {
+      border-inline: var(--hairline) solid var(--rule);
+    }
+  }
+  .hit {
+    min-height: var(--hit-min);
+    min-width: var(--hit-min);
+  }
+  .row {
+    min-height: var(--row-h);
+  }
+  .row-touch {
+    min-height: var(--row-h-touch);
+  }
+  .gutter {
+    padding-inline: var(--gutter);
+  }
+
+  /* ------------------------------------------------------------------------
+     Type helpers
+     ------------------------------------------------------------------------ */
+  .dateline {
+    font-family: var(--font-serif);
+    font-size: var(--fs-dateline);
+    line-height: var(--lh-dateline);
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    font-variation-settings: "opsz" 24;
+  }
+  .headline {
+    font-size: var(--fs-headline);
+    line-height: var(--lh-headline);
+    font-weight: var(--w-semibold);
+    letter-spacing: var(--ls-headline);
+  }
+  .title {
+    font-size: var(--fs-title);
+    line-height: var(--lh-title);
+    font-weight: var(--w-semibold);
+  }
+  .rowtitle {
+    font-size: var(--fs-row);
+    line-height: var(--lh-row);
+    font-weight: var(--w-semibold);
+  }
+  .small {
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+  }
+  .meta {
+    font-size: var(--fs-meta);
+    line-height: var(--lh-meta);
+  }
+  .mono {
+    font-family: var(--font-mono);
+  }
+  .num-lg {
+    font-size: var(--fs-num-lg);
+    line-height: var(--lh-num-lg);
+    font-weight: var(--w-medium);
+  }
+  .symbol {
+    font-weight: var(--w-medium);
+    letter-spacing: 0.02em;
+  }
+  .quote {
+    font-family: var(--font-serif);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-variation-settings: "opsz" 15;
+  }
+
+  /* ------------------------------------------------------------------------
+     Chips, badges, cards
+     ------------------------------------------------------------------------ */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 22px;
+    padding: 0 6px;
+    border: var(--hairline) solid var(--rule);
+    border-radius: var(--r-chip);
+    background: var(--surface);
+    font:
+      var(--w-regular) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
+    color: var(--ink-2);
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .chip > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chip-ink {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+  .chip-accent {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--rule));
+  }
+  .chip-warn {
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 45%, var(--rule));
+  }
+  .chip-up {
+    color: var(--up);
+    border-color: color-mix(in srgb, var(--up) 40%, var(--rule));
+  }
+  .chip-down {
+    color: var(--down);
+    border-color: color-mix(in srgb, var(--down) 40%, var(--rule));
+  }
+  .chip-tap {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--hit-min);
+    padding-block: 0;
+    margin-block: calc((22px - var(--hit-min)) / 2);
+  }
+  .card {
+    background: var(--surface);
+    border-radius: var(--r-card);
+    border: var(--hairline) solid var(--rule);
+  }
+  .card-material {
+    border-left-width: 2px;
+    border-left-color: var(--ink);
+  }
+  .segmented {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    border: var(--hairline) solid var(--rule);
+    border-radius: var(--r-chip);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .segmented > * {
+    min-height: var(--hit-min);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: var(--w-medium) var(--fs-small) / var(--lh-small) var(--font-sans);
+    color: var(--ink-2);
+    border-right: var(--hairline) solid var(--rule);
+  }
+  .segmented > *:last-child {
+    border-right: 0;
+  }
+  .segmented > [aria-current="true"] {
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .stepper {
+    display: inline-grid;
+    grid-template-columns: var(--hit-min) minmax(72px, auto) var(--hit-min);
+    align-items: center;
+    border: var(--hairline) solid var(--rule);
+    border-radius: var(--r-chip);
+    background: var(--surface);
+    vertical-align: middle;
+  }
+  .stepper > button {
+    min-height: var(--hit-min);
+    font-size: 18px;
+    color: var(--accent);
+  }
+  .stepper > output {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--w-medium);
+  }
+  .toggle {
+    min-height: var(--hit-min);
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border: var(--hairline) solid var(--rule);
+    border-radius: var(--r-pill);
+    background: var(--surface);
+    font-size: var(--fs-small);
+    color: var(--ink-2);
+  }
+  .toggle[aria-pressed="true"] {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+
+  /* ------------------------------------------------------------------------
+     Results table: label | value | QoQ | YoY (| spark) — a real <table>
+     ------------------------------------------------------------------------ */
+  .rtable {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .rtable .r {
+    text-align: right;
+  }
+  .rtable .hd {
+    font:
+      var(--w-medium) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
+    letter-spacing: var(--ls-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 0 0 6px;
+    border-bottom: var(--hairline) solid var(--rule);
+    text-align: left;
+    font-weight: var(--w-medium);
+  }
+  .rtable .hd.r {
+    text-align: right;
+  }
+  .rtable .cell {
+    height: var(--row-h);
+    padding: 0 0 0 6px;
+    border-bottom: var(--hairline) solid var(--rule);
+    vertical-align: middle;
+    white-space: nowrap;
+    font-weight: inherit;
+    text-align: left;
+  }
+  .rtable th.cell {
+    padding-left: 0;
+    font-weight: var(--w-regular);
+  }
+  .rtable .cell.r {
+    text-align: right;
+  }
+  .rtable tbody tr:last-child .cell {
+    border-bottom: 0;
+  }
+  .rtable svg {
+    vertical-align: middle;
+  }
+
+  /* ------------------------------------------------------------------------
+     Sheet (native dialog as a bottom sheet) and toast
+     ------------------------------------------------------------------------ */
+  dialog.sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 430px;
+    max-height: 86dvh;
+    border: 0;
+    border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-sheet);
+    padding: 0 0 calc(env(safe-area-inset-bottom) + var(--s-4));
+    overflow: auto;
+    translate: 0 0;
+    transition:
+      translate var(--dur-3) var(--ease-out),
+      overlay var(--dur-3) allow-discrete,
+      display var(--dur-3) allow-discrete;
+  }
+  dialog.sheet:not([open]) {
+    translate: 0 100%;
+  }
+  @starting-style {
+    dialog.sheet[open] {
+      translate: 0 100%;
+    }
+  }
+  dialog.sheet::backdrop {
+    background: rgba(21, 19, 15, 0.42);
+    transition: opacity var(--dur-3) var(--ease-out);
+  }
+  [data-theme="ink"] dialog.sheet::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+  }
+  .sheet-handle {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--rule);
+    margin: 10px auto 0;
+  }
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--bar-h) + env(safe-area-inset-bottom) + var(--s-3));
+    transform: translateX(-50%);
+    width: calc(100% - 2 * var(--gutter));
+    max-width: calc(430px - 2 * var(--gutter));
+    z-index: var(--z-toast);
+    background: var(--ink);
+    color: var(--bg);
+    border-radius: var(--r-card);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    padding: 0 var(--s-4);
+    min-height: var(--row-h-touch);
+    box-shadow: var(--shadow-sheet);
+  }
+  .toast button {
+    color: var(--bg);
+    font-weight: var(--w-semibold);
+    min-height: var(--hit-min);
+    padding-inline: var(--s-2);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* ------------------------------------------------------------------------
+     Motion — one choreography on first paint, nothing loops
+     ------------------------------------------------------------------------ */
+  @keyframes reveal {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .reveal {
+    animation: reveal 240ms var(--ease-out) both;
+  }
+  /* selection and callouts on tappable rows */
+  .no-callout {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  .dotted-num {
+    text-decoration: underline dotted var(--ink-3);
+    text-underline-offset: 3px;
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: 0;
+  }
+  .delta-up {
+    color: var(--up);
+  }
+  .delta-down {
+    color: var(--down);
+  }
+  .delta-warn {
+    color: var(--warn);
+  }
+  .eyebrow {
+    font:
+      var(--w-medium) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
+    letter-spacing: var(--ls-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .receipt {
+    font:
+      var(--w-regular) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
+    color: var(--ink-3);
+  }
+  .rule {
+    border-top: var(--hairline) solid var(--rule);
+  }
+  .rule-stitched {
+    border-top: var(--hairline) dotted var(--ink-3);
+  }
+  .card-material {
+    border-left: 2px solid var(--ink);
+    padding-left: calc(var(--card-pad-x) - 2px);
+  }
+  .bar {
+    height: calc(var(--bar-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
-.delta-up {
-  color: var(--up);
+
+/* Cross-document view transitions as a progressive enhancement (Safari 18.2+, Chrome 126+). */
+::view-transition {
+  pointer-events: none;
 }
-.delta-down {
-  color: var(--down);
-}
-.delta-warn {
-  color: var(--warn);
-}
-.eyebrow {
-  font: var(--w-medium) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
-  letter-spacing: var(--ls-eyebrow);
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.receipt {
-  font: var(--w-regular) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
-  color: var(--ink-3);
-}
-.rule {
-  border-top: var(--hairline) solid var(--rule);
-}
-.rule-stitched {
-  border-top: var(--hairline) dotted var(--ink-3);
-}
-.card-material {
-  border-left: 2px solid var(--ink);
-  padding-left: calc(var(--card-pad-x) - 2px);
-}
-.bar {
-  height: calc(var(--bar-h) + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 160ms;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

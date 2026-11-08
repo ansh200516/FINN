@@ -10,10 +10,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { parseJsonColumn, StringArray } from "@/db/json";
 import { companies, users } from "@/db/schema";
+import { jsonTextArrayHasUpper } from "@/db/sql";
 import { logger } from "@/lib/logger";
 import {
   fetchEquityMaster,
@@ -112,9 +113,7 @@ export async function resolveNseSymbol(
   const viaAlias = await db
     .select()
     .from(companies)
-    .where(
-      sql`exists (select 1 from json_each(${companies.aliasesJson}) where upper(json_each.value) = ${q})`,
-    )
+    .where(jsonTextArrayHasUpper(companies.aliasesJson, q))
     .limit(1);
   if (viaAlias[0])
     return {

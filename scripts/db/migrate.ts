@@ -4,10 +4,17 @@
  */
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { getDb, getRawClient } from "@/db/client";
+import { isPostgresUrl } from "@/db/dialect";
 import { env } from "@/lib/env";
 
 async function main(): Promise<void> {
   const url = env().DATABASE_URL;
+  if (isPostgresUrl(url)) {
+    console.error(
+      "Postgres is not applied from the sqlite migrations. Use pnpm db:push:pg, then pnpm db:load:pg.",
+    );
+    process.exit(1);
+  }
   await migrate(getDb(), { migrationsFolder: "./drizzle" });
   const tables = await getRawClient().execute(
     "select name from sqlite_master where type='table' and name not like 'sqlite_%' and name not like '__drizzle%' order by name",

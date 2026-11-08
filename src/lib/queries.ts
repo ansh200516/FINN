@@ -34,6 +34,7 @@ import {
   UserPrefs,
 } from "@/db/json";
 import * as t from "@/db/schema";
+import { jsonExtract, jsonTextArrayHasUpper } from "@/db/sql";
 import { computeResultsCard } from "@/engine/analyse/results";
 import type {
   Anomaly,
@@ -654,12 +655,8 @@ export async function getUpcoming(
 ): Promise<UpcomingItem[]> {
   if (!isins.length) return [];
   const todayKey = istDateKey(now);
-  const eventDate = sql<
-    string | null
-  >`json_extract(${t.announcements.rawJson}, '$.eventDate')`;
-  const purpose = sql<
-    string | null
-  >`json_extract(${t.announcements.rawJson}, '$.eventPurpose')`;
+  const eventDate = jsonExtract(t.announcements.rawJson, "$.eventDate");
+  const purpose = jsonExtract(t.announcements.rawJson, "$.eventPurpose");
   const rows = await db
     .select({
       isin: t.announcements.isin,
@@ -860,9 +857,7 @@ export async function getCompanyBySymbol(
   const viaAlias = await db
     .select()
     .from(t.companies)
-    .where(
-      sql`exists (select 1 from json_each(${t.companies.aliasesJson}) where upper(json_each.value) = ${s})`,
-    )
+    .where(jsonTextArrayHasUpper(t.companies.aliasesJson, s))
     .limit(1);
   return viaAlias[0] ?? null;
 }

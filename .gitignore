@@ -37,3 +37,5 @@ data/cache/
 *.log
 *.pem
 .vercel/
+drizzle-pg/
+.vercel

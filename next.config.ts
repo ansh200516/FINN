@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: [
     "@libsql/client",
     "libsql",
+    "postgres",
     "pino",
     "unpdf",
     "web-push",

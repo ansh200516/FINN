@@ -1,22 +1,29 @@
 /**
- * libSQL + Drizzle client.
+ * Drizzle client.
  *
- *   DATABASE_URL=file:./data/finn.db          (local default)
- *   DATABASE_URL=libsql://<db>.turso.io       (prod) + DATABASE_AUTH_TOKEN
+ *   DATABASE_URL=file:./data/finn.db            local libSQL
+ *   DATABASE_URL=libsql://<db>.turso.io         Turso + DATABASE_AUTH_TOKEN
+ *   DATABASE_URL=postgres:// or postgresql://   Postgres (Supabase pooler)
  *
  * One client per process (cached on globalThis so Next dev HMR doesn't leak
- * connections). Import `db` for Drizzle queries and `rawClient` for raw SQL.
+ * connections). Import `db` for Drizzle queries. `getRawClient()` is libSQL only.
  */
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { type Client, createClient } from "@libsql/client";
-import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
+import {
+  drizzle as drizzleLibsql,
+  type LibSQLDatabase,
+} from "drizzle-orm/libsql";
+import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
+import postgres, { type Sql } from "postgres";
 import { env } from "@/lib/env";
+import { isPostgresUrl } from "./dialect";
 import * as schema from "./schema";
 
 export type Db = LibSQLDatabase<typeof schema>;
 
-type Holder = { client?: Client; db?: Db };
+type Holder = { client?: Client; db?: Db; pg?: Sql };
 const g = globalThis as unknown as { __finnDb?: Holder };
 if (!g.__finnDb) g.__finnDb = {};
 const holder: Holder = g.__finnDb;
@@ -28,9 +35,34 @@ function ensureLocalDir(url: string): void {
   mkdirSync(dirname(resolve(path)), { recursive: true });
 }
 
+export function getPg(): Sql {
+  const url = env().DATABASE_URL;
+  if (!isPostgresUrl(url)) {
+    throw new Error(
+      "getPg() requires a postgres:// or postgresql:// DATABASE_URL",
+    );
+  }
+  if (!holder.pg) {
+    // prepare:false — Supavisor transaction mode (port 6543) has no prepared statements.
+    holder.pg = postgres(url, {
+      prepare: false,
+      max: 1,
+      idle_timeout: 20,
+      connect_timeout: 15,
+      ssl: "require",
+    });
+  }
+  return holder.pg;
+}
+
 export function getRawClient(): Client {
+  const { DATABASE_URL, DATABASE_AUTH_TOKEN } = env();
+  if (isPostgresUrl(DATABASE_URL)) {
+    throw new Error(
+      "getRawClient() is the libSQL client. Postgres uses getDb() / getPg().",
+    );
+  }
   if (!holder.client) {
-    const { DATABASE_URL, DATABASE_AUTH_TOKEN } = env();
     ensureLocalDir(DATABASE_URL);
     holder.client = createClient(
       DATABASE_AUTH_TOKEN
@@ -42,7 +74,13 @@ export function getRawClient(): Client {
 }
 
 export function getDb(): Db {
-  if (!holder.db) holder.db = drizzle(getRawClient(), { schema });
+  if (!holder.db) {
+    if (isPostgresUrl(env().DATABASE_URL)) {
+      holder.db = drizzlePg(getPg(), { schema }) as unknown as Db;
+    } else {
+      holder.db = drizzleLibsql(getRawClient(), { schema });
+    }
+  }
   return holder.db;
 }
 
@@ -60,6 +98,10 @@ export const db: Db = new Proxy({} as Db, {
 /** Cheap liveness check used by /api/health and /status. */
 export async function pingDb(): Promise<boolean> {
   try {
+    if (isPostgresUrl(env().DATABASE_URL)) {
+      const rows = await getPg()`select 1 as ok`;
+      return rows.length === 1;
+    }
     const r = await getRawClient().execute("select 1 as ok");
     return r.rows.length === 1;
   } catch {

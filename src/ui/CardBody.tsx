@@ -1,7 +1,9 @@
+import type { CSSProperties } from "react";
 import type { ResultsCard } from "@/engine/types";
 import { groupIndian, humanise } from "@/lib/format";
 import { formatIst } from "@/lib/time";
 import type { EventCard, ManagementChangeCard } from "./model";
+import { actionVerb, mergePeople, type PersonChange, peopleOf } from "./people";
 import { ResultsGrid } from "./ResultsGrid";
 
 function isResultsCard(x: unknown): x is ResultsCard {
@@ -23,113 +25,169 @@ function isMgmtCard(
   );
 }
 
-function fmtDate(s: string | null | undefined): string | null {
-  if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return formatIst(s, "d MMM yyyy");
-  return s;
+/**
+ * Brief profile, clamped to ~3 lines with a native "Read full profile"
+ * expander (the summary is the text itself; no JS). `verbatim` marks a
+ * filing-verbatim excerpt; otherwise it is labelled as a summary.
+ */
+function ProfileExcerpt({
+  text,
+  verbatim,
+  lines = 3,
+  expandable = true,
+}: {
+  text: string;
+  verbatim: boolean;
+  lines?: number;
+  expandable?: boolean;
+}) {
+  const badge = verbatim
+    ? "from the filing · SEBI LODR Sch. III A.7.3 · verbatim"
+    : "from the filing · SEBI LODR Sch. III A.7.3 · summarised";
+  // ~3 lines of 15 px serif in a 430 px column ≈ 180 characters
+  const needsMore = text.length > lines * 62;
+  if (!expandable || !needsMore) {
+    const clamp = expandable
+      ? ""
+      : lines <= 2
+        ? "line-clamp-2"
+        : "line-clamp-3";
+    return (
+      <blockquote className="mt-1.5 border-l-2 border-rule pl-3">
+        <p className={`quote text-ink-2 ${clamp}`}>“{text}”</p>
+        <p className="receipt mt-1 text-[10px] leading-[14px]">{badge}</p>
+      </blockquote>
+    );
+  }
+  const vars = { "--xp-lines": String(lines) } as CSSProperties;
+  return (
+    <blockquote className="mt-1.5 border-l-2 border-rule pl-3">
+      <details className="xp" style={vars}>
+        <summary className="no-callout">
+          <span className="xp-text quote text-ink-2">“{text}”</span>
+          <span className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0">
+            <span className="xp-more receipt text-accent whitespace-nowrap shrink-0" />
+            <span className="receipt text-[10px] leading-[14px]">{badge}</span>
+          </span>
+        </summary>
+      </details>
+    </blockquote>
+  );
 }
 
-const ACTION_VERB: Record<string, string> = {
-  appointed: "appointed",
-  resigned: "resigns",
-  retired: "retires",
-  ceased: "ceases",
-  "re-appointed": "re-appointed",
-  redesignated: "redesignated",
-};
-
-/** Management change: role · effective date · verbatim profile · prior roles · others in the filing. */
-export function ManagementChangeBody({
-  card,
-  compact = false,
+function PersonRow({
+  p,
+  compact,
+  showExcerpt,
 }: {
-  card: ManagementChangeCard & { profile_summary?: string | null };
-  compact?: boolean;
+  p: PersonChange;
+  compact: boolean;
+  showExcerpt: boolean;
 }) {
-  const eff = fmtDate(card.effective_date);
-  const excerpt = card.brief_profile_excerpt?.trim();
-  const summary = card.profile_summary?.trim();
+  const verb = actionVerb(p.action);
+  const eff = p.effectiveDate;
   const shortEff = eff && eff.length <= 14;
   return (
-    <div className="mt-2">
+    <li className="py-2 border-b border-rule last:border-b-0 first:pt-0">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="rowtitle min-w-0 flex-1">
-          {card.person}
-          <span className="ml-2 font-normal text-ink-2">{card.role}</span>
-        </p>
+        <p className="rowtitle min-w-0 flex-1 text-ink">{p.person}</p>
         <span className="receipt whitespace-nowrap shrink-0">
-          {ACTION_VERB[card.action] ?? card.action}
+          {verb}
           {shortEff ? ` · ${eff}` : ""}
         </span>
       </div>
+      {p.role ? <p className="small text-ink-2">{p.role}</p> : null}
       {eff && !shortEff ? (
         <p className="receipt mt-0.5">effective {eff}</p>
       ) : null}
-      {card.term ? (
-        <p className="meta text-ink-3 mt-0.5">Term {card.term}</p>
+      {!compact && p.reason ? (
+        <p className="small mt-1 text-ink-2">Reason stated: {p.reason}</p>
       ) : null}
-      {card.reason ? (
-        <p className="small mt-1 text-ink-2">Reason stated: {card.reason}</p>
-      ) : null}
-      {excerpt ? (
-        <blockquote className="mt-2 border-l-2 border-rule pl-3">
-          <p className={`quote text-ink-2 ${compact ? "line-clamp-4" : ""}`}>
-            “{excerpt}”
-          </p>
-          <p className="receipt mt-1">
-            from the filing · brief profile (SEBI LODR Sch. III A.7.3)
-            {card.confidence === "high" ? " · verbatim" : ""}
-          </p>
-        </blockquote>
-      ) : summary ? (
-        <div className="mt-2 border-l-2 border-rule pl-3">
-          <p className={`small text-ink-2 ${compact ? "line-clamp-3" : ""}`}>
-            {summary}
-          </p>
-          <p className="receipt mt-1">
-            summary of the filing's brief profile · not verbatim
-          </p>
-        </div>
-      ) : (
-        <p className="small mt-2 text-ink-3">
-          No profile in the filing beyond name and role.
+      {!compact && p.successor ? (
+        <p className="small mt-0.5 text-ink-2">
+          Successor <span aria-hidden="true">→</span> {p.successor}
         </p>
-      )}
-      {!compact && card.prior_roles?.length ? (
-        <ul className="mt-2 m-0 p-0 list-none">
-          {card.prior_roles.map((r) => (
-            <li
-              key={r}
-              className="small text-ink-2 py-1 border-b border-rule last:border-b-0"
-            >
-              {r}
+      ) : null}
+      {showExcerpt && p.excerpt ? (
+        <ProfileExcerpt
+          text={p.excerpt}
+          verbatim={p.confidence !== "medium"}
+          lines={compact ? 2 : 3}
+          expandable={!compact}
+        />
+      ) : null}
+      {!compact && p.priorRoles.length ? (
+        <ul className="mt-1.5 m-0 p-0 list-none">
+          {p.priorRoles.map((r) => (
+            <li key={r} className="meta text-ink-2 py-0.5">
+              · {r}
             </li>
           ))}
         </ul>
       ) : null}
-      {!compact && card.others?.length ? (
-        <div className="mt-3">
-          <p className="eyebrow">Also in this filing</p>
-          <ul className="mt-1 m-0 p-0 list-none">
-            {card.others.map((o) => (
-              <li
-                key={`${o.person}-${o.role}`}
-                className="small flex items-baseline justify-between gap-3 py-1.5 border-b border-rule last:border-b-0"
-              >
-                <span>
-                  {o.person}
-                  <span className="text-ink-2"> · {o.role}</span>
-                </span>
-                <span className="receipt">
-                  {ACTION_VERB[o.action] ?? o.action}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+    </li>
+  );
+}
+
+/**
+ * Management change as per-person rows — name · role · action · effective
+ * date, each with the filing's brief profile (clamped, expandable). Reads
+ * `people[]` when the engine supplies it, else carves the single excerpt at
+ * the duplicated-name headings; `others[]` fill in roles for carved people.
+ */
+export function ManagementChangeBody({
+  card,
+  compact = false,
+  extraPeople,
+}: {
+  card: ManagementChangeCard & { profile_summary?: string | null };
+  compact?: boolean;
+  /** people read from the event's filing subjects (detail page) — fills roles, dates and the rest of the annexure */
+  extraPeople?: PersonChange[];
+}) {
+  const people = extraPeople?.length
+    ? mergePeople(peopleOf(card), extraPeople)
+    : peopleOf(card);
+  const summary = card.profile_summary?.trim();
+  const shown = compact ? people.slice(0, 3) : people;
+  // the brief card shows one profile only — the first person who has one
+  const firstWithExcerpt = people.findIndex((p) => p.excerpt);
+  const anyExcerpt = firstWithExcerpt >= 0;
+  return (
+    <div className="mt-2">
+      <ul className="m-0 p-0 list-none">
+        {shown.map((p, i) => (
+          <PersonRow
+            key={`${p.person}-${p.role ?? ""}-${p.action ?? ""}`}
+            p={p}
+            compact={compact}
+            showExcerpt={!compact || i === firstWithExcerpt}
+          />
+        ))}
+      </ul>
+      {compact && people.length > shown.length ? (
+        <p className="receipt mt-1">
+          +{people.length - shown.length} more named in the filing
+        </p>
       ) : null}
-      {!compact && card.successor ? (
-        <p className="small mt-2 text-ink-2">Successor: {card.successor}</p>
+      {!anyExcerpt ? (
+        summary ? (
+          <div className="mt-2 border-l-2 border-rule pl-3">
+            <p className={`small text-ink-2 ${compact ? "line-clamp-3" : ""}`}>
+              {summary}
+            </p>
+            <p className="receipt mt-1 text-[10px] leading-[14px]">
+              summary of the filing's brief profile · not verbatim
+            </p>
+          </div>
+        ) : (
+          <p className="receipt mt-1">
+            no brief profile in the filing beyond name and role
+          </p>
+        )
+      ) : null}
+      {!compact && card.term ? (
+        <p className="meta text-ink-3 mt-2">Term {card.term}</p>
       ) : null}
     </div>
   );
@@ -370,6 +428,7 @@ export function CardBody({
   compact = false,
   periodEnd,
   components,
+  extraPeople,
 }: {
   event: EventCard;
   compact?: boolean;
@@ -380,6 +439,8 @@ export function CardBody({
     dna?: number | null;
     oi?: number | null;
   };
+  /** management change: people parsed from the filing subjects */
+  extraPeople?: PersonChange[];
 }) {
   const c = event.card;
   if (isResultsCard(c)) {
@@ -390,12 +451,20 @@ export function CardBody({
           periodEnd={periodEnd}
           withSpark
           showMeta={!compact}
+          compactMeta={compact}
           components={components}
         />
       </div>
     );
   }
-  if (isMgmtCard(c)) return <ManagementChangeBody card={c} compact={compact} />;
+  if (isMgmtCard(c))
+    return (
+      <ManagementChangeBody
+        card={c}
+        compact={compact}
+        extraPeople={extraPeople}
+      />
+    );
   if (
     c &&
     typeof c === "object" &&

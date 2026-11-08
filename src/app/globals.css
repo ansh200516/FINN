@@ -10,7 +10,8 @@
   --surface: #fdfbf6;
   --ink: #15130f;
   --ink-2: #4b4740;
-  --ink-3: #6f6a60;
+  /* tertiary/meta — 5.95:1 on bg, 6.42:1 on surface (was #6f6a60 at 4.8:1, too faint for 11 px mono) */
+  --ink-3: #615c52;
   --rule: #e2dcce;
   --accent: #1f3fa8;
   --up: #1a7a4c;
@@ -98,7 +99,8 @@
   --surface: #17181c;
   --ink: #ece8df;
   --ink-2: #aca79c;
-  --ink-3: #8a857c;
+  /* 5.84:1 on bg, 5.45:1 on surface */
+  --ink-3: #938e85;
   --rule: #272a30;
   --accent: #93a9ff;
   --up: #4fc98c;
@@ -113,7 +115,7 @@
     --surface: #17181c;
     --ink: #ece8df;
     --ink-2: #aca79c;
-    --ink-3: #8a857c;
+    --ink-3: #938e85;
     --rule: #272a30;
     --accent: #93a9ff;
     --up: #4fc98c;
@@ -230,6 +232,9 @@
       env(safe-area-inset-bottom) +
       var(--s-6)
     );
+    /* landscape notch: the gutters sit inside the safe area */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
     background: var(--bg);
   }
   @media (min-width: 480px) {
@@ -402,6 +407,12 @@
   }
   .segmented > *:last-child {
     border-right: 0;
+  }
+  @media (max-width: 380px) {
+    .segmented > * {
+      font-size: var(--fs-meta);
+      letter-spacing: -0.01em;
+    }
   }
   .segmented > [aria-current="true"] {
     background: var(--ink);
@@ -628,6 +639,115 @@
   .bar {
     height: calc(var(--bar-h) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* ------------------------------------------------------------------------
+     Disclosure patterns — native <details>, no JS
+     ------------------------------------------------------------------------ */
+  /* Clamped excerpt that opens in place: the summary IS the text. */
+  .xp > summary {
+    display: block;
+  }
+  .xp .xp-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--xp-lines, 3);
+    overflow: hidden;
+  }
+  .xp[open] .xp-text {
+    display: block;
+    -webkit-line-clamp: none;
+  }
+  .xp .xp-more::before {
+    content: "Read full profile";
+  }
+  .xp[open] .xp-more::before {
+    content: "Show less";
+  }
+  .xp::details-content {
+    /* the text lives in the summary; nothing to animate */
+    display: none;
+  }
+  /* "Why" disclosure — the row header is the summary; the note opens beneath it. */
+  .why > summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .why-mark {
+    font-family: var(--font-mono);
+    font-size: var(--fs-eyebrow);
+    line-height: 1;
+    color: var(--ink-3);
+    border: var(--hairline) solid var(--rule);
+    border-radius: 999px;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    align-self: center;
+  }
+  .why[open] .why-mark {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+
+  /* ------------------------------------------------------------------------
+     Ledger table (status page): mono labels, tabular figures, right-aligned
+     ------------------------------------------------------------------------ */
+  .ltable {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .ltable th {
+    font:
+      var(--w-medium) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
+    letter-spacing: var(--ls-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-3);
+    text-align: right;
+    padding: 0 0 6px;
+    border-bottom: var(--hairline) solid var(--rule);
+    font-weight: var(--w-medium);
+  }
+  .ltable th:first-child,
+  .ltable td:first-child {
+    text-align: left;
+    padding-left: 0;
+  }
+  .ltable td {
+    padding: 8px 0 8px 8px;
+    text-align: right;
+    vertical-align: top;
+    border-bottom: var(--hairline) solid var(--rule);
+    font-variant-numeric: tabular-nums lining-nums;
+    white-space: nowrap;
+  }
+  .ltable tfoot td {
+    border-bottom: 0;
+    font-weight: var(--w-medium);
+  }
+  .meter {
+    height: 3px;
+    width: 100%;
+    background: var(--rule);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .meter > i {
+    display: block;
+    height: 100%;
+    background: var(--ink);
+  }
+  .meter > i.hot {
+    background: var(--warn);
   }
 }
 

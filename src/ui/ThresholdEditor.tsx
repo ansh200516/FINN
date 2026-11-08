@@ -1,6 +1,12 @@
 "use client";
 
-import { startTransition, useActionState, useMemo, useState } from "react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { SaveTripwiresState } from "@/app/alerts/actions";
 import { CATEGORIES, type Category } from "@/engine/types";
 import { categoryLabel, groupIndian } from "@/lib/format";
@@ -97,6 +103,7 @@ export function ThresholdEditor({
   initial,
   grid,
   action,
+  onChange,
 }: {
   initial: ThresholdValues;
   grid: BacktestGrid | null;
@@ -104,10 +111,15 @@ export function ThresholdEditor({
     prev: SaveTripwiresState,
     formData: FormData,
   ) => Promise<SaveTripwiresState>;
+  /** additive: called with the current (unsaved) values whenever they change — drives the live backtest sentence */
+  onChange?: (v: ThresholdValues) => void;
 }) {
   const [v, setV] = useState<ThresholdValues>(initial);
   const [state, formAction, pending] = useActionState(action, null);
   const dirty = JSON.stringify(v) !== JSON.stringify(initial);
+  useEffect(() => {
+    onChange?.(v);
+  }, [v, onChange]);
 
   const backtest = useMemo(() => {
     if (!grid) return null;

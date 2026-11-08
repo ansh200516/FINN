@@ -8,10 +8,19 @@ import {
   formatCompactCount,
   quarterLabel,
 } from "@/lib/format";
-import { getEventDetail, getQuarters } from "@/lib/queries";
+import { getEventDetail, getLedger, getQuarters } from "@/lib/queries";
 import { formatIst } from "@/lib/time";
 import { CardBody } from "@/ui/CardBody";
 import { CategoryGlyph } from "@/ui/CategoryGlyph";
+import type { ManagementChangeCard } from "@/ui/model";
+import {
+  departing,
+  mergePeople,
+  type PersonChange,
+  peopleFromSubjects,
+  peopleOf,
+  surnameKey,
+} from "@/ui/people";
 import { SourceChips } from "@/ui/SourceChips";
 import { SymbolChip } from "@/ui/SymbolChip";
 import { TierHeader } from "@/ui/TierHeader";
@@ -34,6 +43,42 @@ function isResults(c: unknown): c is ResultsCard {
   );
 }
 
+function isMgmt(c: unknown): c is ManagementChangeCard {
+  return Boolean(
+    c &&
+      typeof c === "object" &&
+      typeof (c as ManagementChangeCard).person === "string",
+  );
+}
+
+/**
+ * Orphaned promises: open guidance lines on the ledger spoken by someone
+ * this filing says is leaving. Rendered only when there is at least one.
+ */
+async function orphanedPromises(
+  isin: string,
+  people: PersonChange[],
+): Promise<{ name: string; open: number; total: number } | null> {
+  const leaving = departing(people);
+  if (!leaving.length) return null;
+  const ledger = await getLedger(isin);
+  if (!ledger.length) return null;
+  for (const p of leaving) {
+    const key = surnameKey(p.person);
+    if (!key) continue;
+    const theirs = ledger.filter(
+      (r) => r.speaker && surnameKey(r.speaker) === key,
+    );
+    if (!theirs.length) continue;
+    return {
+      name: p.person,
+      open: theirs.filter((r) => r.status === "open").length,
+      total: theirs.length,
+    };
+  }
+  return null;
+}
+
 export default async function EventPage({
   params,
 }: {
@@ -46,6 +91,16 @@ export default async function EventPage({
   const now = Date.now();
   const dateOnly = !/\d{1,2}:\d{2}/.test(card.filedAtIst);
   const f = filedLabel(card.filedAtMs, now);
+  // management change: the filing subjects name everyone the annexure covers
+  const extraPeople = isMgmt(card.card)
+    ? peopleFromSubjects(filings.map((x) => x.subject))
+    : undefined;
+  const orphaned = isMgmt(card.card)
+    ? await orphanedPromises(
+        card.isin,
+        mergePeople(peopleOf(card.card), extraPeople ?? []),
+      )
+    : null;
 
   // results: pull the quarter row for the EBITDA popover components and the period
   let periodEnd: string | null = null;
@@ -122,8 +177,32 @@ export default async function EventPage({
         className="gutter mt-4 reveal"
         style={{ animationDelay: "120ms" }}
       >
-        <CardBody event={card} periodEnd={periodEnd} components={components} />
+        <CardBody
+          event={card}
+          periodEnd={periodEnd}
+          components={components}
+          extraPeople={extraPeople}
+        />
       </section>
+
+      {orphaned ? (
+        <section className="gutter mt-4">
+          <div className="card px-4 py-3">
+            <p className="eyebrow">Orphaned promises</p>
+            <p className="small text-ink mt-1">
+              {orphaned.open
+                ? `${orphaned.open} open guidance ${orphaned.open === 1 ? "line" : "lines"} on the ledger ${orphaned.open === 1 ? "was" : "were"} made by ${orphaned.name} — ${orphaned.open === 1 ? "it stays" : "they stay"} on record and ${orphaned.open === 1 ? "settles" : "settle"} on schedule.`
+                : `${orphaned.total} settled ${orphaned.total === 1 ? "promise" : "promises"} on the ledger ${orphaned.total === 1 ? "was" : "were"} made by ${orphaned.name}; nothing open is left behind.`}
+            </p>
+            <Link
+              href={`/c/${encodeURIComponent(card.symbol)}#ledger`}
+              className="hit inline-flex items-center receipt text-accent"
+            >
+              Open the promise ledger →
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       {isResults(card.card) ? (
         <section className="gutter mt-4">

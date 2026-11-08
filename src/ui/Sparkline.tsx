@@ -2,12 +2,18 @@
  * Word-sized inline SVG sparkline (Tufte): no axes, 1.25 px stroke in ink-2,
  * last point as a dot, optional volume bars below with one bar highlighted.
  * Pure SVG — renders in server components with zero client JS.
+ *
+ * Special sessions (Muhurat) are not comparable with normal sessions: pass
+ * `sessionTypes` and those points are left out of the line and drawn as a
+ * hollow dot; their volume bar is outlined, not filled; the end dot sits on
+ * the last normal session.
  */
 export function Sparkline({
   values,
   width = 56,
   height = 14,
   volumes,
+  sessionTypes,
   highlightIndex,
   highlightTone = "warn",
   ariaLabel,
@@ -19,6 +25,8 @@ export function Sparkline({
   height?: number;
   /** optional volume bars drawn under the line (adds ~40% height) */
   volumes?: Array<number | null | undefined>;
+  /** 'normal' | 'special' per index; special sessions are muted */
+  sessionTypes?: Array<string | null | undefined>;
   /** index of a bar to colour (today / the anomaly) */
   highlightIndex?: number;
   highlightTone?: "warn" | "up" | "down";
@@ -26,12 +34,15 @@ export function Sparkline({
   className?: string;
   endDot?: boolean;
 }) {
-  const pts = values
+  const isSpecial = (i: number) => sessionTypes?.[i] === "special";
+  const all = values
     .map((v, i) => ({ i, v }))
     .filter(
       (p): p is { i: number; v: number } =>
         typeof p.v === "number" && Number.isFinite(p.v),
     );
+  const pts = all.filter((p) => !isSpecial(p.i));
+  const specials = all.filter((p) => isSpecial(p.i));
   if (pts.length < 2) {
     return (
       <svg
@@ -55,8 +66,8 @@ export function Sparkline({
     );
   }
   const n = values.length;
-  const min = Math.min(...pts.map((p) => p.v));
-  const max = Math.max(...pts.map((p) => p.v));
+  const min = Math.min(...all.map((p) => p.v));
+  const max = Math.max(...all.map((p) => p.v));
   const span = max - min || 1;
   const barH = volumes ? Math.round(height * 0.42) : 0;
   const lineH = height - barH - (volumes ? 2 : 0);
@@ -74,7 +85,8 @@ export function Sparkline({
   const vols = volumes
     ? volumes.map((v) => (typeof v === "number" && Number.isFinite(v) ? v : 0))
     : null;
-  const vmax = vols ? Math.max(1, ...vols) : 1;
+  // the bar scale comes from normal sessions only, so a thin Muhurat bar reads as thin
+  const vmax = vols ? Math.max(1, ...vols.filter((_, i) => !isSpecial(i))) : 1;
   const barW = Math.max(1, (width - 2 * pad) / n - 0.8);
   const toneVar =
     highlightTone === "up"
@@ -104,10 +116,35 @@ export function Sparkline({
       {endDot ? (
         <circle cx={x(last.i)} cy={y(last.v)} r={1.75} fill="var(--ink)" />
       ) : null}
+      {specials.map((p) => (
+        <circle
+          key={`s${p.i}`}
+          cx={x(p.i)}
+          cy={y(p.v)}
+          r={1.75}
+          fill="var(--surface)"
+          stroke="var(--ink-3)"
+          strokeWidth={1}
+        />
+      ))}
       {vols
         ? vols.map((v, i) => {
-            const h = Math.max(0.5, (v / vmax) * barH);
+            const h = Math.max(0.5, (Math.min(v, vmax) / vmax) * barH);
             const key = `${i}`;
+            if (isSpecial(i))
+              return (
+                <rect
+                  key={key}
+                  x={x(i) - barW / 2}
+                  y={height - h}
+                  width={barW}
+                  height={h}
+                  fill="none"
+                  stroke="var(--ink-3)"
+                  strokeWidth={0.75}
+                  strokeDasharray="1 1"
+                />
+              );
             return (
               <rect
                 key={key}

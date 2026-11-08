@@ -90,6 +90,29 @@ export function widenSequence(now: number): WindowPreset[] {
   return seq;
 }
 
+/**
+ * The window as it reads inside a sentence — never `label.toLowerCase()`,
+ * which would turn "Since Fri close" into "since fri close" and "1–8 Nov"
+ * into "1–8 nov".
+ *   24h → "the last 24 h" · close → "since Friday's close" · custom → "1–8 Nov"
+ */
+export function windowLabelInSentence(w: BriefWindow): string {
+  switch (w.preset) {
+    case "24h":
+      return "the last 24 h";
+    case "48h":
+      return "the last 48 h";
+    case "7d":
+      return "the last 7 days";
+    case "30d":
+      return "the last 30 days";
+    case "close":
+      return `since ${formatIst(w.fromMs, "EEEE")}’s close`;
+    default:
+      return w.label;
+  }
+}
+
 /** One sentence explaining an auto-widened window, with the calendar reason. */
 export function widenedSentence(now: number, to: BriefWindow): string {
   const todayKey = istDateKey(now);
@@ -106,5 +129,5 @@ export function widenedSentence(now: number, to: BriefWindow): string {
       `market closed ${formatIst(tomorrowKey, "EEE d MMM")} (${NSE_HOLIDAYS_2026[tomorrowKey]})`,
     );
   const why = reasons.length ? ` · ${reasons.join(" · ")}` : "";
-  return `Nothing filed in the last 24 h — showing ${to.label.toLowerCase()}${why}`;
+  return `Nothing filed in the last 24 h — showing ${windowLabelInSentence(to)}${why}`;
 }

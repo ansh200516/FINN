@@ -21,6 +21,7 @@ import { Empty } from "@/ui/Empty";
 import { filedStamp } from "@/ui/FilingCard";
 import { LedgerList, VerdictLegend } from "@/ui/LedgerList";
 import type { QuarterRow } from "@/ui/model";
+import { priceHeadline, volumeWord } from "@/ui/prices";
 import { SectionAccordion } from "@/ui/SectionAccordion";
 import { Sparkline } from "@/ui/Sparkline";
 import { TierHeader } from "@/ui/TierHeader";
@@ -67,6 +68,20 @@ function Metric({
   );
 }
 
+/** YoY % for a picked metric: the same quarter a year earlier on the same basis. */
+function yoyOf(
+  quarters: QuarterRow[],
+  latest: QuarterRow | undefined,
+  pick: (q: QuarterRow) => number | null,
+): number | null {
+  if (!latest) return null;
+  const key = `${Number(latest.periodEnd.slice(0, 4)) - 1}${latest.periodEnd.slice(4)}`;
+  const base = quarters.find(
+    (r) => r.periodEnd === key && r.basis === latest.basis,
+  );
+  return base ? pctChange(pick(latest), pick(base)) : null;
+}
+
 function QuarterItem({ q, isBank }: { q: QuarterRow; isBank: boolean }) {
   return (
     <li className="py-2 border-b border-rule last:border-b-0">
@@ -98,12 +113,19 @@ function QuarterItem({ q, isBank }: { q: QuarterRow; isBank: boolean }) {
       </div>
       <dl className="m-0 mt-1 grid grid-cols-4 gap-2 small">
         {(
-          [
-            ["Revenue", q.revenue],
-            [isBank ? "NII" : "EBITDA", isBank ? q.nii : q.ebitda],
-            ["PBT", q.pbt],
-            ["PAT", q.pat],
-          ] as Array<[string, number | null]>
+          (isBank
+            ? [
+                ["NII", q.nii],
+                ["PPOP", q.ppop],
+                ["PBT", q.pbt],
+                ["PAT", q.pat],
+              ]
+            : [
+                ["Revenue", q.revenue],
+                ["EBITDA", q.ebitda],
+                ["PBT", q.pbt],
+                ["PAT", q.pat],
+              ]) as Array<[string, number | null]>
         ).map(([l, v]) => (
           <div key={l} className="min-w-0">
             <dt className="meta text-ink-3">{l}</dt>
@@ -201,11 +223,17 @@ export default async function CompanyPage({
   const now = Date.now();
   const consolidated = quarters.filter((q) => q.basis === "consolidated");
   const standalone = quarters.filter((q) => q.basis === "standalone");
-  const trajectory = (consolidated.length ? consolidated : quarters).slice(-12);
+  const pool = consolidated.length ? consolidated : quarters;
+  const trajectory = pool.slice(-12);
+  const latestQ = pool.at(-1);
   const transcripts = documents.filter((d) => d.kind === "transcript");
   const openPromises = ledger.filter((r) => r.status === "open").length;
   const settled = ledger.filter((r) => r.status === "settled").length;
-  const volumeHighlight = prices.volumes.length - 1;
+  const px = priceHeadline(prices);
+  // the highlighted volume bar is the headline (last normal) session
+  const volumeHighlight = px.index >= 0 ? px.index : prices.volumes.length - 1;
+  const isNbfc = /nbfc|non[- ]banking/i.test(company.industry ?? "");
+  const formatWord = snapshot.isBank ? (isNbfc ? "NBFC" : "bank") : null;
 
   return (
     <main className="flex-1 pb-24">
@@ -241,18 +269,16 @@ export default async function CompanyPage({
           className="mt-3 flex items-end justify-between gap-4 reveal"
           style={{ animationDelay: "120ms" }}
         >
-          <div>
-            {prices.lastClose != null ? (
+          <div className="min-w-0">
+            {px.close != null ? (
               <>
                 <p className="num-lg num text-ink">
-                  ₹ {groupIndian(prices.lastClose, 2)}
+                  ₹ {groupIndian(px.close, 2)}
                 </p>
                 <p className="small">
-                  <DeltaChip value={prices.lastPct} />{" "}
+                  <DeltaChip value={px.pct} />{" "}
                   <span className="text-ink-3 meta">
-                    {prices.lastDate
-                      ? `close ${dayLabel(prices.lastDate)}`
-                      : ""}
+                    {px.dateKey ? `close ${dayLabel(px.dateKey)}` : ""}
                   </span>
                 </p>
               </>
@@ -260,22 +286,52 @@ export default async function CompanyPage({
               <p className="small text-ink-3">No price history yet</p>
             )}
           </div>
-          <div className="text-right">
-            <Sparkline
-              values={prices.closes}
-              volumes={prices.volumes}
-              highlightIndex={volumeHighlight}
-              width={140}
-              height={44}
-              ariaLabel={`${company.symbol} close, last ${prices.closes.length} sessions`}
-            />
-            <p className="receipt mt-0.5">
-              {prices.closes.length
-                ? `${prices.closes.length} sessions · volume below`
-                : ""}
-            </p>
-          </div>
+          <Sparkline
+            className="shrink-0"
+            values={prices.closes}
+            volumes={prices.volumes}
+            sessionTypes={prices.sessionTypes}
+            highlightIndex={volumeHighlight}
+            width={140}
+            height={44}
+            ariaLabel={`${company.symbol} close, last ${prices.closes.length} sessions${px.specialCount ? `, ${px.specialCount} special session${px.specialCount === 1 ? "" : "s"} shown hollow` : ""}`}
+          />
         </div>
+        {prices.closes.length ? (
+          <p
+            className="receipt mt-1 reveal"
+            style={{ animationDelay: "150ms" }}
+          >
+            {prices.closes.length} sessions · volume below
+            {px.specialCount
+              ? ` · ◌ ${px.special?.short ?? "special"} off the line`
+              : ""}
+          </p>
+        ) : null}
+        {px.special ? (
+          <p
+            className="receipt mt-1 reveal"
+            style={{ animationDelay: "160ms" }}
+            title={`${px.special.name} — a special session, not the headline close`}
+          >
+            <span className="text-ink-2">
+              {px.special.short === "Muhurat"
+                ? "Muhurat session"
+                : px.special.name}
+            </span>
+            {" · "}
+            {dayLabel(px.special.dateKey)}
+            {px.special.close != null ? (
+              <>
+                {" · ₹ "}
+                <span className="num">{groupIndian(px.special.close, 2)}</span>{" "}
+                <DeltaChip value={px.special.pct} className="text-[11px]" />
+              </>
+            ) : null}
+            {" · "}
+            {volumeWord(px.special.volumeRatio)}
+          </p>
+        ) : null}
       </header>
 
       {/* Snapshot */}
@@ -308,11 +364,15 @@ export default async function CompanyPage({
               {snapshot.isBank ? (
                 <>
                   <Metric
-                    label="Interest earned"
-                    value={snapshot.revenue}
-                    yoy={snapshot.revenueYoy}
+                    label="NII"
+                    value={snapshot.nii}
+                    yoy={yoyOf(quarters, latestQ, (q) => q.nii)}
                   />
-                  <Metric label="NII" value={snapshot.nii} yoy={null} />
+                  <Metric
+                    label="PPOP"
+                    value={snapshot.ppop}
+                    yoy={yoyOf(quarters, latestQ, (q) => q.ppop)}
+                  />
                   <Metric
                     label="PAT"
                     value={snapshot.pat}
@@ -345,11 +405,20 @@ export default async function CompanyPage({
               this.
             </p>
           )}
-          <p className="receipt mt-2">
-            {snapshot.basis ? `${humanise(snapshot.basis)} · ` : ""}
-            {quarters.length} {quarters.length === 1 ? "quarter" : "quarters"}{" "}
-            on record
-            {snapshot.isBank ? " · bank format: no EBITDA" : ""}
+          <p className="receipt mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>
+              {snapshot.basis ? `${humanise(snapshot.basis)} · ` : ""}
+              {quarters.length} {quarters.length === 1 ? "quarter" : "quarters"}{" "}
+              on record
+            </span>
+            {formatWord ? (
+              <span
+                className="chip"
+                title={`${formatWord} format: NII, PPOP, PBT, PAT — no revenue or EBITDA line`}
+              >
+                <span>{formatWord} format</span>
+              </span>
+            ) : null}
           </p>
         </div>
       </section>
@@ -460,14 +529,19 @@ export default async function CompanyPage({
           {snapshot.isBank ? (
             <>
               <SmallMultiple
-                label="Interest earned"
-                quarters={trajectory}
-                pick={(q) => q.revenue}
-              />
-              <SmallMultiple
                 label="NII"
                 quarters={trajectory}
                 pick={(q) => q.nii}
+              />
+              <SmallMultiple
+                label="PPOP"
+                quarters={trajectory}
+                pick={(q) => q.ppop}
+              />
+              <SmallMultiple
+                label="PBT"
+                quarters={trajectory}
+                pick={(q) => q.pbt}
               />
               <SmallMultiple
                 label="PAT"

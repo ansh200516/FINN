@@ -1,7 +1,29 @@
 import Link from "next/link";
 import { dayLabel, formatPct, formatRatio, groupIndian } from "@/lib/format";
+import { istDateKey, NSE_SPECIAL_SESSIONS } from "@/lib/time";
 import { DeltaChip } from "./DeltaChip";
 import type { AnomalyWithSymbol } from "./model";
+
+/**
+ * Special sessions (Muhurat) whose date falls inside the range the strip
+ * covers. The engine skips them when scoring, so the strip says so. Pass
+ * `window` for an exact answer; otherwise the range runs from the earliest
+ * anomaly shown to today.
+ */
+export function excludedSpecialSessions(
+  anomalies: AnomalyWithSymbol[],
+  window?: { fromMs: number; toMs: number },
+  now: number = Date.now(),
+): Array<{ dateKey: string; name: string }> {
+  const from = window
+    ? istDateKey(window.fromMs)
+    : anomalies.map((a) => a.date).sort()[0];
+  const to = window ? istDateKey(window.toMs - 1) : istDateKey(now);
+  if (!from) return [];
+  return Object.entries(NSE_SPECIAL_SESSIONS)
+    .filter(([key]) => key >= from && key <= to)
+    .map(([dateKey, s]) => ({ dateKey, name: s.name }));
+}
 
 function Row({ a }: { a: AnomalyWithSymbol }) {
   return (
@@ -41,9 +63,12 @@ function Row({ a }: { a: AnomalyWithSymbol }) {
 export function AnomalyStrip({
   anomalies,
   limit = 6,
+  window,
 }: {
   anomalies: AnomalyWithSymbol[];
   limit?: number;
+  /** the brief window, for an exact "special session excluded" note */
+  window?: { fromMs: number; toMs: number };
 }) {
   if (!anomalies.length) return null;
   const strength = (a: AnomalyWithSymbol) =>
@@ -51,6 +76,7 @@ export function AnomalyStrip({
   const ranked = [...anomalies].sort((a, b) => strength(b) - strength(a));
   const head = ranked.slice(0, limit);
   const rest = ranked.slice(limit);
+  const excluded = excludedSpecialSessions(anomalies, window);
   return (
     <div className="border-t border-rule">
       <ul className="m-0 p-0 list-none">
@@ -72,6 +98,23 @@ export function AnomalyStrip({
             ))}
           </ul>
         </details>
+      ) : null}
+      {excluded.length ? (
+        <p className="gutter mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+          {excluded.map((s) => (
+            <span
+              key={s.dateKey}
+              className="chip"
+              title={`${s.name}: a special session is not comparable with normal sessions, so its bar is not scored`}
+            >
+              <span aria-hidden="true">◌</span>
+              <span>
+                {/muhurat/i.test(s.name) ? "Muhurat" : "special"} session{" "}
+                {dayLabel(s.dateKey)} excluded
+              </span>
+            </span>
+          ))}
+        </p>
       ) : null}
     </div>
   );

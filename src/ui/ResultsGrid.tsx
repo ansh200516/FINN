@@ -66,11 +66,25 @@ function fmtCr(v: number | null): string {
  * 4 rows × [value, QoQ, YoY] with tabular numerals and an optional
  * five-quarter sparkline; the unit "₹ cr" is said once in the header.
  */
+/** One-line receipt for the brief card: "Consolidated · ₹ cr · XBRL ✓ · bank format". */
+export function compactMetaLine(card: ResultsCard): string {
+  const basisWord = card.basis === "standalone" ? "Standalone" : "Consolidated";
+  const parts = [basisWord, "₹ cr"];
+  parts.push(card.checksum === "exchange_xbrl" ? "XBRL ✓" : "preliminary ◐");
+  if (card.variant === "bank") parts.push("bank format");
+  else if (card.variant === "nbfc") parts.push("NBFC format");
+  const exc = card.exceptional?.currentCr ?? null;
+  if (exc != null && exc !== 0)
+    parts.push(`exceptional ${formatCrore(exc * 1e7)} cr`);
+  return parts.join(" · ");
+}
+
 export function ResultsGrid({
   card,
   periodEnd,
   withSpark = true,
   showMeta = true,
+  compactMeta = false,
   components,
 }: {
   card: ResultsCard;
@@ -78,6 +92,8 @@ export function ResultsGrid({
   withSpark?: boolean;
   /** basis chips, verification badge, formula popover */
   showMeta?: boolean;
+  /** when `showMeta` is off: a single receipt line instead of chips */
+  compactMeta?: boolean;
   /** ₹ cr components for the EBITDA popover, when known */
   components?: {
     pbt?: number | null;
@@ -92,24 +108,44 @@ export function ResultsGrid({
     card.variant === "bank" ||
     card.variant === "nbfc" ||
     !rows.some((r) => r.metric === "ebitda");
+  const formatWord = card.variant === "nbfc" ? "NBFC" : "Bank";
   const basis =
     card.basisLabel ??
     `${card.basis === "standalone" ? "Standalone" : "Consolidated"} · ₹ cr`;
   const verified = card.checksum === "exchange_xbrl";
   const h1 = card.verification?.h1Check;
   const exceptionalCr = card.exceptional?.currentCr ?? null;
-  const formula =
-    card.ebitdaFormula === "pbt+fin+dna"
-      ? "EBITDA = PBT + finance costs + D&A"
-      : "EBITDA = PBT + finance costs + D&A − other income";
+  const hasExceptional = exceptionalCr != null && exceptionalCr !== 0;
+  const exOther = card.ebitdaFormula !== "pbt+fin+dna";
+  const formula = exOther
+    ? "EBITDA = PBT + finance costs + D&A − other income"
+    : "EBITDA = PBT + finance costs + D&A";
+  const ebitdaRow = rows.find((r) => r.metric === "ebitda");
   const lines: string[] = [];
   if (components?.pbt != null) lines.push(`PBT ${formatCrore(components.pbt)}`);
   if (components?.fin != null)
     lines.push(`+ finance costs ${formatCrore(components.fin)}`);
   if (components?.dna != null)
     lines.push(`+ D&A ${formatCrore(components.dna)}`);
-  if (components?.oi != null && card.ebitdaFormula !== "pbt+fin+dna")
+  if (components?.oi != null && exOther)
     lines.push(`− other income ${formatCrore(components.oi)}`);
+  if (ebitdaRow?.valueCr != null)
+    lines.push(
+      `= ${groupIndian(ebitdaRow.valueCr, 0)} cr${exOther ? " ex other income" : ""}`,
+    );
+  // the other convention, so a reader comparing with a broker note sees both
+  if (exOther && card.ebitdaInclOtherIncomeCr != null)
+    lines.push(
+      `incl. other income: ${groupIndian(card.ebitdaInclOtherIncomeCr, 0)} cr`,
+    );
+  else if (!exOther && components?.oi != null && ebitdaRow?.valueCr != null)
+    lines.push(
+      `ex other income: ${groupIndian(ebitdaRow.valueCr - components.oi / 1e7, 0)} cr`,
+    );
+  if (hasExceptional)
+    lines.push(
+      `exceptional items ${formatCrore((exceptionalCr ?? 0) * 1e7)} cr sit inside PBT and PAT`,
+    );
 
   return (
     <div>
@@ -136,8 +172,8 @@ export function ResultsGrid({
               YoY
             </th>
             {withSpark ? (
-              <th scope="col" className="hd r">
-                5 q
+              <th scope="col" className="hd r" title="last five quarters">
+                5-qtr
               </th>
             ) : null}
           </tr>
@@ -160,16 +196,18 @@ export function ResultsGrid({
                 </td>
                 {withSpark ? (
                   <td className="cell r">
-                    <Sparkline
-                      values={sparkValues}
-                      width={52}
-                      height={14}
-                      ariaLabel={
-                        sparkValues.length
-                          ? `${r.label}, five quarters, latest ${fmtCr(r.valueCr)} crore`
-                          : `${r.label}: fewer than two quarters on record`
-                      }
-                    />
+                    {r.spark.length ? (
+                      <Sparkline
+                        values={sparkValues}
+                        width={52}
+                        height={14}
+                        ariaLabel={
+                          sparkValues.length
+                            ? `${r.label}, five quarters, latest ${fmtCr(r.valueCr)} crore`
+                            : `${r.label}: fewer than two quarters on record`
+                        }
+                      />
+                    ) : null}
                   </td>
                 ) : null}
               </tr>
@@ -211,19 +249,32 @@ export function ResultsGrid({
               lines={lines}
             />
           ) : (
-            <span className="chip">
-              <span>Bank format · no EBITDA</span>
+            <span
+              className="chip"
+              title={`${formatWord} format: NII, PPOP, PBT, PAT — no revenue or EBITDA line`}
+            >
+              <span>{formatWord} format · no EBITDA</span>
             </span>
           )}
-          {exceptionalCr != null && exceptionalCr !== 0 ? (
-            <span className="chip chip-warn">
-              <span>Exceptional {formatCrore(exceptionalCr * 1e7)} cr</span>
+          {hasExceptional ? (
+            <span
+              className="chip chip-warn"
+              title={
+                card.exceptional?.note ??
+                "Exceptional items are inside PBT and PAT"
+              }
+            >
+              <span>
+                Exceptional {formatCrore((exceptionalCr ?? 0) * 1e7)} cr
+              </span>
             </span>
           ) : null}
           {card.basisNote ? (
             <span className="receipt">{card.basisNote}</span>
           ) : null}
         </div>
+      ) : compactMeta ? (
+        <p className="receipt mt-1.5">{compactMetaLine(card)}</p>
       ) : null}
     </div>
   );

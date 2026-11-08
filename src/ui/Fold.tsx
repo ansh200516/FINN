@@ -20,19 +20,32 @@ export function Fold({ groups, now }: { groups: Tier3Group[]; now: number }) {
         <span className="rowtitle text-ink">{total} filed away</span>
         <span
           className="ml-auto flex items-center gap-2 text-ink-3 meta"
-          title="by category"
+          role="img"
+          aria-label={`by category: ${groups
+            .map((g) => `${g.count} ${categoryLabel(g.category).toLowerCase()}`)
+            .join(", ")}`}
         >
           {groups.slice(0, 5).map((g) => (
             <span
               key={g.category}
               className="inline-flex items-center gap-0.5"
-              title={categoryLabel(g.category)}
+              aria-hidden="true"
             >
               <CategoryGlyph category={g.category} />
               <span className="num">{g.count}</span>
             </span>
           ))}
-          {groups.length > 5 ? <span>…</span> : null}
+          {groups.length > 5 ? (
+            <span
+              aria-hidden="true"
+              title={groups
+                .slice(5)
+                .map((g) => `${categoryLabel(g.category)} ${g.count}`)
+                .join(" · ")}
+            >
+              +{groups.length - 5}
+            </span>
+          ) : null}
         </span>
       </summary>
       <div className="pb-2">

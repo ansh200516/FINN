@@ -139,9 +139,100 @@ export interface ResultsQuarter {
     ppop?: number;
     identities?: Record<string, boolean>;
     warnings: string[];
+    // --- additive (Builder B, results engine); all optional, money in rupees ---
+    /** 'INDAS' | 'BANKING' | 'NBFC' | 'NONINDAS' (from the XBRL file name) */
+    taxonomy?: string;
+    variant?: "corporate" | "bank" | "nbfc";
+    /** 'YYYY-MM-DD' start of the 3-month context */
+    periodStart?: string;
+    reportingQuarter?: string;
+    levelOfRounding?: string;
+    currency?: string;
+    /** total income (revenue + other income; banks: interest earned + other income) */
+    income?: number;
+    /** total expenses (Ind AS) */
+    expenses?: number;
+    /** NBFC interest income / bank interest earned */
+    interestIncome?: number;
+    /** bank interest expended */
+    interestExpended?: number;
+    opex?: number;
+    provisions?: number;
+    /** NBFC impairment on financial instruments */
+    impairment?: number;
+    assocShare?: number;
+    /** true when the filer presents associates/JV share above PBT */
+    assocAbovePbt?: boolean;
+    patOwners?: number;
+    nci?: number;
+    discontinued?: number;
+    epsDiluted?: number;
+    /** face value per share (₹) — EPS is not comparable across a change */
+    faceValue?: number;
+    gnpaPct?: number;
+    nnpaPct?: number;
+    /** PI-Industries pattern: owners-of-parent PAT tagged with total comprehensive income (ignored) */
+    ownersTaggedAsTci?: boolean;
+    /** HDFC-Bank pattern: minority interest tagged as a negative exceptional item above PBT */
+    minorityAsExceptional?: boolean;
+    pbtBeforeMinority?: number;
+    /** fiscal year-to-date figures from the same filing (null for Q1 filings) */
+    ytd?: {
+      start: string;
+      end: string;
+      days: number;
+      revenue: number | null;
+      income: number | null;
+      pbt: number | null;
+      pat: number | null;
+      nii: number | null;
+      ppop: number | null;
+    };
+    /** preliminary PDF extraction provenance */
+    pdf?: {
+      confidence: number;
+      unit: string;
+      page: number;
+      columns: string[];
+      method: "text" | "llm";
+    };
   };
   sourceUrl: string | null;
   filedAt: number | null;
+}
+
+/** One headline row of the results card. Money in ₹ crore (2 dp) — the card is render-ready. */
+export interface ResultsHeadlineRow {
+  metric:
+    | "revenue"
+    | "ebitda"
+    | "pbt"
+    | "pat"
+    | "nii"
+    | "ppop"
+    | "total_income";
+  /** "Revenue", "EBITDA", "NII", "PPOP", "PBT", "PAT", "Total income" */
+  label: string;
+  currentCr: number | null;
+  prevQuarterCr: number | null;
+  yoyQuarterCr: number | null;
+  qoqDeltaCr: number | null;
+  qoqPct: number | null;
+  yoyDeltaCr: number | null;
+  yoyPct: number | null;
+  /** % of revenue (banks/NBFCs: % of total income); null for the top line */
+  marginPct: number | null;
+  prevMarginPct: number | null;
+  yoyMarginPct: number | null;
+}
+
+export interface ResultsVerification {
+  source: ResultsSource;
+  identitiesPassed: boolean;
+  /** Q1+Q2 (or Q1..Qn) vs the filing's own YTD within 0.5 %; undefined when not checkable */
+  h1Check?: boolean;
+  failedIdentities: string[];
+  notes: string[];
 }
 
 export interface ResultsCard {
@@ -160,6 +251,41 @@ export interface ResultsCard {
   }>;
   ebitdaFormula: "pbt+fin+dna-oi" | "pbt+fin+dna";
   sourceUrl: string | null;
+  // --- additive (Builder B, results engine); all optional ---
+  variant?: "corporate" | "bank" | "nbfc";
+  /** 'YYYY-MM-DD' of the current quarter */
+  periodEnd?: string;
+  /** "Q2 FY27" */
+  fiscalLabel?: string;
+  prevPeriodEnd?: string | null;
+  yoyPeriodEnd?: string | null;
+  /** render-ready rows in ₹ crore: corporate = revenue/ebitda/pbt/pat; bank = nii/ppop/pbt/pat; nbfc = total_income/nii/ppop/pbt/pat */
+  headline?: ResultsHeadlineRow[];
+  ebitdaConvention?: "ex_other_income";
+  /** the alternative convention (PBEIT + finance costs + D&A), ₹ crore */
+  ebitdaInclOtherIncomeCr?: number | null;
+  margins?: {
+    ebitdaPct: number | null;
+    patPct: number | null;
+    pbtPct: number | null;
+  };
+  exceptional?: {
+    currentCr: number | null;
+    flagged: boolean;
+    note: string | null;
+  };
+  /** "Consolidated · Unaudited · ₹ cr" */
+  basisLabel?: string;
+  /** why this basis was chosen (e.g. "standalone — no consolidated filing") */
+  basisNote?: string | null;
+  verification?: ResultsVerification;
+  filedAtMs?: number | null;
+  quartersAvailable?: number;
+  epsCurrent?: number | null;
+  epsYoy?: number | null;
+  /** bank extras when reported (standalone filings) */
+  gnpaPct?: number | null;
+  nnpaPct?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +317,16 @@ export interface GuidanceStatement {
   /** 'Q3FY27' | 'FY27' | 'H2FY27' | 'medium_term' | null */
   horizon: string | null;
   status: GuidanceStatus;
+  /** last day of the horizon period, 'YYYY-MM-DD' (null for medium/long term) */
+  horizonEnd?: string | null;
+  /** true when the quote carries explicit numbers; false for adjectival bands ("high single digit") */
+  isExplicit?: boolean;
+  /** 0..1 extractor confidence */
+  confidence?: number;
+  /** how the speaker framed it relative to earlier guidance */
+  revision?: "new" | "maintained" | "raised" | "cut" | "withdrawn";
+  /** growth basis when the metric is a growth rate */
+  comparison?: "yoy" | "qoq" | "absolute" | "cc";
 }
 
 export type Verdict =
@@ -259,6 +395,37 @@ export interface DocumentText {
   docId: string;
   /** 1-indexed pages */
   pages: Array<{ page: number; text: string }>;
+}
+
+export type DocumentSource = "nse" | "bse" | "screener" | "ir";
+
+/** One document found by `discoverDocuments` before download (Builder C). */
+export interface DiscoveredDocument {
+  kind: DocumentKind;
+  /** 'Q2FY27' | 'FY26' | null when the period could not be inferred */
+  period: string | null;
+  url: string;
+  source: DocumentSource;
+  /** filing / publication time, ms UTC (null when the source gives none) */
+  publishedAtMs: number | null;
+  /** listing text (announcement text, link label) */
+  title: string | null;
+  /** `nse:<seq_id>` when discovered from the NSE announcements feed */
+  announcementId: string | null;
+}
+
+export type SpeakerRole = "management" | "analyst" | "moderator" | "unknown";
+export type TranscriptSection = "opening" | "qa";
+
+/** One speaker turn of a parsed concall transcript (Builder C). */
+export interface TranscriptTurn {
+  index: number;
+  speaker: string | null;
+  role: SpeakerRole;
+  section: TranscriptSection;
+  /** 1-indexed PDF page where the turn starts */
+  page: number;
+  text: string;
 }
 
 // ---------------------------------------------------------------------------

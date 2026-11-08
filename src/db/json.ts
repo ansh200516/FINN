@@ -55,6 +55,9 @@ export const ResultsChecks = z
     identities: z.record(z.string(), z.boolean()).optional(),
     warnings: z.array(z.string()).default([]),
   })
+  // Builder B: keep the additive optional keys written by engine/ingest/results
+  // (taxonomy, variant, income, provisions, gnpaPct, ytd, pdf, …) — see ResultsQuarter.checks
+  .catchall(z.unknown())
   .partial();
 
 export const JobLogEntry = z.object({

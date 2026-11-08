@@ -1,0 +1,1 @@
+ALTER TABLE `document_meta` ADD `duplicate_of` text;

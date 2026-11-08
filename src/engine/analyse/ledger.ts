@@ -37,6 +37,7 @@ import {
   previousYearPeriod,
   quarterEndsOf,
 } from "../extract/transcript";
+import { transcriptCoverage } from "../ingest/documents";
 import type {
   GuidanceStatus,
   LedgerRow,
@@ -67,6 +68,13 @@ export interface LedgerInput {
   /** 'YYYY-MM-DD' end of horizon (null = open-ended) */
   horizonEnd: string | null;
   isExplicit: boolean;
+  /** "about X" — tolerance is widened when comparing */
+  approx?: boolean;
+  /** metric/unit pair could not be reconciled — never adjudicated */
+  typeIssue?: boolean;
+  typeNote?: string | null;
+  /** where the statement came from (default transcript) */
+  source?: "transcript" | "annual_report";
   revision: "new" | "maintained" | "raised" | "cut" | "withdrawn";
   comparison: "yoy" | "qoq" | "absolute" | "cc" | null;
   /** when the promise was made, ms UTC */
@@ -428,14 +436,21 @@ export function toleranceFor(
 export function compareBand(
   actual: number,
   band: { low: number | null; high: number | null },
-  opts: { family: MetricFamily; unit: string | null; costLike: boolean },
+  opts: {
+    family: MetricFamily;
+    unit: string | null;
+    costLike: boolean;
+    /** "about X": one extra pp (percent) / 2 % (absolute) of tolerance */
+    approx?: boolean;
+  },
 ): { verdict: Verdict; rule: string } {
   const isPct = opts.unit === "%" || opts.unit === "bp";
   const tolAbs = (edge: number) =>
     isPct
-      ? toleranceFor(opts.family, opts.unit)
+      ? toleranceFor(opts.family, opts.unit) + (opts.approx ? 1 : 0)
       : Math.abs(edge) *
-        ((opts.unit === "units" ? TOLERANCE.unitsPct : TOLERANCE.absolutePct) /
+        (((opts.unit === "units" ? TOLERANCE.unitsPct : TOLERANCE.absolutePct) +
+          (opts.approx ? 2 : 0)) /
           100);
   const { low, high } = band;
   const above = high !== null && actual > high + tolAbs(high);
@@ -625,6 +640,7 @@ export function adjudicateAll(
     evidence: {
       quoteDocId: s.docId,
       page: s.page,
+      source: s.source ?? "transcript",
       resultsSourceUrl: null,
       statedPeriod: s.statedPeriod,
       horizonEnd: s.horizonEnd,
@@ -684,7 +700,13 @@ export function adjudicateAll(
       const pm = mid(prev);
       const nm = mid(next);
       let verdict: Verdict | null = null;
-      if (pm !== null && nm !== null && prev.unit === next.unit) {
+      if (
+        pm !== null &&
+        nm !== null &&
+        prev.unit === next.unit &&
+        prev.isExplicit &&
+        next.isExplicit
+      ) {
         // bands an order of magnitude apart are different things (a segment vs the company) — not a revision
         if (pm !== 0 && nm !== 0 && (nm / pm > 3 || pm / nm > 3)) {
           pr.evidence.note =
@@ -697,8 +719,23 @@ export function adjudicateAll(
             : Math.abs(pm) * (TOLERANCE.absolutePct / 100);
         if (nm > pm + tol) verdict = "raised";
         else if (nm < pm - tol) verdict = "cut";
-      } else if (next.revision === "raised" || next.revision === "cut")
+      } else if (next.revision === "raised" || next.revision === "cut") {
+        // the speaker's own word ("we are raising…") — unless the bands, where both
+        // exist, move the other way (then the later sentence was about something else)
+        const contradicts =
+          pm !== null &&
+          nm !== null &&
+          prev.unit === next.unit &&
+          ((next.revision === "raised" && nm < pm) ||
+            (next.revision === "cut" && nm > pm));
+        if (contradicts) {
+          pr.status = "superseded";
+          pr.evidence.supersededBy = next.id;
+          pr.evidence.note = `restated in the ${next.statedPeriod ?? "next"} call with a band that does not match the stated '${next.revision}' — no revision verdict`;
+          continue;
+        }
         verdict = next.revision;
+      }
       pr.status = "superseded";
       pr.evidence.supersededBy = next.id;
       if (verdict) {
@@ -720,10 +757,26 @@ export function adjudicateAll(
       }
       const family = resolveFamily(s.metric, s.quote, opts);
       const period = s.horizon ? parsePeriodLabel(s.horizon) : null;
+      // (c) only explicit, cleanly typed statements are adjudicated
+      if (s.typeIssue) {
+        row.status = "settled";
+        row.verdict = "unverifiable";
+        row.evidence.note = `metric ambiguous — ${s.typeNote ?? "unit does not fit the metric"}; shown as a quote only`;
+        continue;
+      }
       if (!s.horizonEnd || !period) {
-        row.evidence.note = s.horizon
-          ? `open-ended horizon (${s.horizon}); nothing to settle yet`
-          : "no horizon stated";
+        const openEnded = /^(medium_term|long_term|near_term)$/.test(
+          s.horizon ?? "",
+        );
+        if (openEnded) {
+          row.evidence.note = `open-ended horizon (${s.horizon}); nothing to settle yet`;
+        } else {
+          row.status = "settled";
+          row.verdict = "unverifiable";
+          row.evidence.note = s.horizon
+            ? `horizon unclear ('${s.horizon}'); shown as a quote only`
+            : "horizon unclear (none stated); shown as a quote only";
+        }
         continue;
       }
       const due = dateMs(s.horizonEnd) <= now;
@@ -804,12 +857,41 @@ export function adjudicateAll(
         source: delivered.source,
       };
       row.settledByQuarter = delivered.settledBy;
+      if (!s.isExplicit) {
+        // adjectival band / direction-only: show the quote and the delivered figure, do not judge
+        const band =
+          s.low !== null || s.high !== null
+            ? `adjectival band ${s.low ?? "…"}–${s.high ?? "…"}${s.unit === "%" ? "%" : ""}`
+            : `direction-only ('${s.direction}')`;
+        const prior =
+          s.low === null && s.high === null
+            ? computeDelivered(
+                family,
+                s.metric,
+                previousYearPeriod(period),
+                s.comparison,
+                quarters,
+              )
+            : null;
+        if (prior)
+          row.evidence.priorYear = { value: prior.value, unit: prior.unit };
+        row.status = "settled";
+        row.verdict = "unverifiable";
+        row.evidence.note = `${band} — not adjudicated (no explicit number); delivered ${delivered.value.toFixed(1)}${delivered.unit === "%" ? "%" : ""}`;
+        row.evidence.deliveredNote = delivered.note;
+        continue;
+      }
       let result: { verdict: Verdict; rule: string };
       if (s.low !== null || s.high !== null) {
         result = compareBand(
           delivered.value,
           { low: s.low, high: s.high },
-          { family, unit: s.unit, costLike: COST_LIKE.has(s.metric) },
+          {
+            family,
+            unit: s.unit,
+            costLike: COST_LIKE.has(s.metric),
+            approx: s.approx,
+          },
         );
         if (delivered.alt && delivered.alt.value !== null) {
           const alt = compareBand(
@@ -957,6 +1039,10 @@ export interface SettleResult {
   rows: AdjudicatedRow[];
   summary: string;
   stats: Record<Verdict | "open" | "superseded", number>;
+  /** transcript availability for the latest reported quarter (SEBI 5-working-day rule) */
+  coverage: Awaited<ReturnType<typeof transcriptCoverage>> | null;
+  /** set when the ledger is built from the annual report because no earnings-call transcript exists */
+  sourceNote: string | null;
 }
 
 function evidenceOf(raw: string | null): Record<string, unknown> {
@@ -1081,6 +1167,10 @@ export async function loadLedgerInputs(isin: string): Promise<{
             ? (parsePeriodLabel(g.horizon)?.end ?? null)
             : null,
       isExplicit: ev.isExplicit === true,
+      approx: ev.approx === true,
+      typeIssue: ev.typeIssue === true,
+      typeNote: typeof ev.typeNote === "string" ? ev.typeNote : null,
+      source: ev.source === "annual_report" ? "annual_report" : "transcript",
       revision:
         rev === "maintained" ||
         rev === "raised" ||
@@ -1173,8 +1263,24 @@ export async function settleGuidance(
     else stats.open++;
   }
   const summary = summarise(rows);
+  let coverage: SettleResult["coverage"] = null;
+  try {
+    coverage = await transcriptCoverage(isin);
+  } catch (e) {
+    log.warn(
+      { isin, err: e instanceof Error ? e.message : String(e) },
+      "transcript coverage unavailable",
+    );
+  }
+  const arRows = rows.filter((r) => r.evidence.source === "annual_report");
+  const sourceNote =
+    rows.length && arRows.length === rows.length
+      ? `commitments taken from the ${inputs.find((i) => i.source === "annual_report")?.statedPeriod ?? "latest"} annual report — no earnings-call transcript is available for this company`
+      : coverage?.coverOnlyPeriods.length && !coverage.latestTranscriptPeriod
+        ? "transcripts were filed as cover letters only — showing annual-report commitments where available"
+        : null;
   log.info({ isin, rows: rows.length, ...stats }, "ledger settled");
-  return { rows, summary, stats };
+  return { rows, summary, stats, coverage, sourceNote };
 }
 
 /** Read-only ledger for the UI (no writes). */

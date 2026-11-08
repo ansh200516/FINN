@@ -93,22 +93,33 @@ export function makePeriod(
   };
 }
 
-/** Full FY for a two-digit suffix ("27" → 2027; "2027" → 2027; "2026-27" → 2027). */
-function fyFromToken(tok: string): number | null {
-  const t = tok.replace(/\s+/g, "");
-  let m = /^(\d{4})[-/–](\d{2,4})$/.exec(t);
+/**
+ * Full FY for a fiscal-year token: "27" → 2027; "2027" → 2027; "2026-27",
+ * "2026 - 2027", "2026/27", "26-27" → 2027 (the SECOND year of an Indian FY
+ * range is the fiscal year). Reliance writes "FY2026 - 2027" with spaces.
+ */
+export function fyFromToken(tok: string): number | null {
+  const t = tok.replace(/[’']/g, "").trim();
+  let m = /^(\d{4})\s*[-/–—]\s*(\d{2,4})$/.exec(t);
   if (m) {
+    const first = m[1] as string;
     const second = m[2] as string;
-    return second.length === 4
-      ? Number(second)
-      : Number(`${(m[1] as string).slice(0, 2)}${second}`);
+    const fy =
+      second.length === 4
+        ? Number(second)
+        : Number(`${first.slice(0, 2)}${second}`);
+    // "2026-27" and "2026-2027" are a one-year range ending in the second year
+    return fy >= Number(first) ? fy : Number(first);
   }
-  m = /^(\d{2})[-/–](\d{2})$/.exec(t);
+  m = /^(\d{2})\s*[-/–—]\s*(\d{2})$/.exec(t);
   if (m) return 2000 + Number(m[2]);
   if (/^\d{4}$/.test(t)) return Number(t);
   if (/^\d{2}$/.test(t)) return 2000 + Number(t);
   return null;
 }
+
+/** regex fragment for a fiscal-year token (two/four digits, optional range with optional spaces) */
+const FY_TOKEN = String.raw`((?:\d{4}\s*[-/–—]\s*\d{2,4})|(?:\d{2}\s*[-/–—]\s*\d{2})|\d{4}|\d{2})`;
 
 /**
  * Parse 'Q2FY27', 'Q2 FY27', 'Q2 FY 2027', "Q2 FY '27", 'Q2FY2026-27', '2QFY27',
@@ -116,23 +127,23 @@ function fyFromToken(tok: string): number | null {
  */
 export function parsePeriodLabel(s: string): FiscalPeriod | null {
   const t = s.trim().replace(/[’']/g, "").replace(/\s+/g, " ");
-  let m =
-    /^(?:Q\s?([1-4])|([1-4])\s?Q)\s*,?\s*FY\s?((?:\d{4}[-/–]\d{2,4})|(?:\d{2}[-/–]\d{2})|\d{4}|\d{2})$/i.exec(
-      t,
-    );
+  let m = new RegExp(
+    String.raw`^(?:Q\s?([1-4])|([1-4])\s?Q)\s*,?\s*(?:FY|F\.Y\.)\s?${FY_TOKEN}$`,
+    "i",
+  ).exec(t);
   if (m) {
     const fy = fyFromToken(m[3] as string);
     if (fy) return makePeriod("quarter", fy, Number(m[1] ?? m[2]));
   }
-  m =
-    /^(?:H\s?([12])|([12])\s?H)\s*,?\s*FY\s?((?:\d{4}[-/–]\d{2,4})|(?:\d{2}[-/–]\d{2})|\d{4}|\d{2})$/i.exec(
-      t,
-    );
+  m = new RegExp(
+    String.raw`^(?:H\s?([12])|([12])\s?H)\s*,?\s*(?:FY|F\.Y\.)\s?${FY_TOKEN}$`,
+    "i",
+  ).exec(t);
   if (m) {
     const fy = fyFromToken(m[3] as string);
     if (fy) return makePeriod("half", fy, Number(m[1] ?? m[2]));
   }
-  m = /^FY\s?((?:\d{4}[-/–]\d{2,4})|(?:\d{2}[-/–]\d{2})|\d{4}|\d{2})$/i.exec(t);
+  m = new RegExp(String.raw`^(?:FY|F\.Y\.)\s?${FY_TOKEN}$`, "i").exec(t);
   if (m) {
     const fy = fyFromToken(m[1] as string);
     if (fy) return makePeriod("year", fy, null);
@@ -253,10 +264,10 @@ export function parseLongDate(s: string): string | null {
  */
 export function inferPeriodFromText(text: string): string | null {
   const t = text.replace(/\s+/g, " ");
-  let m =
-    /\b(?:Q\s?([1-4])|([1-4])\s?Q)\s*[,-]?\s*(?:of\s+)?FY\s?[’']?((?:\d{4}[-/–]\d{2,4})|(?:\d{2}[-/–]\d{2})|\d{4}|\d{2})\b/i.exec(
-      t,
-    );
+  let m = new RegExp(
+    String.raw`\b(?:Q\s?([1-4])|([1-4])\s?Q)\s*[,-]?\s*(?:of\s+)?(?:FY|F\.Y\.)\s?[’']?${FY_TOKEN}\b`,
+    "i",
+  ).exec(t);
   if (m) {
     const fy = fyFromToken(m[3] as string);
     if (fy) return makePeriod("quarter", fy, Number(m[1] ?? m[2])).label;
@@ -267,10 +278,10 @@ export function inferPeriodFromText(text: string): string | null {
     third: 3,
     fourth: 4,
   };
-  m =
-    /\b(first|second|third|fourth)\s+quarter\b[^.]{0,40}?\bFY\s?[’']?((?:\d{4}[-/–]\d{2,4})|\d{4}|\d{2})\b/i.exec(
-      t,
-    );
+  m = new RegExp(
+    String.raw`\b(first|second|third|fourth)\s+quarter\b[^.]{0,40}?\b(?:FY|F\.Y\.)\s?[’']?${FY_TOKEN}\b`,
+    "i",
+  ).exec(t);
   if (m) {
     const fy = fyFromToken(m[2] as string);
     if (fy)
@@ -281,14 +292,90 @@ export function inferPeriodFromText(text: string): string | null {
       ).label;
   }
   m =
-    /quarter(?:\s+and\s+(?:half|nine|six)[- ]?(?:year|months?))?\s+ended\s+(?:on\s+)?([^,.;]{4,40}?\d{4})/i.exec(
+    /quarter(?:\s+and\s+(?:half|nine|six)[- ]?(?:year|months?))?\s+ended\s+(?:on\s+)?((?:the\s+)?[A-Za-z0-9 ,]{4,40}?\d{4})/i.exec(
       t,
     );
   if (m) {
     const d = parseLongDate(m[1] as string);
     if (d) return periodForQuarterEnd(d);
   }
+  // "H1 FY27 earnings call" → the second quarter of that half
+  m = new RegExp(
+    String.raw`\b(?:H\s?([12])|([12])\s?H)\s*[,-]?\s*(?:FY|F\.Y\.)\s?[’']?${FY_TOKEN}\b`,
+    "i",
+  ).exec(t);
+  if (m) {
+    const fy = fyFromToken(m[3] as string);
+    const h = Number(m[1] ?? m[2]);
+    if (fy) return makePeriod("quarter", fy, h === 2 ? 4 : 2).label;
+  }
   return null;
+}
+
+/**
+ * Reconcile the period read off a transcript's text with the one implied by
+ * its exchange publish date (docs: a transcript is filed within 5 working days
+ * of the call, which follows the results of the quarter just ended).
+ *
+ *  - no text period → date period
+ *  - same → that
+ *  - same quarter, fiscal year off by exactly one, and the filing is within
+ *    60 days after the date-derived quarter end → the DATE wins (text headers
+ *    such as "Q2 FY2026 - 2027" are easy to misread) with a warning
+ *  - otherwise the text wins (a late filing or a non-results event)
+ */
+export function resolveTranscriptPeriod(
+  textPeriod: string | null,
+  publishedAtMs: number | null,
+): {
+  period: string | null;
+  source: "text" | "date" | "none";
+  warning: string | null;
+} {
+  const dateLabel =
+    publishedAtMs !== null ? periodForTranscriptDate(publishedAtMs) : null;
+  if (!textPeriod)
+    return {
+      period: dateLabel,
+      source: dateLabel ? "date" : "none",
+      warning: null,
+    };
+  if (!dateLabel || textPeriod === dateLabel)
+    return { period: textPeriod, source: "text", warning: null };
+  const tp = parsePeriodLabel(textPeriod);
+  const dp = parsePeriodLabel(dateLabel);
+  if (
+    tp &&
+    dp &&
+    tp.kind === "quarter" &&
+    dp.kind === "quarter" &&
+    publishedAtMs !== null
+  ) {
+    const [ey, em, ed] = dp.end.split("-").map(Number) as [
+      number,
+      number,
+      number,
+    ];
+    const daysAfterEnd =
+      (publishedAtMs - Date.UTC(ey, em - 1, ed)) / 86_400_000;
+    if (
+      tp.n === dp.n &&
+      Math.abs(tp.fy - dp.fy) === 1 &&
+      daysAfterEnd >= 0 &&
+      daysAfterEnd <= 60
+    ) {
+      return {
+        period: dateLabel,
+        source: "date",
+        warning: `text says ${textPeriod} but the filing (${daysAfterEnd.toFixed(0)} days after ${dp.end}) implies ${dateLabel}; using the date`,
+      };
+    }
+  }
+  return {
+    period: textPeriod,
+    source: "text",
+    warning: `text period ${textPeriod} differs from date-derived ${dateLabel}; keeping text`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -533,11 +620,17 @@ function toLines(doc: DocumentText): LinesResult {
     return (counts.get(key) ?? 0) >= threshold && perPage.length >= 4;
   };
   const out: Line[] = [];
+  const BULLET_RE = /^\s*[−–•▪●○◦*-]\s+(?=[A-Za-z"“(])/;
   perPage.forEach((lines, i) => {
     const page = doc.pages[i]?.page ?? i + 1;
+    // bullet-style transcripts (Ola Electric) prefix most lines with "− " / "- ";
+    // strip only on such pages so ordinary dashes in prose are untouched
+    const nonEmpty = lines.filter((l) => l.trim());
+    const bulleted = nonEmpty.filter((l) => BULLET_RE.test(l)).length;
+    const bulletPage = bulleted >= 3 && bulleted / nonEmpty.length >= 0.12;
     for (const l of lines) {
       if (isBoiler(l)) continue;
-      out.push({ page, text: l });
+      out.push({ page, text: bulletPage ? l.replace(BULLET_RE, "") : l });
     }
   });
   return { lines: out, headers };
@@ -550,6 +643,9 @@ const ROSTER_MGMT_HEAD =
   /^\s*(MANAGEMENT|CORPORATE PARTICIPANTS|COMPANY PARTICIPANTS|PARTICIPANTS FROM (THE )?(MANAGEMENT|COMPANY)|MANAGEMENT TEAM|FROM (THE )?MANAGEMENT|COMPANY REPRESENTATIVES?|MANAGEMENT PARTICIPANTS)\s*:?\s*(.*)$/;
 const ROSTER_OTHER_HEAD =
   /^\s*(MODERATOR|ANALYSTS?|HOST|PARTICIPANTS|JOURNALISTS|INVESTORS?|ANALYSTS?\s*\/\s*INVESTORS?|CONFERENCE CALL PARTICIPANTS|OTHER PARTICIPANTS)\s*:?\s*(.*)$/;
+/** title-case roster headings that stand alone on their line ("Management:", "Analysts:") */
+const ROSTER_TITLECASE_HEAD =
+  /^\s*(Management|Corporate Participants|Company Participants|Moderator|Analysts?|Participants)\s*:\s*$/;
 const TITLE_WORD_RE =
   /\b(officer|director|president|head|chief|cfo|ceo|md|managing|vice|vp|manager|investor relations|secretary|founder|chairman|chairperson|executive|group|treasurer|controller|strategy|finance|operations|business|coo|cto|cmo|promoter|whole[- ]time)\b/i;
 
@@ -570,10 +666,34 @@ function participantFromEntry(
     .map((s) => s.trim())
     .filter(Boolean);
   if (!segs.length) return null;
-  const rawName = (segs[0] as string)
+  let rawName = (segs[0] as string)
     .replace(HONORIFIC_RE, "")
     .replace(/[,.]+$/, "")
     .trim();
+  if (rawName.length > 45 || rawName.split(/\s+/).length > 4) {
+    // no dash between name and title: take the leading proper-name words before the first
+    // title word / comma ("Gopal Vittal Executive Vice Chairman, Bharti Airtel Limited")
+    const words = rawName.split(/\s+/);
+    const nameWords: string[] = [];
+    for (const w of words) {
+      if (
+        nameWords.length >= 4 ||
+        TITLE_WORD_RE.test(w) ||
+        /,$/.test(nameWords[nameWords.length - 1] ?? "")
+      )
+        break;
+      if (!/^[A-Z][A-Za-z.'’-]*,?$/.test(w) && !/^[A-Z]+$/.test(w)) break;
+      nameWords.push(w);
+    }
+    if (nameWords.length >= 1 && nameWords.length <= 4) {
+      const rest = words
+        .slice(nameWords.length)
+        .join(" ")
+        .replace(/^[,\s]+/, "");
+      rawName = nameWords.join(" ").replace(/,$/, "");
+      if (rest && !segs[1]) segs.splice(1, 0, rest);
+    }
+  }
   if (!rawName || rawName.length > 45) return null;
   const name = /[a-z]/.test(rawName) ? rawName : titleCase(rawName);
   if (!/^[A-Za-z]/.test(name)) return null;
@@ -616,8 +736,28 @@ export function extractRoster(lines: Line[]): RosterResult {
 
   for (let i = 0; i < lines.length; i++) {
     const t = (lines[i] as Line).text.trim();
-    const mgmt = ROSTER_MGMT_HEAD.exec(t);
+    let mgmt = ROSTER_MGMT_HEAD.exec(t);
     let other = mgmt ? null : ROSTER_OTHER_HEAD.exec(t);
+    if (!mgmt && !other) {
+      const tc = ROSTER_TITLECASE_HEAD.exec(t);
+      let k = i + 1;
+      while (k < lines.length && !(lines[k] as Line).text.trim()) k++;
+      const nxt = (lines[k]?.text ?? "").trim();
+      if (
+        tc &&
+        (HONORIFIC_RE.test(nxt) ||
+          (isTitleCaseName(nxt) && !/[.?!]$/.test(nxt)))
+      ) {
+        const fake = [t, tc[1] as string, ""] as unknown as RegExpExecArray;
+        if (
+          /^(management|corporate participants|company participants)$/i.test(
+            tc[1] as string,
+          )
+        )
+          mgmt = fake;
+        else other = fake;
+      }
+    }
     if (!mgmt && !other && roster.length) {
       // an unlisted ALL-CAPS heading right after a roster block ("JOUNALISTS" [sic]) that is
       // followed by a name line is another participants block
@@ -747,6 +887,29 @@ interface SpeakerHit {
   rest: string;
   /** when the label stands alone on its line: the following line (the turn's text) */
   nextText?: string;
+  /** role text that accompanied the name ("Moderator", "Group CFO, Bharti Airtel") */
+  roleHint?: string;
+}
+
+/** "Mr. Bhavish Aggarwal - Founder, Chairman & Managing Director, Ola Electric Mobility Limited:" */
+const NAME_ROLE_COLON_RE =
+  /^(?:(?:Mr|Ms|Mrs|Dr|Shri|Sh|Smt|Prof)\.?\s+)?([A-Z][A-Za-z.'’-]*(?:\s+[A-Z][A-Za-z.'’-]*){0,3})\s*[–—-]\s*([A-Z][^:]{2,110}):\s*(.*)$/;
+/** "Vaidehi Sharma – Moderator" / "Gopal Vittal – Executive Vice Chairman, Bharti Airtel Limited" on its own line */
+const NAME_DASH_ROLE_RE =
+  /^([A-Z][A-Za-z.'’-]*(?:\s+[A-Z][A-Za-z.'’-]*){1,3})\s+[–—]\s+([A-Z][^\n]{2,90})$/;
+
+/** role from an accompanying role/title text */
+function roleFromHint(hint: string | undefined): SpeakerRole | null {
+  if (!hint) return null;
+  if (/\b(moderator|operator|host)\b/i.test(hint)) return "moderator";
+  if (TITLE_WORD_RE.test(hint)) return "management";
+  if (
+    /\b(analyst|research|capital|securities|broking|asset management|mutual fund|investments?|partners|llc|advisors)\b/i.test(
+      hint,
+    )
+  )
+    return "analyst";
+  return null;
 }
 
 const INLINE_RE =
@@ -761,6 +924,18 @@ function inlineHit(text: string): SpeakerHit | null {
     const label = (r[1] ?? r[2] ?? r[3] ?? "").trim();
     if (label)
       return { label: r[2] ? `Questioner (${label})` : label, rest: "" };
+  }
+  const nr = NAME_ROLE_COLON_RE.exec(t);
+  if (
+    nr &&
+    !/\d/.test(nr[1] as string) &&
+    !LABEL_BLOCKLIST.has((nr[1] as string).toLowerCase())
+  ) {
+    return {
+      label: (nr[1] as string).trim(),
+      rest: (nr[3] ?? "").trim(),
+      roleHint: (nr[2] as string).trim(),
+    };
   }
   const m = INLINE_RE.exec(t);
   if (!m) return null;
@@ -831,7 +1006,7 @@ export function matchRoster(
   }
   // surname match (last token ≥ 4 chars, unique)
   const lastTok = toks[toks.length - 1] ?? "";
-  if (lastTok.length >= 4) {
+  if (toks.length === 1 && lastTok.length >= 4) {
     const hits = roster.filter((p) => rosterToks(p).includes(lastTok));
     if (hits.length === 1) return hits[0] as Participant;
   }
@@ -870,11 +1045,23 @@ export function parseTranscript(
     }
     return h;
   });
+  const roleHints = new Map<string, string>();
+  for (const h of inlineHits)
+    if (h?.roleHint) roleHints.set(nameKey(h.label), h.roleHint);
   const lineHits: Array<string | null> = lines.map((l, i) => {
     if (consumed.has(i)) return null;
     const t = l.text.trim();
     if (!t) return null;
     if (MODERATOR_RE.test(t)) return t;
+    const nd = NAME_DASH_ROLE_RE.exec(t);
+    if (
+      nd &&
+      !/\d/.test(nd[1] as string) &&
+      !NOT_A_NAME_TAIL_RE.test(nd[1] as string)
+    ) {
+      roleHints.set(nameKey(nd[1] as string), nd[2] as string);
+      return (nd[1] as string).trim();
+    }
     if (!isTitleCaseName(t)) return null;
     if (rosterKeys.has(nameKey(t))) return t;
     if (matchRoster(t, roster)) return t;
@@ -974,8 +1161,9 @@ export function parseTranscript(
   let callDate: string | null = null;
   // prefer: the running header's date (vendor layouts stamp the call date on every page)
   //   > a standalone date line on the cover > "call held on <date>" > any date
+  // "October 26, 2026" | "26th October 2026" | "30 October 2026 20:30 IST" (a trailing time is allowed)
   const STANDALONE_DATE_RE =
-    /^(?:[A-Z][a-z]+\.? \d{1,2},? \d{4}|\d{1,2}(?:st|nd|rd|th)? [A-Z][a-z]+,? \d{4})$/;
+    /^(?:[A-Z][a-z]+\.? \d{1,2},? \d{4}|\d{1,2}(?:st|nd|rd|th)? [A-Z][a-z]+,? \d{4})(?:\s+\d{1,2}:\d{2}(?:\s*(?:IST|hrs|Hrs|HRS))?)?$/;
   for (const h of headers) {
     if (STANDALONE_DATE_RE.test(h.trim())) {
       const d = parseLongDate(h);
@@ -1132,14 +1320,19 @@ export function parseTranscript(
   for (const t of turns) {
     const label = t.speaker ?? "";
     let role: SpeakerRole = "unknown";
-    const rosterHit = matchRoster(label, roster);
+    const hint = roleHints.get(nameKey(label));
+    // a label that came with its own role text ("Vaidehi Sharma – Moderator") is not fuzzy-matched
+    const rosterHit =
+      hint && !rosterKeys.has(nameKey(label))
+        ? null
+        : matchRoster(label, roster);
     if (MODERATOR_RE.test(label)) role = "moderator";
     else if (/^Questioner/.test(label)) role = "analyst";
     else if (/^Company Speaker/.test(label)) role = "management";
     else if (rosterHit) role = rosterHit.role;
     else if (/^(Management|Company Management|Management Team)$/i.test(label))
       role = "management";
-    else role = guessRole(label, qaStarted);
+    else role = roleFromHint(hint) ?? guessRole(label, qaStarted);
 
     const isHost =
       role === "analyst" &&

@@ -58,6 +58,12 @@ export const documentMeta = sqliteTable("document_meta", {
   bytes: integer("bytes"),
   /** transcript: parsed turn count; AR: mapped section count — JSON { turns, mgmtTurns, sections, callDate, ... } */
   structureJson: text("structure_json").notNull().default("{}"),
+  /**
+   * documents.id of the canonical copy when this row is a cross-source duplicate
+   * (same sha256, or same isin+kind+period with near-identical text); the
+   * duplicate's documents.text_status is 'duplicate'
+   */
+  duplicateOf: text("duplicate_of"),
   updatedAt: integer("updated_at").notNull().default(nowMs),
 });
 

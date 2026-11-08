@@ -19,6 +19,7 @@ import {
   type ModelStatementT,
   numberFriendly,
   parseHorizon,
+  reconcileMetricUnit,
 } from "@/engine/extract/guidance";
 import {
   makePeriod,
@@ -252,21 +253,52 @@ describe("band mapping and cue words", () => {
     });
     expect(adjectiveBand("we sold 12 units")).toBeNull();
   });
-  it("widens 'about X' and opens 'at least' / 'up to'", () => {
+  it("keeps the quoted figure for 'about X' (approx flag) and opens 'at least' / 'up to'", () => {
     expect(
       applyCueWords("volume growth of about 10% for FY27", 10, 10, "%"),
-    ).toEqual({ low: 9, high: 11 });
+    ).toEqual({ low: 10, high: 10, approx: true });
     expect(applyCueWords("at least 15% growth", 15, 15, "%")).toEqual({
       low: 15,
       high: null,
+      approx: false,
     });
     expect(applyCueWords("capex of up to 800 crores", 800, 800, "INR")).toEqual(
-      { low: null, high: 800 },
+      { low: null, high: 800, approx: false },
     );
     expect(applyCueWords("between 14% to 14.5%", 14, 14.5, "%")).toEqual({
       low: 14,
       high: 14.5,
+      approx: false,
     });
+  });
+  it("enforces metric/unit compatibility (quality list b)", () => {
+    expect(reconcileMetricUnit("revenue_growth", "INR", true)).toMatchObject({
+      metric: "revenue",
+      typeIssue: false,
+    });
+    expect(reconcileMetricUnit("revenue", "%", true)).toMatchObject({
+      metric: "revenue_growth",
+      typeIssue: false,
+    });
+    expect(reconcileMetricUnit("ebitda_margin", "INR", true)).toMatchObject({
+      metric: "other",
+      typeIssue: true,
+    });
+    expect(reconcileMetricUnit("loan_growth", "INR", true)).toMatchObject({
+      metric: "other",
+      typeIssue: true,
+    });
+    expect(reconcileMetricUnit("capacity", "%", true)).toMatchObject({
+      metric: "capacity",
+      typeIssue: false,
+    });
+    expect(reconcileMetricUnit("tax_rate", "%", true)).toMatchObject({
+      metric: "tax_rate",
+      typeIssue: false,
+    });
+    expect(
+      reconcileMetricUnit("revenue_growth", "qualitative", false),
+    ).toMatchObject({ metric: "revenue_growth", typeIssue: false });
   });
 });
 
@@ -464,8 +496,9 @@ describe("extractGuidanceDetailed (mocked model)", () => {
     });
     expect(r.statements[0]).toMatchObject({
       metric: "volume_growth",
-      low: 9,
-      high: 11,
+      low: 10,
+      high: 10,
+      approx: true,
       unit: "%",
       horizon: "FY27",
       page: t.page,

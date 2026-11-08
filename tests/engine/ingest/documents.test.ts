@@ -202,3 +202,80 @@ describe("union + de-duplication", () => {
     );
   });
 });
+
+describe("duplicates and cover letters (Bugs 2 & 3)", () => {
+  it("detects near-identical documents and cover-letter-only / intimation PDFs", async () => {
+    const {
+      isCoverLetterOnly,
+      isNearIdentical,
+      isNotATranscript,
+      pdfUrlsInText,
+      screenerAllowed,
+    } = await import("@/engine/ingest/documents");
+    expect(
+      isNearIdentical(
+        { pages: 29, chars: 95_990 },
+        { pages: 29, chars: 96_500 },
+      ),
+    ).toBe(true);
+    expect(
+      isNearIdentical(
+        { pages: 29, chars: 95_990 },
+        { pages: 29, chars: 80_000 },
+      ),
+    ).toBe(false);
+    expect(
+      isNearIdentical({ pages: 29, chars: null }, { pages: 29, chars: 96_500 }),
+    ).toBe(true); // fixture row without text
+    expect(
+      isNearIdentical({ pages: 28, chars: null }, { pages: 29, chars: 96_500 }),
+    ).toBe(false);
+    expect(isCoverLetterOnly(1, 1036)).toBe(true);
+    expect(isCoverLetterOnly(3, 2400)).toBe(true);
+    expect(isCoverLetterOnly(12, 23_775)).toBe(false);
+    const noMgmt = { turns: [{ role: "moderator" }, { role: "analyst" }] };
+    expect(
+      isNotATranscript(
+        noMgmt,
+        "The audio recording of the call is available on the website",
+        { pages: 2, chars: 900 },
+      ),
+    ).toBe(true);
+    expect(
+      isNotATranscript(noMgmt, "Transcript of Q1 earnings webinar …", {
+        pages: 17,
+        chars: 67_000,
+      }),
+    ).toBe(false); // parser failure, not an intimation
+    expect(
+      isNotATranscript({ turns: [{ role: "management" }] }, "audio recording", {
+        pages: 2,
+        chars: 900,
+      }),
+    ).toBe(false);
+    expect(
+      pdfUrlsInText(
+        "see https://www.indusind.bank.in/x/Transcript_Q2FY27.pdf. and https://site/landing.html",
+      ),
+    ).toEqual(["https://www.indusind.bank.in/x/Transcript_Q2FY27.pdf"]);
+    const prev = process.env.FINN_ALLOW_SCREENER;
+    process.env.FINN_ALLOW_SCREENER = "true";
+    expect(screenerAllowed()).toBe(true);
+    process.env.FINN_ALLOW_SCREENER = "";
+    expect(screenerAllowed()).toBe(false);
+    if (prev === undefined) delete process.env.FINN_ALLOW_SCREENER;
+    else process.env.FINN_ALLOW_SCREENER = prev;
+  });
+  it("recognises the IndusInd cover letter as cover-only", () => {
+    const raw = JSON.parse(
+      readFileSync(join(FIX, "indusindbk-q2fy27-cover.pages.json"), "utf8"),
+    ) as { pages: Array<{ page: number; text: string }> };
+    const chars = raw.pages.reduce(
+      (n, p) => n + p.text.replace(/\s+/g, "").length,
+      0,
+    );
+    expect(raw.pages).toHaveLength(1);
+    expect(chars).toBeLessThan(2500);
+    expect(raw.pages[0]?.text).toMatch(/made available on the\s+website/);
+  });
+});

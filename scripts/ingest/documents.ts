@@ -2,15 +2,25 @@
  * ingest:documents — discover + download + extract + structure company documents.
  *
  *   pnpm ingest:documents --symbols SUPREMEIND,INFY [--kinds transcript,annual_report]
- *                         [--quarters 6] [--ar 2] [--force] [--discover-only] [--no-screener] [--json]
+ *                         [--quarters 6] [--ar 2] [--force] [--discover-only] [--screener] [--json]
+ *   pnpm ingest:documents --relabel [--symbols …] [--dry-run]   recompute transcript periods from (publish date, text)
+ *   pnpm ingest:documents --dedupe  [--symbols …] [--dry-run]   mark cross-source duplicates, migrate their guidance
+ *   pnpm ingest:documents --reclassify [--symbols …] [--dry-run] cover-letter-only / not-a-transcript detection + recovery
  *
  * Same code path as the API job (engine/ingest/documents). Owner: Builder C.
+ * screener.in is consulted only with --screener or FINN_ALLOW_SCREENER=true.
  */
 import { parseArgs } from "node:util";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { companies } from "@/db/schema";
-import { discoverDocuments, ingestDocuments } from "@/engine/ingest/documents";
+import {
+  dedupeStoredDocuments,
+  discoverDocuments,
+  ingestDocuments,
+  reclassifyTranscripts,
+  relabelTranscriptPeriods,
+} from "@/engine/ingest/documents";
 import type { DocumentKind } from "@/engine/types";
 import { logger } from "@/lib/logger";
 
@@ -29,6 +39,11 @@ async function main(): Promise<void> {
       force: { type: "boolean", default: false },
       "discover-only": { type: "boolean", default: false },
       "no-screener": { type: "boolean", default: false },
+      screener: { type: "boolean", default: false },
+      relabel: { type: "boolean", default: false },
+      dedupe: { type: "boolean", default: false },
+      reclassify: { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
     },
     strict: true,
@@ -38,14 +53,53 @@ async function main(): Promise<void> {
     .split(",")
     .map((s) => s.trim().toUpperCase())
     .filter(Boolean);
-  const rows = values.all
-    ? await db.select().from(companies)
-    : symbolList.length
-      ? await db
-          .select()
-          .from(companies)
-          .where(inArray(companies.nseSymbol, symbolList))
-      : [];
+  const maintenance = values.relabel || values.dedupe || values.reclassify;
+  const rows =
+    values.all || (maintenance && !symbolList.length)
+      ? await db.select().from(companies)
+      : symbolList.length
+        ? await db
+            .select()
+            .from(companies)
+            .where(inArray(companies.nseSymbol, symbolList))
+        : [];
+
+  if (maintenance) {
+    const isins = symbolList.length ? rows.map((r) => r.isin) : undefined;
+    const write = !values["dry-run"];
+    if (values.relabel) {
+      const changes = await relabelTranscriptPeriods({ isins, write });
+      console.log(
+        `\n== relabel (${write ? "applied" : "dry run"}): ${changes.length} change(s)`,
+      );
+      for (const c of changes)
+        console.log(
+          `  ${(c.symbol ?? c.isin).padEnd(11)} ${c.docId} ${String(c.from).padEnd(7)} → ${String(c.to).padEnd(7)} ${c.reason}`,
+        );
+    }
+    if (values.reclassify) {
+      const changes = await reclassifyTranscripts({ isins, write });
+      console.log(
+        `\n== reclassify (${write ? "applied" : "dry run"}): ${changes.length} change(s)`,
+      );
+      for (const c of changes)
+        console.log(
+          `  ${(c.symbol ?? c.isin).padEnd(11)} ${(c.period ?? "?").padEnd(7)} ${c.docId} ${c.from} → ${c.to} (${c.note})${c.recoveredDocId ? ` recovered→${c.recoveredDocId}` : ""}`,
+        );
+    }
+    if (values.dedupe) {
+      const changes = await dedupeStoredDocuments({ isins, write });
+      console.log(
+        `\n== dedupe (${write ? "applied" : "dry run"}): ${changes.length} duplicate(s)`,
+      );
+      for (const c of changes)
+        console.log(
+          `  ${(c.symbol ?? c.isin).padEnd(11)} ${(c.period ?? "?").padEnd(7)} ${c.duplicateId} → ${c.canonicalId} (${c.reason}) guidance moved=${c.guidanceMoved} deleted=${c.guidanceDeleted}`,
+        );
+    }
+    return;
+  }
+
   if (!rows.length) {
     console.error(
       "usage: pnpm ingest:documents --symbols SUPREMEIND,INFY | --all   (companies must be seeded: pnpm db:seed)",
@@ -61,6 +115,11 @@ async function main(): Promise<void> {
   const kinds = values.kinds.split(",").map((k) => k.trim()) as DocumentKind[];
   const quarters = Number(values.quarters);
   const annualReports = Number(values.ar);
+  const useScreener = values["no-screener"]
+    ? false
+    : values.screener
+      ? true
+      : undefined;
   const report: unknown[] = [];
 
   for (const c of rows) {
@@ -69,7 +128,7 @@ async function main(): Promise<void> {
       const disc = await discoverDocuments(c.nseSymbol, c.isin, {
         quarters,
         annualReports,
-        useScreener: !values["no-screener"],
+        useScreener,
       });
       report.push(disc);
       if (!values.json) {
@@ -89,7 +148,7 @@ async function main(): Promise<void> {
       quarters,
       annualReports,
       force: values.force,
-      useScreener: !values["no-screener"],
+      useScreener,
       onProgress: (msg, data) =>
         log.info({ symbol: c.nseSymbol, ...data }, msg),
     });
@@ -102,14 +161,12 @@ async function main(): Promise<void> {
       );
       for (const r of res.documents)
         console.log(
-          `  ${r.status.padEnd(8)} ${r.kind.padEnd(13)} ${(r.period ?? "?").padEnd(7)} ${r.source.padEnd(8)} pages=${String(r.pages ?? "-").padStart(3)} chars=${String(r.chars ?? "-").padStart(7)} q=${(r.textQuality ?? "-").padEnd(7)} turns=${String(r.turns ?? "-").padStart(3)} mgmt=${String(r.managementTurns ?? "-").padStart(3)} ${(r.elapsedMs / 1000).toFixed(1)}s ${r.id ?? ""}${r.error ? ` ! ${r.error}` : ""}`,
+          `  ${r.status.padEnd(14)} ${r.kind.padEnd(13)} ${(r.period ?? "?").padEnd(7)} ${r.source.padEnd(8)} pages=${String(r.pages ?? "-").padStart(3)} chars=${String(r.chars ?? "-").padStart(7)} q=${(r.textQuality ?? "-").padEnd(7)} turns=${String(r.turns ?? "-").padStart(3)} mgmt=${String(r.managementTurns ?? "-").padStart(3)} ${(r.elapsedMs / 1000).toFixed(1)}s ${r.id ?? ""}${r.duplicateOf ? ` dup-of ${r.duplicateOf}` : ""}${r.recoveredDocId ? ` recovered→${r.recoveredDocId}` : ""}${r.periodNote ? ` ⚠ ${r.periodNote}` : ""}${r.error ? ` ! ${r.error}` : ""}`,
         );
       for (const e of res.errors) console.log(`  ! ${e}`);
     }
   }
   if (values.json) console.log(JSON.stringify(report, null, 2));
-  // touch `eq` so the import stays used when --all is the only path exercised
-  void eq;
 }
 
 main().catch((e) => {

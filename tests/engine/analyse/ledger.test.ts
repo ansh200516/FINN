@@ -449,7 +449,7 @@ describe("adjudicateAll", () => {
     expect(byId(rows, "om").verdict).toBe("unverifiable");
     expect(String(byId(rows, "om").evidence.rule)).toMatch(/ambiguous/);
   });
-  it("judges direction-only promises against the prior year", () => {
+  it("shows direction-only and adjectival promises as quotes with the delivered figure, never a verdict", () => {
     const rows = adjudicateAll(
       [
         input({
@@ -464,27 +464,106 @@ describe("adjudicateAll", () => {
           quote: "margins will improve in FY26",
         }),
         input({
-          id: "flat",
-          metric: "ebitda_margin",
-          direction: "flat",
-          low: null,
-          high: null,
-          unit: "%",
+          id: "teens",
+          metric: "revenue_growth",
+          low: 13,
+          high: 19,
           isExplicit: false,
-          comparison: "absolute",
-          quote: "margins will be maintained in FY26",
+          quote: "we expect teens revenue growth in FY26",
         }),
       ],
       QUARTERS,
       TRANSCRIPTS,
       NOW,
     );
-    // FY25 EBITDA margin 13.70% → FY26 13.84%: flat, not an improvement
-    expect(byId(rows, "up").verdict).toBe("missed");
-    expect(byId(rows, "flat").verdict).toBe("kept");
+    expect(byId(rows, "up")).toMatchObject({
+      verdict: "unverifiable",
+      status: "settled",
+    });
+    expect(String(byId(rows, "up").evidence.note)).toMatch(
+      /direction-only.*not adjudicated.*delivered 13\.8%/,
+    );
     expect(
       (byId(rows, "up").evidence.priorYear as { value: number }).value,
     ).toBeCloseTo(13.7, 1);
+    expect(byId(rows, "teens")).toMatchObject({ verdict: "unverifiable" });
+    expect(String(byId(rows, "teens").evidence.note)).toMatch(
+      /adjectival band 13–19%.*delivered 7\.4%/,
+    );
+    expect(byId(rows, "teens").delivered?.value).toBeCloseTo(7.39, 1);
+  });
+  it("flags ambiguous types and unclear horizons as unverifiable with a reason", () => {
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "typed",
+          metric: "other",
+          typeIssue: true,
+          typeNote: "metric ambiguous: ebitda_margin with unit INR",
+          low: 100 * CR,
+          high: 100 * CR,
+          unit: "INR",
+        }),
+        input({
+          id: "hz",
+          metric: "revenue_growth",
+          horizon: "when the cycle turns",
+          horizonEnd: null,
+        }),
+        input({
+          id: "mt",
+          metric: "revenue_growth",
+          horizon: "medium_term",
+          horizonEnd: null,
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rows, "typed")).toMatchObject({
+      verdict: "unverifiable",
+      status: "settled",
+    });
+    expect(String(byId(rows, "typed").evidence.note)).toMatch(
+      /metric ambiguous/,
+    );
+    expect(byId(rows, "hz")).toMatchObject({ verdict: "unverifiable" });
+    expect(String(byId(rows, "hz").evidence.note)).toMatch(/horizon unclear/);
+    expect(byId(rows, "mt")).toMatchObject({ verdict: null, status: "open" });
+  });
+  it("widens the tolerance for 'about X' instead of storing derived bounds", () => {
+    // FY26 revenue growth 7.39 %: "about 8.5%" (±1pp +1pp approx) → kept; exact 8.5 (±1pp) → missed
+    expect(
+      byId(
+        adjudicateAll(
+          [
+            input({
+              id: "a",
+              metric: "revenue_growth",
+              low: 8.5,
+              high: 8.5,
+              approx: true,
+            }),
+          ],
+          QUARTERS,
+          TRANSCRIPTS,
+          NOW,
+        ),
+        "a",
+      ).verdict,
+    ).toBe("kept");
+    expect(
+      byId(
+        adjudicateAll(
+          [input({ id: "b", metric: "revenue_growth", low: 8.5, high: 8.5 })],
+          QUARTERS,
+          TRANSCRIPTS,
+          NOW,
+        ),
+        "b",
+      ).verdict,
+    ).toBe("missed");
   });
   it("is idempotent and summarises in plain words", () => {
     const inputs = [
@@ -636,5 +715,49 @@ describe("margin label noise", () => {
         "om",
       ).verdict,
     ).toBe("kept");
+  });
+});
+
+describe("revision chains", () => {
+  it("does not take the speaker's 'raised' at face value when the later band is lower", () => {
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "a",
+          metric: "revenue_growth",
+          horizon: "FY27",
+          horizonEnd: "2027-03-31",
+          low: 20,
+          high: 25,
+          docId: "doc_q1fy27",
+          statedAt: Date.UTC(2026, 6, 28),
+          statedPeriod: "Q1FY27",
+        }),
+        input({
+          id: "b",
+          metric: "revenue_growth",
+          horizon: "FY27",
+          horizonEnd: "2027-03-31",
+          low: 13,
+          high: 19,
+          isExplicit: false,
+          revision: "raised",
+          docId: "doc_q2fy27",
+          statedAt: T_Q2FY27,
+          statedPeriod: "Q2FY27",
+          quote: "we expect teens revenue growth this year",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rows, "a")).toMatchObject({
+      status: "superseded",
+      verdict: null,
+    });
+    expect(String(byId(rows, "a").evidence.note)).toMatch(
+      /does not match the stated 'raised'/,
+    );
   });
 });

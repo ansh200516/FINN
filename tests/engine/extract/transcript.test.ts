@@ -221,3 +221,97 @@ describe("parseTranscript — KPIT Q2 FY27", () => {
     );
   });
 });
+
+describe("fiscal-year tokens and period reconciliation (Bug 1)", () => {
+  it("reads every FY spelling, including Reliance's 'Q2 FY2026 - 2027'", async () => {
+    const { fyFromToken, resolveTranscriptPeriod } = await import(
+      "@/engine/extract/transcript"
+    );
+    expect(fyFromToken("27")).toBe(2027);
+    expect(fyFromToken("2027")).toBe(2027);
+    expect(fyFromToken("2026-27")).toBe(2027);
+    expect(fyFromToken("2026 - 2027")).toBe(2027);
+    expect(fyFromToken("26-27")).toBe(2027);
+    for (const t of [
+      "Q2 FY27",
+      "Q2FY27",
+      "2Q FY27",
+      "Q2 FY2026-27",
+      "Q2 FY2026 - 2027",
+      "Q2 F.Y. 2026-27",
+    ])
+      expect(parsePeriodLabel(t)?.label, t).toBe("Q2FY27");
+    expect(parsePeriodLabel("FY 2026-27")?.label).toBe("FY27");
+    expect(parsePeriodLabel("H1 FY27")?.label).toBe("H1FY27");
+    expect(
+      inferPeriodFromText(
+        "RIL Q2 FY2026 - 2027 Media & Analyst Meet Transcript 30 October 2026",
+      ),
+    ).toBe("Q2FY27");
+    expect(
+      inferPeriodFromText("results for the quarter ended September 30, 2026"),
+    ).toBe("Q2FY27");
+    expect(inferPeriodFromText("H1 FY27 earnings call")).toBe("Q2FY27");
+    // date-derived fallback and the one-FY-off rule
+    expect(
+      resolveTranscriptPeriod(null, Date.UTC(2026, 10, 1, 12)),
+    ).toMatchObject({ period: "Q2FY27", source: "date" });
+    expect(
+      resolveTranscriptPeriod("Q2FY26", Date.UTC(2026, 10, 1, 12)),
+    ).toMatchObject({ period: "Q2FY27", source: "date" });
+    expect(
+      resolveTranscriptPeriod("Q2FY26", Date.UTC(2026, 10, 1, 12)).warning,
+    ).toMatch(/using the date/);
+    expect(
+      resolveTranscriptPeriod("Q2FY27", Date.UTC(2026, 10, 1, 12)),
+    ).toMatchObject({ period: "Q2FY27", source: "text", warning: null });
+    // a different quarter in the text is kept (late filing / non-results event)
+    expect(
+      resolveTranscriptPeriod("Q1FY27", Date.UTC(2026, 10, 1, 12)),
+    ).toMatchObject({ period: "Q1FY27", source: "text" });
+  });
+  it("labels the Reliance Q2 FY27 transcript correctly from its cover", () => {
+    const p = parseTranscript(fixture("reliance-q2fy27"));
+    expect(p.period).toBe("Q2FY27");
+    expect(p.callDate).toBe("2026-10-30");
+  });
+});
+
+describe("parseTranscript — 'Name – Role' lines (Bharti Airtel) and bullet layout (Ola Electric)", () => {
+  it("recognises the moderator and analysts from the role text and the roster without dashes", () => {
+    const p = parseTranscript(fixture("bhartiartl-q1fy27"));
+    expect(p.roster.map((r) => r.name)).toContain("Gopal Vittal");
+    expect(p.roster.find((r) => r.name === "Gopal Vittal")?.role).toBe(
+      "management",
+    );
+    expect(p.turns.find((t) => t.speaker === "Vaidehi Sharma")?.role).toBe(
+      "moderator",
+    );
+    expect(p.turns.find((t) => t.speaker === "Gopal Vittal")?.role).toBe(
+      "management",
+    );
+    expect(p.turns.find((t) => t.speaker === "Piyush Choudhary")?.role).toBe(
+      "analyst",
+    );
+    expect(p.stats.management).toBeGreaterThan(3);
+  });
+  it("strips bullets and parses 'Mr. Name - Role:' labels", () => {
+    const p = parseTranscript(fixture("olaelec-q4fy26"));
+    expect(p.roster.map((r) => r.name)).toEqual(
+      expect.arrayContaining(["Bhavish Aggarwal", "Deepak Rastogi"]),
+    );
+    expect(p.turns.find((t) => t.speaker === "Bhavish Aggarwal")?.role).toBe(
+      "management",
+    );
+    expect(p.turns.find((t) => t.speaker === "Arvind Sharma")?.role).toBe(
+      "analyst",
+    );
+    expect(p.turns.some((t) => t.speaker === "Moderator")).toBe(true);
+    expect(
+      p.turns.every(
+        (t) => !t.text.startsWith("− ") && !t.text.startsWith("- "),
+      ),
+    ).toBe(true);
+    expect(p.period).toBe("Q4FY26");
+  });
+});

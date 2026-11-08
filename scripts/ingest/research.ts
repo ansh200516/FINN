@@ -14,6 +14,7 @@ import { companies, guidance } from "@/db/schema";
 import { settleGuidance } from "@/engine/analyse/ledger";
 import {
   extractGuidanceDetailed,
+  extractGuidanceFromAnnualReport,
   persistGuidance,
 } from "@/engine/extract/guidance";
 import { mapSectionsForDocument } from "@/engine/extract/sections";
@@ -85,14 +86,7 @@ async function main(): Promise<void> {
         const doc = await loadDocumentText(d.id);
         if (!doc) continue; // rows without stored pages (fixtures) do not consume a slot
         processed++;
-        if (callsLeft <= 0) {
-          perDoc.push({
-            docId: d.id,
-            period: d.period,
-            skipped: "call budget exhausted",
-          });
-          continue;
-        }
+        // callsLeft only bounds UNCACHED model calls; cache hits are always free
         const existing = await db
           .select({ id: guidance.id })
           .from(guidance)
@@ -101,7 +95,7 @@ async function main(): Promise<void> {
         const r = await extractGuidanceDetailed(
           doc,
           { isin: c.isin, period: d.period },
-          { maxCalls: callsLeft },
+          { maxCalls: Math.max(0, callsLeft) },
         );
         callsLeft -= r.calls - r.cached;
         const structure =
@@ -145,6 +139,74 @@ async function main(): Promise<void> {
               `      · ${s.metric} ${s.low ?? "-"}..${s.high ?? "-"} ${s.unit} ${s.horizon ?? "?"} ${s.isExplicit ? "explicit" : "adjectival"} ${s.revision} p${s.page} ${s.speaker ?? "?"}: "${s.quote.slice(0, 110)}${s.quote.length > 110 ? "…" : ""}"`,
             );
       }
+      // annual-report fallback: no usable transcript at all (RAJESHEXPO, cover-letter-only filers)
+      if (processed === 0) {
+        const ars = (await listDocuments(c.isin, ["annual_report"])).filter(
+          (d) => d.textStatus === "ok",
+        );
+        const ar = ars[0];
+        const existingAr = ar
+          ? await db
+              .select({ id: guidance.id })
+              .from(guidance)
+              .where(eq(guidance.docId, ar.id))
+          : [];
+        if (ar && callsLeft > 0 && existingAr.length === 0) {
+          const doc = await loadDocumentText(ar.id);
+          const map = await mapSectionsForDocument(ar.id);
+          if (doc) {
+            const t0 = Date.now();
+            const r = await extractGuidanceFromAnnualReport(
+              doc,
+              { isin: c.isin, period: ar.period, sections: map?.sections },
+              { maxCalls: Math.min(3, callsLeft) },
+            );
+            callsLeft -= r.calls - r.cached;
+            const persisted = await persistGuidance(
+              c.isin,
+              ar.id,
+              r.statements,
+              {
+                period: ar.period,
+                callDate: null,
+                publishedAt: ar.meta?.publishedAt ?? null,
+                source: "annual_report",
+              },
+            );
+            const line = {
+              docId: ar.id,
+              period: ar.period,
+              source: "annual_report",
+              chunks: r.chunks,
+              calls: r.calls,
+              cached: r.cached,
+              tokensIn: r.tokensIn,
+              tokensOut: r.tokensOut,
+              ...r.stats,
+              inserted: persisted.inserted,
+              errors: r.errors,
+              ms: Date.now() - t0,
+            };
+            perDoc.push(line);
+            if (!values.json) {
+              console.log(
+                `  ${c.nseSymbol.padEnd(11)} AR ${(ar.period ?? "?").padEnd(5)} (no transcript) chunks=${line.chunks} calls=${line.calls}(cached ${line.cached}) tok=${line.tokensIn}/${line.tokensOut} cand=${line.candidates} quoteRej=${line.quoteRejected} numRej=${line.numberRejected} kept=${line.kept} adj=${line.adjectival} inserted=${line.inserted} ${(line.ms / 1000).toFixed(1)}s${line.errors.length ? ` ! ${line.errors.join("; ")}` : ""}`,
+              );
+              for (const st of r.statements)
+                console.log(
+                  `      · ${st.metric} ${st.low ?? "-"}..${st.high ?? "-"} ${st.unit} ${st.horizon ?? "?"} ${st.isExplicit ? "explicit" : "adjectival"} p${st.page}: "${st.quote.slice(0, 110)}${st.quote.length > 110 ? "…" : ""}"`,
+                );
+            }
+          }
+        } else if (ar && existingAr.length && !values.json)
+          console.log(
+            `  ${c.nseSymbol.padEnd(11)} AR ${ar.period} already extracted (${existingAr.length} rows)`,
+          );
+        else if (!ar && !values.json)
+          console.log(
+            `  ${c.nseSymbol.padEnd(11)} no transcript and no annual report stored`,
+          );
+      }
       entry.guidance = perDoc;
     }
     if (values.sections) {
@@ -176,7 +238,7 @@ async function main(): Promise<void> {
       };
       if (!values.json) {
         console.log(
-          `\n== ${c.nseSymbol} ledger — ${l.summary} (${l.rows.length} rows, ${Date.now() - t0} ms)`,
+          `\n== ${c.nseSymbol} ledger — ${l.summary} (${l.rows.length} rows, ${Date.now() - t0} ms)${l.sourceNote ? `\n   note: ${l.sourceNote}` : ""}${l.coverage?.pending ? `\n   transcript pending for ${l.coverage.pending.period}: results filed ${l.coverage.pending.resultsFiledAt ? new Date(l.coverage.pending.resultsFiledAt).toISOString().slice(0, 10) : "?"}, expected by ${l.coverage.pending.expectedBy ? new Date(l.coverage.pending.expectedBy).toISOString().slice(0, 10) : "?"}` : ""}${l.coverage?.coverOnlyPeriods.length ? `\n   cover-letter-only transcripts: ${l.coverage.coverOnlyPeriods.join(", ")}` : ""}`,
         );
         for (const r of l.rows) {
           const d = r.delivered;

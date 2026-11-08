@@ -18,6 +18,8 @@
  *     above PBT) unless only consolidated exists. `preferBasis` overrides when available.
  *   - Verification: every identity of the latest quarter must pass (0.5 % / ₹1 cr tolerance);
  *     `h1Check` = the filing's own YTD vs the sum of this FY's quarters we hold.
+ *     A failed half-year is not a pass (`resultsVerified` is false) even when
+ *     every quarter identity passed and the source is exchange XBRL.
  */
 import {
   fiscalQuarter,
@@ -160,6 +162,23 @@ export const SECONDARY_IDENTITIES: ReadonlySet<string> = new Set([
   "patgroup_eq_pat_minus_minority_plus_assoc",
   "pat_total_eq_pat_plus_assoc",
 ]);
+
+/**
+ * The card reads as verified only when the source is exchange XBRL and every
+ * gate that was checked passed. A failed half-year (`h1Check === false`) is
+ * not a pass. Legacy cards with no verification block follow `checksum`.
+ */
+export function resultsVerified(card: {
+  checksum: "exchange_xbrl" | "preliminary";
+  verification?: ResultsVerification;
+}): boolean {
+  if (card.checksum !== "exchange_xbrl") return false;
+  const v = card.verification;
+  if (!v) return true;
+  if (!v.identitiesPassed) return false;
+  if (v.h1Check === false) return false;
+  return true;
+}
 
 function identitiesOk(q: ResultsQuarter): {
   passed: boolean;
@@ -509,11 +528,25 @@ export function ytdCheck(
       result: true,
       note: `${label} check passed (sum of ${all.length} quarters = filing YTD)`,
     };
+  const gapLine =
+    failed.find(([k]) => k === "pat") ?? failed.find(([k]) => k === "pbt");
+  const gap = gapLine ? Math.abs(gapLine[1] - gapLine[2]) : null;
+  let because = "a prior quarter was restated or mis-parsed";
+  if (gap !== null) {
+    for (const q of all) {
+      const nci = q.checks.nci;
+      if (nci == null || nci === 0) continue;
+      if (withinTolerance(gap, Math.abs(nci))) {
+        because = `the gap equals minority interest of ${toCrore(Math.abs(nci))} cr in ${fiscalQuarter(q.periodEnd).label}`;
+        break;
+      }
+    }
+  }
   return {
     result: false,
     note: `${label} check failed on ${failed
       .map(([k, a, b]) => `${k} ${toCrore(a)} vs ${toCrore(b)} cr`)
-      .join("; ")} — a prior quarter was restated or mis-parsed`,
+      .join("; ")} — ${because}`,
   };
 }
 

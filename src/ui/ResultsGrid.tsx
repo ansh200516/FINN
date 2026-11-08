@@ -1,3 +1,4 @@
+import { resultsVerified } from "@/engine/analyse/results";
 import type { ResultsCard } from "@/engine/types";
 import { formatCrore, groupIndian, quarterLabel } from "@/lib/format";
 import { DeltaChip } from "./DeltaChip";
@@ -66,11 +67,33 @@ function fmtCr(v: number | null): string {
  * 4 rows × [value, QoQ, YoY] with tabular numerals and an optional
  * five-quarter sparkline; the unit "₹ cr" is said once in the header.
  */
+/**
+ * The one line a failed check already has a place for: the half-year or
+ * identity note. Null when the card is verified or merely preliminary.
+ */
+export function checkFailureLine(card: ResultsCard): string | null {
+  if (resultsVerified(card)) return null;
+  const notes = card.verification?.notes ?? [];
+  if (card.verification?.h1Check === false)
+    return (
+      notes.find((n) => /check failed/i.test(n)) ?? "half-year check failed"
+    );
+  if (card.verification?.identitiesPassed === false)
+    return (
+      notes.find((n) => /identity checks failed/i.test(n)) ??
+      "identity checks failed"
+    );
+  return null;
+}
+
 /** One-line receipt for the brief card: "Consolidated · ₹ cr · XBRL ✓ · bank format". */
 export function compactMetaLine(card: ResultsCard): string {
   const basisWord = card.basis === "standalone" ? "Standalone" : "Consolidated";
   const parts = [basisWord, "₹ cr"];
-  parts.push(card.checksum === "exchange_xbrl" ? "XBRL ✓" : "preliminary ◐");
+  const failed = checkFailureLine(card);
+  parts.push(
+    failed ?? (card.checksum === "exchange_xbrl" ? "XBRL ✓" : "preliminary ◐"),
+  );
   if (card.variant === "bank") parts.push("bank format");
   else if (card.variant === "nbfc") parts.push("NBFC format");
   const exc = card.exceptional?.currentCr ?? null;
@@ -112,7 +135,8 @@ export function ResultsGrid({
   const basis =
     card.basisLabel ??
     `${card.basis === "standalone" ? "Standalone" : "Consolidated"} · ₹ cr`;
-  const verified = card.checksum === "exchange_xbrl";
+  const verified = resultsVerified(card);
+  const failedCheck = checkFailureLine(card);
   const h1 = card.verification?.h1Check;
   const exceptionalCr = card.exceptional?.currentCr ?? null;
   const hasExceptional = exceptionalCr != null && exceptionalCr !== 0;
@@ -227,6 +251,11 @@ export function ResultsGrid({
             >
               <span aria-hidden="true">✓</span>
               <span>Exchange XBRL verified</span>
+            </span>
+          ) : failedCheck ? (
+            <span className="chip chip-warn" title={failedCheck}>
+              <span aria-hidden="true">!</span>
+              <span>{failedCheck}</span>
             </span>
           ) : (
             <span

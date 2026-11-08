@@ -683,7 +683,10 @@ describe("segment scope", () => {
       NOW,
     );
     expect(byId(rows, "foods").verdict).toBe("unverifiable");
-    expect(String(byId(rows, "foods").evidence.note)).toMatch(/segment-level/);
+    expect(byId(rows, "foods").evidence.note).toBe(
+      "segment, not the company total",
+    );
+    expect(byId(rows, "foods").delivered?.value).toBeNull();
     expect(byId(rows, "foods").evidence.scope).toBe("food");
   });
 });
@@ -787,5 +790,185 @@ describe("revision chains", () => {
       status: "settled",
     });
     expect(byId(rows, "prod").evidence.note).toBe("derived figure");
+  });
+});
+
+describe("same quantity", () => {
+  const fy26 = {
+    horizon: "FY26",
+    horizonEnd: "2026-03-31",
+    isExplicit: true,
+    comparison: "absolute" as const,
+  };
+
+  it("does not call a dollar EBITDA a beat against the rupee line", () => {
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "ved",
+          metric: "ebitda",
+          unit: "USD",
+          low: 6e9,
+          high: 6e9,
+          quote:
+            "delivering record EBITDA in FY26, surpassing $6 billion at Vedanta India consol level",
+          ...fy26,
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rows, "ved")).toMatchObject({
+      verdict: "unverifiable",
+      status: "settled",
+    });
+    expect(byId(rows, "ved").evidence.note).toBe("currency mismatch");
+    expect(byId(rows, "ved").delivered?.value).toBeNull();
+  });
+
+  it("does not call an AUM band a miss against revenue growth", () => {
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "baj",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 22,
+          high: 23,
+          quote:
+            "overall, we've taken a view that the top line growth or AUM growth will gravitate between 22% and 23%",
+          ...fy26,
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rows, "baj").verdict).toBe("unverifiable");
+    expect(byId(rows, "baj").evidence.note).toBe("metric mismatch");
+    expect(byId(rows, "baj").delivered?.value).toBeNull();
+  });
+
+  it("does not score a slice, a brand, or an unanchored rupee band against company revenue", () => {
+    // Company revenue on the scale of Dixon (~₹48,873 cr), so a ₹5,500–6,000 cr
+    // band is a different quantity. The small fixture's ₹11,218 cr would not be.
+    const big = QUARTERS.map((q) =>
+      q.periodEnd >= "2025-06-30" && q.periodEnd <= "2026-03-31"
+        ? { ...q, revenue: (48872.8 / 4) * CR }
+        : q,
+    );
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "dixon",
+          metric: "revenue",
+          unit: "INR",
+          low: 1500 * CR,
+          high: 1500 * CR,
+          quote:
+            "So this year, we feel the revenue should be in the range of INR1,500-odd crores.",
+          ...fy26,
+        }),
+        input({
+          id: "exports",
+          metric: "revenue",
+          unit: "INR",
+          low: 5500 * CR,
+          high: 6000 * CR,
+          quote:
+            "We feel we should be closing at almost INR5,500 crores, INR6,000 crores in the current fiscal.",
+          ...fy26,
+        }),
+        input({
+          id: "telecom",
+          metric: "revenue",
+          unit: "INR",
+          low: 5200 * CR,
+          high: 5200 * CR,
+          quote: "This year, we should have revenues close to INR5,200 crores.",
+          ...fy26,
+        }),
+        input({
+          id: "power",
+          metric: "revenue",
+          unit: "INR",
+          low: 265 * CR,
+          high: 275 * CR,
+          quote:
+            "Power-One is expected to deliver in the range of INR265 crores to INR275 crores this year.",
+          ...fy26,
+        }),
+        input({
+          id: "candere",
+          metric: "revenue",
+          unit: "INR",
+          low: 500 * CR,
+          high: 500 * CR,
+          quote:
+            "we will end Candere with PAT neutral and the revenue target for the year will be around INR500 crores.",
+          ...fy26,
+        }),
+        input({
+          id: "durable",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 15,
+          high: 15,
+          quote:
+            "in consumer durable, we expect to do about 15% kind of a growth",
+          ...fy26,
+        }),
+        input({
+          id: "txn",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 20,
+          high: 20,
+          quote:
+            "In transactional income, broadly, this year, we should see about 20% growth.",
+          ...fy26,
+        }),
+      ],
+      big,
+      TRANSCRIPTS,
+      NOW,
+    );
+    for (const id of [
+      "dixon",
+      "exports",
+      "telecom",
+      "power",
+      "candere",
+      "durable",
+      "txn",
+    ]) {
+      expect(byId(rows, id).verdict, id).toBe("unverifiable");
+      expect(byId(rows, id).evidence.note, id).toBe(
+        "segment, not the company total",
+      );
+      expect(byId(rows, id).delivered?.value, id).toBeNull();
+    }
+  });
+
+  it("still scores a company total that names itself, including a wide miss", () => {
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "co",
+          metric: "revenue",
+          unit: "INR",
+          low: 50_000 * CR,
+          high: 50_000 * CR,
+          quote: "we expect consolidated revenue of INR50,000 crores for FY26",
+          ...fy26,
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rows, "co").verdict).toBe("missed");
+    expect(byId(rows, "co").delivered?.value).toBe(FY26_REV * CR);
   });
 });

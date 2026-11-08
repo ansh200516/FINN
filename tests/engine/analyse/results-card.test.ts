@@ -1,15 +1,19 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   buildResultsCard,
   computeResultsCard,
   ebitdaOf,
   pctChange,
+  resultsVerified,
   SECONDARY_IDENTITIES,
   selectBasis,
   toCrore,
   ytdCheck,
 } from "@/engine/analyse/results";
 import type { ResultsBasis, ResultsQuarter } from "@/engine/types";
+import { ResultsGrid } from "@/ui/ResultsGrid";
 
 const CR = 1e7;
 
@@ -219,6 +223,7 @@ describe("buildResultsCard — corporate", () => {
   it("verifies identities and the H1 (Q1+Q2 vs YTD) check", () => {
     expect(card?.verification?.identitiesPassed).toBe(true);
     expect(card?.verification?.h1Check).toBe(true);
+    expect(card && resultsVerified(card)).toBe(true);
     expect(card?.verification?.source).toBe("xbrl");
     expect(
       card?.verification?.notes.some((n) => /H1 check passed/.test(n)),
@@ -263,6 +268,7 @@ describe("buildResultsCard — corporate", () => {
     };
     const c1 = buildResultsCard([broken, Q1FY27, Q2FY26]);
     expect(c1?.verification?.identitiesPassed).toBe(false);
+    expect(c1 && resultsVerified(c1)).toBe(false);
     expect(c1?.verification?.failedIdentities).toEqual([
       "patcont_eq_pbt_minus_tax",
     ]);
@@ -522,5 +528,187 @@ describe("buildResultsCard — bank and NBFC variants", () => {
     expect(c?.checksum).toBe("preliminary");
     expect(c?.verification?.source).toBe("pdf");
     expect(c?.basisLabel).toBe("Standalone · Audit status n/a · ₹ cr");
+  });
+});
+
+describe("HDFC consolidated half-year", () => {
+  /** Stored Q1/Q2 FY27 consolidated crores. Q1 PAT includes ₹1,137.98 cr of NCI. */
+  function hdfc(
+    periodEnd: string,
+    v: {
+      rev: number;
+      nii: number;
+      ppop: number;
+      pbt: number;
+      pat: number;
+      nci?: number;
+      ytd?: ResultsQuarter["checks"]["ytd"];
+    },
+    basis: ResultsBasis = "consolidated",
+  ): ResultsQuarter {
+    return {
+      isin: "INE040A01034",
+      periodEnd,
+      basis,
+      source: "xbrl",
+      audited: false,
+      revenue: v.rev * CR,
+      otherIncome: null,
+      financeCosts: null,
+      dna: null,
+      pbeit: v.pbt * CR,
+      exceptional: 0,
+      pbt: v.pbt * CR,
+      tax: (v.pbt - v.pat) * CR,
+      pat: v.pat * CR,
+      patCont: v.pat * CR,
+      eps: null,
+      checks: {
+        warnings: [],
+        identities: {
+          income_eq_interest_plus_oi: true,
+          expenditure_eq_intexp_plus_opex: true,
+          ppop_eq_income_minus_expenditure: true,
+          pbt_eq_ppop_minus_prov_plus_exc: true,
+          pat_eq_pbt_minus_tax: true,
+        },
+        variant: "bank",
+        nii: v.nii * CR,
+        ppop: v.ppop * CR,
+        nci: v.nci == null ? undefined : v.nci * CR,
+        patOwners: v.nci == null ? v.pat * CR : (v.pat - v.nci) * CR,
+        ...(v.ytd ? { ytd: v.ytd } : {}),
+      },
+      sourceUrl: "https://x/hdfc.xml",
+      filedAt: 1_700_000_000_000,
+    };
+  }
+
+  const q1 = hdfc("2026-06-30", {
+    rev: 90575.33,
+    nii: 42949.7,
+    ppop: 30996,
+    pbt: 27193.16,
+    pat: 20382.69,
+    nci: 1137.98,
+  });
+  const q2 = hdfc("2026-09-30", {
+    rev: 95131.63,
+    nii: 44464.2,
+    ppop: 32871.54,
+    pbt: 27825.48,
+    pat: 20700.03,
+    nci: 0,
+    ytd: {
+      start: "2026-04-01",
+      end: "2026-09-30",
+      days: 183,
+      revenue: 185706.96 * CR,
+      income: null,
+      pbt: 53880.66 * CR,
+      pat: 39944.74 * CR,
+      nii: 87413.9 * CR,
+      ppop: null,
+    },
+  });
+  const standQ1 = hdfc(
+    "2026-06-30",
+    {
+      rev: 79362.78,
+      nii: 33533.95,
+      ppop: 28168.06,
+      pbt: 25108.3,
+      pat: 19059.72,
+    },
+    "standalone",
+  );
+  const standQ2 = hdfc(
+    "2026-09-30",
+    {
+      rev: 83426.6,
+      nii: 34619.18,
+      ppop: 29483.42,
+      pbt: 25909.8,
+      pat: 19509.96,
+      ytd: {
+        start: "2026-04-01",
+        end: "2026-09-30",
+        days: 183,
+        revenue: 162789.38 * CR,
+        income: null,
+        pbt: 51018.1 * CR,
+        pat: 38569.68 * CR,
+        nii: 68153.13 * CR,
+        ppop: null,
+      },
+    },
+    "standalone",
+  );
+
+  it("keeps the consolidated print and does not call a failed half-year verified", () => {
+    // The page asks for consolidated. Standalone is a different row; selecting
+    // it is the bank default when both bases are offered, and is not this fix.
+    expect(selectBasis([q2, q1, standQ2, standQ1], "bank")?.basis).toBe(
+      "standalone",
+    );
+    const card = computeResultsCard([q2, q1, standQ2, standQ1], "consolidated");
+    expect(card?.basis).toBe("consolidated");
+    expect(card?.headline?.map((r) => [r.metric, r.currentCr])).toEqual([
+      ["nii", 44464.2],
+      ["ppop", 32871.54],
+      ["pbt", 27825.48],
+      ["pat", 20700.03],
+    ]);
+    expect(card?.verification?.identitiesPassed).toBe(true);
+    expect(card?.verification?.h1Check).toBe(false);
+    expect(card && resultsVerified(card)).toBe(false);
+    expect(card?.verification?.notes.join(" ")).toMatch(
+      /H1 check failed on pbt 55018\.64 vs 53880\.66 cr; pat 41082\.72 vs 39944\.74 cr/,
+    );
+    expect(card?.verification?.notes.join(" ")).toMatch(
+      /minority interest of 1137\.98 cr in Q1 FY27/,
+    );
+    const html = renderToStaticMarkup(
+      createElement(ResultsGrid, { card: card as NonNullable<typeof card> }),
+    );
+    expect(html).not.toContain("Exchange XBRL verified");
+    expect(html).toContain("H1 check failed");
+    expect(html).toContain("minority interest of 1137.98 cr in Q1 FY27");
+    expect(html).toContain("44,464");
+    expect(html).toContain("20,700");
+    expect(
+      ytdCheck(
+        standQ2,
+        new Map([
+          [standQ2.periodEnd, standQ2],
+          [standQ1.periodEnd, standQ1],
+        ]),
+        "bank",
+      ).result,
+    ).toBe(true);
+  });
+
+  it("keeps Reliance verified when the half-year matches to the rupee", () => {
+    const card = buildResultsCard([Q4FY26, Q2FY26, Q2FY27, Q1FY27, Q3FY26]);
+    expect(card?.headline?.find((r) => r.metric === "revenue")?.currentCr).toBe(
+      332861,
+    );
+    expect(card?.headline?.find((r) => r.metric === "ebitda")?.currentCr).toBe(
+      56616,
+    );
+    expect(card?.headline?.find((r) => r.metric === "pbt")?.currentCr).toBe(
+      38613,
+    );
+    expect(card?.headline?.find((r) => r.metric === "pat")?.currentCr).toBe(
+      29550,
+    );
+    expect(card?.verification?.h1Check).toBe(true);
+    expect(card && resultsVerified(card)).toBe(true);
+    const html = renderToStaticMarkup(
+      createElement(ResultsGrid, { card: card as NonNullable<typeof card> }),
+    );
+    expect(html).toContain("Exchange XBRL verified");
+    expect(html).toContain("Q1 + Q2 = H1");
+    expect(html).not.toContain("H1 check failed");
   });
 });

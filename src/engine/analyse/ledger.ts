@@ -13,7 +13,10 @@
  *     tolerances growth ±1pp, margin ±0.5pp, absolute ₹ ±3%, units ±5%
  *   - `not_addressed`: due, no actual derivable, and the next transcript is silent
  *   - `unverifiable`: the metric is not derivable from exchange P&L data
- *     (capex, volumes, order book, constant-currency growth, bank ratios…)
+ *     (capex, volumes, order book, constant-currency growth, bank ratios…),
+ *     or the quote is not the same quantity as the XBRL line (a non-INR
+ *     currency, a segment/product/subsidiary, AUM or another non-P&L noun).
+ *     Beat / Miss is written only when metric, unit, and scope match.
  *   - EBITDA = PBEIT + finance costs + D&A − other income (ex-other-income
  *     convention); EBIT = PBEIT + finance costs − other income; "operating margin"
  *     is settled only when the EBITDA and EBIT readings agree
@@ -148,6 +151,40 @@ export function metricFamily(metric: string): MetricFamily {
 const SCOPE_RE =
   /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?)\b/i;
 
+/**
+ * Slice nouns that must not be scored against the company line.
+ * Kept off `SCOPE_RE` so a later slice sentence does not break an existing
+ * revision chain (that would re-open a superseded row and score it).
+ */
+const SLICE_RE =
+  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere)\b/i;
+
+/** The speaker named the consolidated / company total, not a slice of it. */
+const COMPANY_TOTAL_RE =
+  /\b(company[- ]wide|consolidated|consol\b|at (the )?company level|for the company|topline|top[- ]line)\b/i;
+
+const FX_UNITS = new Set([
+  "USD",
+  "EUR",
+  "GBP",
+  "JPY",
+  "AED",
+  "SGD",
+  "CNY",
+  "AUD",
+  "CAD",
+  "HKD",
+]);
+
+/** Absolute rupee bands this far from the company line are a different quantity. */
+const SLICE_RATIO = 3;
+
+export const QUANTITY_NOTE = {
+  currency: "currency mismatch",
+  segment: "segment, not the company total",
+  metric: "metric mismatch",
+} as const;
+
 /** a sub-business / segment word in the quote; "company" when the statement is company-wide */
 export function scopeOf(quote: string): string {
   if (
@@ -158,6 +195,90 @@ export function scopeOf(quote: string): string {
     return "company";
   const m = SCOPE_RE.exec(quote);
   return m ? (m[1] as string).toLowerCase().replace(/s$/, "") : "company";
+}
+
+function promisedFx(unit: string | null, quote: string): boolean {
+  if (unit && FX_UNITS.has(unit.toUpperCase())) return true;
+  if (unit === "%" || unit === "bp" || unit === "INR") return false;
+  const fx =
+    /(?:\$|\bUSD\b|\bUS\$\b|\bdollars?\b|\bEUR\b|€|\beuros?\b|\bGBP\b|£)/i.test(
+      quote,
+    );
+  const inr =
+    /(?:₹|\bINR\b|\bRs\.?\b|\brupees?\b|\bcrores?\b|\blakhs?\b)/i.test(quote);
+  return fx && !inr;
+}
+
+function metricMismatch(quote: string, family: MetricFamily): boolean {
+  if (family === "other") return false;
+  if (/\b(AUMs?|assets under management)\b/i.test(quote)) return true;
+  if (
+    /\b(volumes?|order[- ]books?|order inflows?|disbursements?|market shares?)\s+growth\b/i.test(
+      quote,
+    )
+  )
+    return true;
+  if (
+    /\bgrowth\s+(?:in|of|for)\s+(?:our\s+|the\s+)?(volumes?|order[- ]books?|disbursements?|AUMs?)\b/i.test(
+      quote,
+    )
+  )
+    return true;
+  if (
+    /\b(NIM|NIMs|net interest margin|GNPA|NNPA|ROE|ROA|ROCE|credit cost|cost[- ]to[- ]income)\b/i.test(
+      quote,
+    )
+  )
+    return true;
+  return false;
+}
+
+/**
+ * Why this promise must not be scored against the delivered XBRL line.
+ * Null when metric, unit, and scope are the same quantity.
+ * An absolute rupee band with no company-total word and no slice word is
+ * scored only when it is the same order of magnitude as the company line;
+ * otherwise the scope is not in the quote and the row is not Beat/Miss.
+ */
+export function quantityIssue(args: {
+  quote: string;
+  family: MetricFamily;
+  unit: string | null;
+  deliveredUnit: string | null;
+  deliveredValue: number | null;
+  low: number | null;
+  high: number | null;
+}): string | null {
+  if (args.family === "other") return null;
+  if (promisedFx(args.unit, args.quote)) {
+    const delivered = args.deliveredUnit?.toUpperCase() ?? null;
+    const unit = args.unit?.toUpperCase() ?? null;
+    if (!(unit && FX_UNITS.has(unit) && delivered === unit))
+      return QUANTITY_NOTE.currency;
+  }
+  if (metricMismatch(args.quote, args.family)) return QUANTITY_NOTE.metric;
+  if (SLICE_RE.test(args.quote)) return QUANTITY_NOTE.segment;
+  const absolute =
+    (args.family === "revenue" ||
+      args.family === "ebitda" ||
+      args.family === "pat") &&
+    args.unit !== "%" &&
+    args.unit !== "bp" &&
+    (args.deliveredUnit == null || args.deliveredUnit === "INR") &&
+    (args.unit == null || args.unit === "INR" || args.unit.startsWith("INR"));
+  if (!absolute || COMPANY_TOTAL_RE.test(args.quote)) return null;
+  const band =
+    args.low !== null && args.high !== null
+      ? (args.low + args.high) / 2
+      : (args.low ?? args.high);
+  const actual = args.deliveredValue;
+  if (band === null || actual === null || band === 0 || actual === 0)
+    return null;
+  const ratio =
+    Math.max(Math.abs(band), Math.abs(actual)) /
+    Math.min(Math.abs(band), Math.abs(actual));
+  if (ratio > SLICE_RATIO) return QUANTITY_NOTE.segment;
+  return null;
 }
 
 /** grouping key for revision chains: margins of any flavour chain together; segment-level statements chain separately */
@@ -553,6 +674,18 @@ export function adjudicate(
 ): Verdict {
   if (delivered.value === null) return "unverifiable";
   const family = metricFamily(row.metric);
+  if (
+    quantityIssue({
+      quote: row.quote,
+      family,
+      unit: row.unit,
+      deliveredUnit: delivered.unit,
+      deliveredValue: delivered.value,
+      low: row.low,
+      high: row.high,
+    })
+  )
+    return "unverifiable";
   if (row.low !== null || row.high !== null)
     return compareBand(
       delivered.value,
@@ -804,13 +937,41 @@ export function adjudicateAll(
               source: null,
               settledBy: null,
               basis: null,
-              note: `no comparable XBRL line — segment-level target ('${scope}'); exchange results are consolidated`,
+              note: QUANTITY_NOTE.segment,
             } as Delivered)
           : computeDelivered(family, s.metric, period, s.comparison, quarters);
       row.evidence.scope = scope;
       row.evidence.resultsSourceUrl = delivered.source;
       row.evidence.basis = delivered.basis;
       if (delivered.alt) row.evidence.alt = delivered.alt;
+
+      const issue =
+        s.comparison === "cc" || family === "other"
+          ? null
+          : quantityIssue({
+              quote: s.quote,
+              family,
+              unit: s.unit,
+              deliveredUnit: delivered.unit,
+              deliveredValue: delivered.value,
+              low: s.low,
+              high: s.high,
+            });
+      if (issue) {
+        // Due or not: never Beat/Miss a different quantity. Open rows stay
+        // open; a due row is unverifiable with the reason on the evidence note.
+        if (!due) {
+          row.evidence.note = `due after ${s.horizonEnd}`;
+          continue;
+        }
+        row.status = "settled";
+        row.verdict = "unverifiable";
+        row.evidence.note = issue;
+        row.evidence.rule = null;
+        row.delivered = { value: null, unit: null, source: null };
+        row.settledByQuarter = null;
+        continue;
+      }
 
       if (!due) {
         // interim: show progress to date when the metric is computable
@@ -854,7 +1015,10 @@ export function adjudicateAll(
         ) {
           row.status = "settled";
           row.verdict = "unverifiable";
-          row.evidence.note = delivered.note;
+          row.evidence.note =
+            scope !== "company" && family !== "other" && s.comparison !== "cc"
+              ? QUANTITY_NOTE.segment
+              : delivered.note;
         } else if (later && !spokenLater) {
           row.status = "settled";
           row.verdict = "not_addressed";

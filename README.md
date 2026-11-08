@@ -34,16 +34,19 @@ Checks: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` (or `pnpm check
 
 ## Deploy
 
-Production: https://finn-gray.vercel.app (Vercel region `bom1`).
+Production: [https://finn-gray.vercel.app](https://finn-gray.vercel.app) (Vercel `bom1`).
 
-Env vars live on the Vercel project, not in git:
+The deployed database is Supabase Postgres on the existing project **ENAM** (Sydney, `ap-southeast-2`). `DATABASE_URL` is a `postgresql://` transaction-pooler URL. `file:` stays local libSQL, and `libsql://` still needs `DATABASE_AUTH_TOKEN`. Do not point the app at a Supabase HTTPS URL.
 
-- `DATABASE_URL` — Postgres URL for the Supabase project **ENAM** (`postgres://` or `postgresql://`). `file:` stays local libSQL. `libsql://` still needs `DATABASE_AUTH_TOKEN`.
-- `GEMINI_API_KEY` — live extraction. If it is unset, LLM features read `llm_cache` only. Leave `FINN_LLM_CACHE_ONLY` unset when the key is set.
-- `JOBS_SECRET` — bearer for `/api/jobs/*`. `CRON_SECRET` is the same value so Vercel cron is accepted.
+Env is set on the Vercel project, not in git:
+
+- `DATABASE_URL`
+- `GEMINI_API_KEY` — live extraction. Leave `FINN_LLM_CACHE_ONLY` unset when this is set.
+- `JOBS_SECRET` — bearer for `/api/jobs/*`
+- `CRON_SECRET` — the same value, so the weekday cron is accepted
 - `NEXT_PUBLIC_APP_URL` — `https://finn-gray.vercel.app`
 
-Apply the Postgres schema with `pnpm db:push:pg`, then load a sqlite snapshot with `pnpm db:load:pg` (`SQLITE_PATH` defaults to `data/finn.db`). Both read `DATABASE_URL` from the environment.
+Apply the schema with `pnpm db:push:pg`, then load a sqlite snapshot with `pnpm db:load:pg` (`SQLITE_PATH` defaults to `data/finn.db`). Epoch-millisecond columns are `bigint`, boolean columns are real booleans, and JSON text is read through `finn_json_text` / `finn_json_array`.
 
 ## Layout
 

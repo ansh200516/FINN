@@ -1068,6 +1068,243 @@ describe("same quantity", () => {
     expect(byId(company, "co").delivered?.value).not.toBeNull();
   });
 
+  it("does not score Nuvama's 'here' once the remark has named asset services", () => {
+    const quote =
+      "But on a full year basis, we are confident that revenue growth will be more than 20-25% here.";
+    const before =
+      "With that, let me move to our next segment, asset services. Momentum was extremely strong this quarter. There was a significant business growth of around 20% quarter-on-quarter. Average client assets have come back to Q1 level of last year when we had lost a very large client and retention has continued to be strong. Just one word of caution, we have seen extraordinary level of growth here, I think over the coming few quarters, we are not expecting a quarter-on-quarter growth like this. There will be some amount of moderation as new client acquisition has happened and a lot of collateral is right now sitting in cash, which will get converted between cash and G-Secs. So we may see some level of moderation. ";
+    expect(before.length).toBeGreaterThan(400);
+    const context = quoteContext(
+      [{ role: "management", text: `${before}${quote}` }],
+      quote,
+    );
+    expect(context).toMatch(/asset services/i);
+
+    const bare = quoteContext(
+      [
+        {
+          role: "management",
+          text: `So we may see some level of moderation. ${quote}`,
+        },
+      ],
+      quote,
+    );
+    expect(bare).not.toMatch(/asset services/i);
+
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "here",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 20,
+          high: 25,
+          quote,
+          context,
+          ...fy26,
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rows, "here").verdict).toBe("unverifiable");
+    expect(byId(rows, "here").evidence.note).toBe(
+      "segment, not the company total",
+    );
+    expect(byId(rows, "here").delivered?.value).toBeNull();
+
+    const company = adjudicateAll(
+      [
+        input({
+          id: "bare",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 20,
+          high: 25,
+          quote,
+          context: bare,
+          ...fy26,
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(company, "bare").verdict).toBe("missed");
+    expect(byId(company, "bare").delivered?.value).not.toBeNull();
+  });
+
+  it("does not score Amber's electronics margin when only the question names the division", () => {
+    const quote =
+      "Considering the job work change, we are expecting a 40% growth on the top line. And the margins, what we are expecting right now should be in the range of 9.5% to 10% range.";
+    const question =
+      "Sir, first, if you could clarify in terms of the growth, you said 40% revenue growth for the electronics business. Is this post the conversion, and hence the revenue growth number is weaker. So in that case, could you also clarify the margin for that division?";
+    const context = quoteContext(
+      [
+        { role: "analyst", text: question },
+        {
+          role: "management",
+          text: "So what conversion are you talking about?",
+        },
+        { role: "analyst", text: "The job work what you said…" },
+        { role: "management", text: quote },
+      ],
+      quote,
+    );
+    expect(context).toMatch(/electronics/i);
+    expect(context).not.toMatch(/top line/i);
+
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "elec",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 9.5,
+          high: 10,
+          quote,
+          context,
+          ...fy26,
+          comparison: "absolute",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rows, "elec").verdict).toBe("unverifiable");
+    expect(byId(rows, "elec").evidence.note).toBe(
+      "segment, not the company total",
+    );
+    expect(byId(rows, "elec").delivered?.value).toBeNull();
+
+    const bare = adjudicateAll(
+      [
+        input({
+          id: "bare",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 9.5,
+          high: 10,
+          quote,
+          ...fy26,
+          comparison: "absolute",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(bare, "bare").verdict).toBe("beat");
+    expect(byId(bare, "bare").delivered?.value).not.toBeNull();
+
+    const durableQuote =
+      "Yes, sir, your question was that does our guidance stand intact? So it's intact to the industry growth. It can vary from like between -- it should range between 13% to 15%. So we are in line to that.";
+    const durable = quoteContext(
+      [
+        {
+          role: "analyst",
+          text: "On the consumer durable, you had mentioned that it will grow in line with the industry. So does that number still hold?",
+        },
+        {
+          role: "management",
+          text: "On the consumer durable question, I think, Sachin, you can answer.",
+        },
+        { role: "management", text: durableQuote },
+      ],
+      durableQuote,
+    );
+    expect(durable).toMatch(/consumer durable/i);
+    const durableRows = adjudicateAll(
+      [
+        input({
+          id: "cd",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 13,
+          high: 15,
+          quote: durableQuote,
+          context: durable,
+          ...fy26,
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(durableRows, "cd").verdict).toBe("unverifiable");
+    expect(byId(durableRows, "cd").evidence.note).toBe(
+      "segment, not the company total",
+    );
+    expect(byId(durableRows, "cd").delivered?.value).toBeNull();
+  });
+
+  it("clears a company figure on a superseded solution-and-products promise without a new verdict", () => {
+    const slice =
+      "We expect 30% year-on-year revenue growth in solution and products, and we hope it will increase over the period.";
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "kpit",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 30,
+          high: 30,
+          quote: slice,
+          horizon: "FY27",
+          horizonEnd: "2027-03-31",
+          docId: "doc_q3fy26",
+          statedAt: T_Q3FY26,
+          statedPeriod: "Q4FY26",
+          comparison: "yoy",
+        }),
+        input({
+          id: "later",
+          metric: "revenue_growth",
+          quote:
+            "we will return to growth in H2 by Q4, driven by the Q4 performance and our profitability will return largely when the revenues come.",
+          low: null,
+          high: null,
+          unit: "qualitative",
+          isExplicit: false,
+          horizon: "FY27",
+          horizonEnd: "2027-03-31",
+          docId: "doc_q2fy27",
+          statedAt: T_Q2FY27,
+          statedPeriod: "Q1FY27",
+          revision: "maintained",
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const row = byId(rows, "kpit");
+    expect(row.status).toBe("superseded");
+    expect(row.verdict).toBeNull();
+    expect(String(row.evidence.note)).toMatch(/reiterated/);
+    expect(row.evidence.interim ?? null).toBeNull();
+    expect(row.delivered?.value ?? null).toBeNull();
+    const stored = mergeLedgerEvidence(
+      {
+        interim: { value: 7.7, unit: "%", note: "YTD" },
+        delivered: { value: 7.7, unit: "%", source: "xbrl" },
+      },
+      row,
+      { isExplicit: true, derived: false, typeIssue: false, typeNote: null },
+    );
+    expect(stored.interim ?? null).toBeNull();
+    expect(
+      (stored.delivered as { value?: number | null } | null)?.value ?? null,
+    ).toBeNull();
+    expect(JSON.stringify(stored)).not.toContain("7.7");
+  });
+
   it("still scores a company total that names itself, including a wide miss", () => {
     const rows = adjudicateAll(
       [

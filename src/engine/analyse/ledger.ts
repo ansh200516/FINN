@@ -17,9 +17,10 @@
  *     or the quote is not the same quantity as the XBRL line (a non-INR
  *     currency, a segment/product/subsidiary, AUM or another non-P&L noun).
  *     A named product in the question the line answers counts, even when
- *     the stored quote omits it. Beat / Miss is written only when metric,
- *     unit, and scope match. An open row does not carry the company
- *     revenue, EBITDA, PAT, or margin figure as "so far" when the promise
+ *     the stored quote omits it, and so does the earlier part of the same
+ *     remark ("here" after the speaker has named the segment). Beat / Miss
+ *     is written only when metric, unit, and scope match. An open row does
+ *     not carry the company revenue, EBITDA, PAT, or margin figure as "so far" when the promise
  *     is a different quantity (a basis-point change, a named ratio, AUM,
  *     volume, a mix), and a figure saved on the previous row is cleared.
  *   - EBITDA = PBEIT + finance costs + D&A − other income (ex-other-income
@@ -169,18 +170,28 @@ const SCOPE_RE =
  * revision chain (that would re-open a superseded row and score it).
  */
 const SLICE_RE =
-  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere|sidwal|racs?|room\s+acs?|railways?|fluoropolymers?|copper|offshore|PPM)\b/i;
+  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere|sidwal|racs?|room\s+acs?|railways?|fluoropolymers?|copper|offshore|PPM|growth in solutions? and products)\b/i;
 
 /**
  * Named products a neighbouring question can scope, when the quote omits them.
  * Generic slice nouns ("segment", "division", "international") stay off this
  * list: they show up beside company-wide answers and must not unsettle those.
+ * "digital" alone is the same — only a digital brand, or "question on digital".
  */
-const CONTEXT_SCOPE_RE = /\b(racs?|room\s+acs?|candere|sidwal|power[- ]one)\b/i;
+const CONTEXT_SCOPE_RE =
+  /\b(racs?|room\s+acs?|candere|sidwal|power[- ]one|electronics|consumer\s+durables?|generics?|digital(?:\s*[- ]first)(?:\s+\w+){0,6}\s+brands?|digital\s+brands?|question on digital|asset\s+services|PPM)\b/i;
 
 /** The speaker named the consolidated / company total, not a slice of it. */
 const COMPANY_TOTAL_RE =
   /\b(company[- ]wide|consolidated|consol\b|at (the )?company level|for the company|topline|top[- ]line)\b/i;
+
+/**
+ * A quote that declares itself the consolidated total. "Top line" does not
+ * count: a division answer says "growth on the top line" while the question
+ * names the division.
+ */
+const COMPANY_CLAIM_RE =
+  /\b(company[- ]wide|consolidated|consol\b|at (the )?company level|for the company)\b/i;
 
 const FX_UNITS = new Set([
   "USD",
@@ -321,9 +332,11 @@ export function quantityIssue(args: {
     return QUANTITY_NOTE.metric;
   if (SLICE_RE.test(args.quote)) return QUANTITY_NOTE.segment;
   const beside = args.context?.trim() ?? "";
+  // The question, or the earlier part of the same remark, names the slice.
+  // A quote that already says consolidated / company-wide is left alone.
   if (
     beside &&
-    !COMPANY_TOTAL_RE.test(args.quote) &&
+    !COMPANY_CLAIM_RE.test(args.quote) &&
     CONTEXT_SCOPE_RE.test(`${args.quote}\n${beside}`)
   )
     return QUANTITY_NOTE.segment;
@@ -431,7 +444,10 @@ function clearCompanyFigure(row: AdjudicatedRow): void {
 }
 
 /**
- * The question immediately before `quote`, plus the same answer's lead-in.
+ * The question this line answers, plus the same answer's lead-in.
+ * A short clarification between the question and the answer is skipped, and
+ * one management hand-off still counts. When the quote says "here", the
+ * lead-in reaches the segment named earlier in the same remark.
  * Empty when the quote is not in `turns` — callers must not invent a scope.
  */
 export function quoteContext(
@@ -440,19 +456,32 @@ export function quoteContext(
 ): string {
   const i = turns.findIndex((t) => verifyQuote(quote, t.text) !== null);
   if (i < 0) return "";
-  const prev = i > 0 ? turns[i - 1] : undefined;
-  const question =
-    prev && (prev.role === "analyst" || prev.text.includes("?"))
-      ? prev.text.slice(-1200)
-      : "";
+  const bits: string[] = [];
+  let handoffs = 0;
+  for (let k = i - 1; k >= 0 && i - k <= 6; k--) {
+    const t = turns[k];
+    if (!t || t.role === "moderator") break;
+    const asking =
+      t.role === "analyst" || (t.role !== "management" && t.text.includes("?"));
+    if (asking) {
+      bits.unshift(t.text.slice(-1200));
+      // A real question ends the walk. A short clarification ("the job work…") does not.
+      if (t.text.length > 80) break;
+      continue;
+    }
+    bits.unshift(t.text.slice(-500));
+    handoffs++;
+    if (t.text.length > 120 || handoffs > 1) break;
+  }
   const cur = turns[i];
-  if (!cur) return question.trim();
+  if (!cur) return bits.join("\n").trim();
   const off = verifyQuote(quote, cur.text);
+  const window = /\bhere\b/i.test(quote) ? 1000 : 400;
   const lead =
     off !== null && off > 0
-      ? normalizeForMatch(cur.text).slice(Math.max(0, off - 400), off)
+      ? normalizeForMatch(cur.text).slice(Math.max(0, off - window), off)
       : "";
-  return `${question}\n${lead}`.trim();
+  return `${bits.join("\n")}\n${lead}`.trim();
 }
 
 /** grouping key for revision chains: margins of any flavour chain together; segment-level statements chain separately */
@@ -1140,6 +1169,10 @@ export function adjudicateAll(
         // a figure already stored on this row. Open rows stay open; a due
         // row is unverifiable with the reason on the evidence note.
         clearCompanyFigure(row);
+        if (issue === QUANTITY_NOTE.segment && scope === "company") {
+          const named = CONTEXT_SCOPE_RE.exec(`${s.quote}\n${s.context ?? ""}`);
+          if (named?.[1]) row.evidence.scope = named[1].toLowerCase();
+        }
         if (!due) {
           row.evidence.note = `due after ${s.horizonEnd}`;
           continue;
@@ -1147,10 +1180,6 @@ export function adjudicateAll(
         row.status = "settled";
         row.verdict = "unverifiable";
         row.evidence.note = issue;
-        if (issue === QUANTITY_NOTE.segment && scope === "company") {
-          const named = CONTEXT_SCOPE_RE.exec(`${s.quote}\n${s.context ?? ""}`);
-          if (named?.[1]) row.evidence.scope = named[1].toLowerCase();
-        }
         continue;
       }
 
@@ -1309,6 +1338,14 @@ export function adjudicateAll(
       row.evidence.note = `${delivered.note ?? ""}`.trim() || null;
       row.evidence.deliveredNote = delivered.note;
     }
+  }
+
+  // A superseded slice must not keep a company figure from when it was the
+  // latest row. The revision verdict stays; the row is not reopened.
+  for (const s of inputs) {
+    const row = rows.get(s.id) as AdjudicatedRow;
+    if (row.status === "open") continue;
+    if (quoteLeavesCompanyLine(s, opts)) clearCompanyFigure(row);
   }
 
   return [...rows.values()].sort(

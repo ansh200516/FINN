@@ -229,6 +229,9 @@ function PromiseRow({ g, symbol }: { g: LedgerGroup; symbol: string }) {
   // the note explains an outcome; for open rows the due date says it better
   const why =
     r.status !== "open" && note && !/^due after/i.test(note) ? note : null;
+  // unverifiable is a claim the reader cannot check — the reason stays in
+  // the row, not behind the "?" disclosure
+  const inlineWhy = verdict === "unverifiable" && !!why;
   const due =
     r.status === "open" && horizonEnd
       ? `due after ${formatIst(horizonEnd, "d MMM yyyy")}`
@@ -248,7 +251,7 @@ function PromiseRow({ g, symbol }: { g: LedgerGroup; symbol: string }) {
       </span>
       <span className="inline-flex items-center gap-1.5 shrink-0">
         <VerdictBadge verdict={verdict} className="small" />
-        {why ? (
+        {why && !inlineWhy ? (
           <span className="why-mark" aria-hidden="true">
             ?
           </span>
@@ -260,7 +263,7 @@ function PromiseRow({ g, symbol }: { g: LedgerGroup; symbol: string }) {
     <li
       className={`border-b border-rule last:border-b-0 py-3 ${g.orphanChain ? "opacity-80" : ""}`}
     >
-      {why ? (
+      {why && !inlineWhy ? (
         <details className="why">
           <summary
             className="no-callout row"
@@ -277,6 +280,11 @@ function PromiseRow({ g, symbol }: { g: LedgerGroup; symbol: string }) {
           {header}
         </div>
       )}
+      {inlineWhy ? (
+        <p className="small text-ink-2 mt-1 border-l-2 border-rule pl-3">
+          {why}
+        </p>
+      ) : null}
       <p className="quote text-ink-2 mt-1">“{r.quote}”</p>
       <p className="receipt mt-1">
         {[r.speaker, r.role].filter(Boolean).join(", ") || "Management"} ·{" "}

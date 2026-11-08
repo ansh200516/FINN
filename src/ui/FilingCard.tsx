@@ -63,11 +63,11 @@ export function FilingCard({
         ) : null}
       </Link>
       <CardBody event={event} compact periodEnd={periodEnd} />
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="min-w-0 flex items-center gap-2 overflow-hidden">
+      <div className="mt-2 flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
           <SourceChips sources={event.sources.slice(0, 2)} />
           {event.sources.length > 2 || event.followUps ? (
-            <span className="receipt whitespace-nowrap">
+            <span className="receipt">
               {[
                 event.sources.length > 2
                   ? `+${event.sources.length - 2} sources`

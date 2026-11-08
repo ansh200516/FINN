@@ -388,8 +388,15 @@ export function buildResultsCard(
   }
   const h1 = ytdCheck(latest, byEnd, variant);
   if (h1.note) notes.push(h1.note);
+  // parser warnings, minus the ones the card already states in its own words
   for (const w of latest.checks.warnings)
-    if (!notes.includes(w) && !/ISIN mismatch/.test(w)) notes.push(w);
+    if (
+      !notes.includes(w) &&
+      !/ISIN mismatch|^PBT excludes share of associates|^exceptional items/.test(
+        w,
+      )
+    )
+      notes.push(w);
 
   const verification: ResultsVerification = {
     source: latest.source,

@@ -2,11 +2,36 @@
 
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db/client";
 import { parseJsonColumn, StringArray } from "@/db/json";
 import { companies, users } from "@/db/schema";
+import { invalidateBrief } from "@/lib/brief";
+import {
+  type StartResearchResult,
+  startResearch as startResearchJob,
+} from "@/lib/jobs";
 import { DEMO_USER_ID } from "@/lib/queries";
+
+/**
+ * "Research any NSE ticker": resolves the symbol (EQUITY_L master + alias
+ * table), upserts the company (role 'adhoc' unless `portfolio`) and creates
+ * / re-queues the `research:<SYMBOL>` job. The Add-company page shows the
+ * live receipt for the returned job id and drives it by polling.
+ */
+export async function startResearch(
+  symbol: string,
+  opts: { portfolio?: boolean } = {},
+): Promise<StartResearchResult> {
+  const r = await startResearchJob(symbol, { portfolio: opts.portfolio });
+  if (r.ok && opts.portfolio) {
+    revalidatePath("/");
+    revalidatePath("/c");
+    await invalidateBrief();
+  }
+  return r;
+}
 
 const Add = z.object({
   symbol: z.string().regex(/^[A-Z0-9&.-]{1,20}$/),
@@ -44,12 +69,24 @@ async function ensureUser(now: number): Promise<string[]> {
 }
 
 /**
- * "Add to portfolio": upserts the company (ISIN-keyed, `is_adhoc` when new)
- * and appends the ISIN to the demo user's portfolio. Idempotent — adding a
- * company twice is a no-op. Only `users` and `companies` are written; the
- * research job itself belongs to the engine's job runner.
+ * "Add to portfolio": upserts the company (ISIN-keyed), appends the ISIN to
+ * the demo user's portfolio, starts the `research:<SYMBOL>` job and redirects
+ * to `/add?job=<id>` where the live receipt drives it. Idempotent — adding a
+ * company twice re-queues the research run (every step is idempotent).
  */
 export async function addToPortfolio(
+  _prev: AddState,
+  formData: FormData,
+): Promise<AddState> {
+  const state = await addToPortfolioRow(_prev, formData);
+  if (!state?.ok) return state;
+  const job = await startResearchJob(state.symbol, { portfolio: true });
+  await invalidateBrief();
+  if (job.ok) redirect(`/add?job=${encodeURIComponent(job.jobId)}`);
+  return state;
+}
+
+async function addToPortfolioRow(
   _prev: AddState,
   formData: FormData,
 ): Promise<AddState> {

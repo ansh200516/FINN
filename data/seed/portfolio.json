@@ -160,9 +160,7 @@
       "name": "Tata Motors Passenger Vehicles Limited",
       "sector": "Automobile and Auto Components",
       "industry": "Passenger Cars & Utility Vehicles",
-      "aliases": [
-        "TATAMOTORS"
-      ],
+      "aliases": ["TATAMOTORS"],
       "screenerSlug": "TMPV",
       "inPortfolio": true,
       "isAdhoc": false,
@@ -483,9 +481,7 @@
       "why": "mega-cap anchor; 2 Nov +11.6%/5.8×; credit-rating filing 4 Nov",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -527,9 +523,7 @@
       "why": "the bank format; 2× 'Change in Management' (31 Oct, 6 Nov); 5–6 Nov 2.2–2.3× vol",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "BANKING"
-        ],
+        "taxonomies": ["BANKING"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -571,9 +565,7 @@
       "why": "2nd bank, the distressed-bank story; 5 Nov +5.3%/3.5×, 6 Nov 3.1×; mgmt change 23 Oct",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "BANKING"
-        ],
+        "taxonomies": ["BANKING"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -625,18 +617,14 @@
       "why": "the NBFC format; 5 Nov +7.7%/3.45×; 'PI 2026 Special Committee' meeting 10 Nov (preferential issue)",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "NBFC_INDAS"
-        ],
+        "taxonomies": ["NBFC_INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
         "transcripts_total_screener": 39,
         "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29642_BAJFINANCE_2025_2026_A_23098027_07072026220255.pdf",
         "announcements_30d": 17,
-        "events_9_14_nov": [
-          "2026-11-10 Other business matters"
-        ],
+        "events_9_14_nov": ["2026-11-10 Other business matters"],
         "anomalies": [
           {
             "date": "2026-10-21",
@@ -671,9 +659,7 @@
       "why": "guidance-heavy ledger name; dividend/record-date filings",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -710,9 +696,7 @@
       "why": "mid-cap IT, guides explicitly; 13 Oct +6.8%/4.2×; acquisition + 2 mgmt-change filings",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -764,9 +748,7 @@
       "why": "3 mgmt-change filings, rating, 30 Oct 3.5× vol",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -818,9 +800,7 @@
       "why": "ENAM book; 30 Oct +7.2%/4.8×; 3 M&A filings",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -862,18 +842,14 @@
       "why": "results 13 Nov; symbol-churn case (TATAMOTORS→TMPV); 5 Nov +5.5%/2.1×",
       "verified": {
         "xbrl_quarters": 6,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-06-30",
         "q2fy27_filed": false,
         "transcripts_last6q": 5,
         "transcripts_total_screener": 30,
         "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_29395_TMPV_2025_2026_A_21445169_15062026215933.pdf",
         "announcements_30d": 4,
-        "events_9_14_nov": [
-          "2026-11-13 Financial Results"
-        ],
+        "events_9_14_nov": ["2026-11-13 Financial Results"],
         "anomalies": [
           {
             "date": "2026-11-05",
@@ -903,9 +879,7 @@
       "why": "order-win press releases; 28 Oct +3.7%/3.25×",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -942,9 +916,7 @@
       "why": "6 Nov −17.3% on 17.3× volume (day after Q2 results + 'orders passed'); Q2 transcript lands this week",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 5,
@@ -986,9 +958,7 @@
       "why": "interim dividend + record date (dividend card); 3 quiet-volume anomalies",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1035,9 +1005,7 @@
       "why": "3 Nov +10.0% on 8.2×; 2 M&A + 2 mgmt filings",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1084,9 +1052,7 @@
       "why": "5 'orders passed' (litigation) filings; 16 Oct 3.7×; Q2 transcript pending",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 5,
@@ -1128,18 +1094,14 @@
       "why": "results 12 Nov, earnings call 13 Nov; distressed telecom (PBT −₹3,747 cr in Q1); 4/6 transcripts (≥3 ok)",
       "verified": {
         "xbrl_quarters": 6,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-06-30",
         "q2fy27_filed": false,
         "transcripts_last6q": 4,
         "transcripts_total_screener": 32,
         "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30194_IDEA_2025_2026_A_7288659_04082026202915.pdf",
         "announcements_30d": 4,
-        "events_9_14_nov": [
-          "2026-11-12 Financial Results"
-        ],
+        "events_9_14_nov": ["2026-11-12 Financial Results"],
         "anomalies": [
           {
             "date": "2026-10-21",
@@ -1174,9 +1136,7 @@
       "why": "ENAM book; 3 Nov 3.2× vol; quiet but complete (6/6 transcripts)",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1213,18 +1173,14 @@
       "why": "ENAM book; results 12 Nov; 6 acquisition filings (IL JIN) + resignation",
       "verified": {
         "xbrl_quarters": 6,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-06-30",
         "q2fy27_filed": false,
         "transcripts_last6q": 5,
         "transcripts_total_screener": 40,
         "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30632_AMBER_2025_2026_A_19660457_25082026232047.pdf",
         "announcements_30d": 10,
-        "events_9_14_nov": [
-          "2026-11-12 Financial Results"
-        ],
+        "events_9_14_nov": ["2026-11-12 Financial Results"],
         "anomalies": [
           {
             "date": "2026-10-23",
@@ -1264,9 +1220,7 @@
       "why": "26 Oct −4.1%/4.3×, 6 Nov −4.1%/2.4×; 3 dividend filings",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1313,18 +1267,14 @@
       "why": "results 10 Nov (trading holiday!); 6 Nov +5.5% on 5.5×",
       "verified": {
         "xbrl_quarters": 6,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-06-30",
         "q2fy27_filed": false,
         "transcripts_last6q": 5,
         "transcripts_total_screener": 19,
         "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30447_KALYANKJIL_2025_2026_A_6283776_20082026113008.pdf",
         "announcements_30d": 2,
-        "events_9_14_nov": [
-          "2026-11-10 Financial Results"
-        ],
+        "events_9_14_nov": ["2026-11-10 Financial Results"],
         "anomalies": [
           {
             "date": "2026-11-05",
@@ -1359,18 +1309,14 @@
       "why": "Swapped in for HAL: ENAM-book wind-energy mid cap, results 13 Nov, 5/6 transcripts, 2 Nov +8.3% on 4.4× volume.",
       "verified": {
         "xbrl_quarters": 6,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-06-30",
         "q2fy27_filed": false,
         "transcripts_last6q": 5,
         "transcripts_total_screener": 31,
         "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_31331_INOXWIND_2025_2026_A_8279078_03092026221810.pdf",
         "announcements_30d": 2,
-        "events_9_14_nov": [
-          "2026-11-13 Financial Results"
-        ],
+        "events_9_14_nov": ["2026-11-13 Financial Results"],
         "anomalies": [
           {
             "date": "2026-10-09",
@@ -1422,18 +1368,14 @@
       "why": "results 12 Nov; 27 Oct +16.2%/6.5×, 28 Oct +5.3%/5.3×; rights-issue allotment (370 M partly-paid shares) 2 Nov; only 3 legacy quarters (IPO Aug-24)",
       "verified": {
         "xbrl_quarters": 6,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-06-30",
         "q2fy27_filed": false,
         "transcripts_last6q": 5,
         "transcripts_total_screener": 10,
         "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_31975_OLAELEC_2025_2026_A_20107852_08092026222027.pdf",
         "announcements_30d": 7,
-        "events_9_14_nov": [
-          "2026-11-12 Financial Results"
-        ],
+        "events_9_14_nov": ["2026-11-12 Financial Results"],
         "anomalies": [
           {
             "date": "2026-10-23",
@@ -1483,9 +1425,7 @@
       "why": "2nd NBFC taxonomy; results filed 6 Nov, Q2 transcript pending; pledge story = PAG's Reg 31(1)/31(4) SAST disclosures (24 Sep, 19 Jun 2026)",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "NBFC_INDAS"
-        ],
+        "taxonomies": ["NBFC_INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 5,
@@ -1522,9 +1462,7 @@
       "why": "6/6 transcripts only via NSE (screener misses Q1/Q2 FY27); credit rating 16 Oct; 2 'News Verification' items",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1555,9 +1493,7 @@
       "why": "5 Nov −19.1% on 30.1× volume (day after Q2 results); 5/6 + Q2 transcript pending",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 5,
@@ -1619,10 +1555,7 @@
       "why": "the degradation case: 0 transcripts ever, BZ series, 10 XBRL revisions, no Q2 board meeting intimated, `OwnersOfParent=0` trap, 1.26 MB AR",
       "verified": {
         "xbrl_quarters": 5,
-        "taxonomies": [
-          "INDAS",
-          "NONINDAS"
-        ],
+        "taxonomies": ["INDAS", "NONINDAS"],
         "latest_qe": "2026-06-30",
         "q2fy27_filed": false,
         "transcripts_last6q": 0,
@@ -1655,18 +1588,14 @@
       "why": "Alternate only: PSU defence large cap with results 12 Nov and clean XBRL, but a single annual (May) concall — 1 transcript in the last 6 quarters, so the promise ledger would be empty.",
       "verified": {
         "xbrl_quarters": 6,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-06-30",
         "q2fy27_filed": false,
         "transcripts_last6q": 1,
         "transcripts_total_screener": 8,
         "annual_report_fy26": "https://nsearchives.nseindia.com/annual_reports/AR_30166_HAL_2025_2026_U_12603450_04082026103759.pdf",
         "announcements_30d": 3,
-        "events_9_14_nov": [
-          "2026-11-12 Financial Results"
-        ],
+        "events_9_14_nov": ["2026-11-12 Financial Results"],
         "anomalies": []
       }
     },
@@ -1690,9 +1619,7 @@
       "why": "ENAM (Nemish Shah); 6 Nov 11.5× volume on +1.8% (pure volume anomaly); results filed 6 Nov; rating 15 Oct",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 5,
@@ -1734,9 +1661,7 @@
       "why": "6/6; 2 Nov +12.0%/6.0×; strong but duplicates AMBER's bucket",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1783,9 +1708,7 @@
       "why": "ENAM book; 2 Nov +7.6%/11.1×; 6/6; 4 dividend filings",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1837,9 +1760,7 @@
       "why": "metals gap-filler; 6 Nov 3.3×; 2 rating filings; 5/6",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 5,
@@ -1881,9 +1802,7 @@
       "why": "3rd bank; 6/6; transcript filed 7 Nov 18:10 (last candidate filing before the 24h cut-off)",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "BANKING"
-        ],
+        "taxonomies": ["BANKING"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1925,9 +1844,7 @@
       "why": "6/6; 26 filings in 30d (QIP, ratings); duplicates KPITTECH/INFY",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -1979,9 +1896,7 @@
       "why": "26 Oct +6.6%/5.4×; 6/6",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -2018,9 +1933,7 @@
       "why": "5 Nov +5.5%/2.6×; 6/6 via NSE (screener 4)",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -2057,9 +1970,7 @@
       "why": "6 litigation (CIRP) filings; 6/6",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -2096,9 +2007,7 @@
       "why": "6/6; 30 Oct −5.5%/3.0×",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -2140,9 +2049,7 @@
       "why": "ENAM book; 6 Nov 3.5×, 30 Oct −7.9%; 5/6",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 5,
@@ -2189,9 +2096,7 @@
       "why": "symbol-churn case (ZOMATO→ETERNAL); 6/6; 22 Oct 4.0×",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 6,
@@ -2233,9 +2138,7 @@
       "why": "0 transcripts (PPT only); Noel Tata retirement + 2 appointments 29 Oct; 30 Oct +5.4%/3.8×",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 0,
@@ -2272,9 +2175,7 @@
       "why": "0 transcripts (PPT only); amalgamation filing 2 Nov",
       "verified": {
         "xbrl_quarters": 7,
-        "taxonomies": [
-          "INDAS"
-        ],
+        "taxonomies": ["INDAS"],
         "latest_qe": "2026-09-30",
         "q2fy27_filed": true,
         "transcripts_last6q": 0,

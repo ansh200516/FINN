@@ -2052,7 +2052,7 @@ async function upsertDocsAndGuidance(): Promise<{
     await db
       .insert(t.documents)
       .values({ ...d, createdAt: NOW })
-      .onConflictDoUpdate({ target: t.documents.id, set: { ...d } });
+      .onConflictDoNothing();
     inserted++;
   }
   // once the real extractor has written guidance for a company, its fixture rows go
@@ -2075,10 +2075,7 @@ async function upsertDocsAndGuidance(): Promise<{
   for (const g of GUIDANCE) {
     if (realGuidanceIsins.has(g.isin)) continue;
     const row = { ...g, docId: docIdMap.get(g.docId) ?? g.docId };
-    await db
-      .insert(t.guidance)
-      .values(row)
-      .onConflictDoUpdate({ target: t.guidance.id, set: { ...row } });
+    await db.insert(t.guidance).values(row).onConflictDoNothing();
     guidanceInserted++;
   }
   return { docs: inserted, guidance: guidanceInserted };
@@ -2147,26 +2144,10 @@ async function upsertUserAndAlerts(): Promise<void> {
 }
 
 async function upsertLedgerCacheJobs(): Promise<void> {
-  for (const l of LEDGER) {
-    await db
-      .insert(t.llmLedger)
-      .values(l)
-      .onConflictDoUpdate({
-        target: [t.llmLedger.model, t.llmLedger.datePt],
-        set: { ...l },
-      });
-  }
-  for (const c of CACHE) {
-    await db
-      .insert(t.llmCache)
-      .values(c)
-      .onConflictDoUpdate({ target: t.llmCache.key, set: { ...c } });
-  }
+  // Never write llm_ledger or llm_cache. An earlier seeder reset the
+  // Flash-Lite request count with onConflictDoUpdate and defeated the daily cap.
   for (const j of JOBS) {
-    await db
-      .insert(t.jobs)
-      .values(j)
-      .onConflictDoUpdate({ target: t.jobs.id, set: { ...j } });
+    await db.insert(t.jobs).values(j).onConflictDoNothing();
   }
 }
 
@@ -2203,7 +2184,7 @@ async function main(): Promise<void> {
   );
   await upsertLedgerCacheJobs();
   console.log(
-    `llm_ledger       ${LEDGER.length} models for ${DATE_PT} (PT) · llm_cache ${CACHE.length} · jobs ${JOBS.length}`,
+    `llm_ledger       skipped (${LEDGER.length} fixture rows not applied) · llm_cache skipped (${CACHE.length}) · jobs ${JOBS.length} insert-if-absent`,
   );
   console.log("done — open http://localhost:3000/?w=30d");
 }

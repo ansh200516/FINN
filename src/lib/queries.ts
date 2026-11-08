@@ -19,7 +19,6 @@ import {
   eq,
   gte,
   inArray,
-  lt,
   lte,
   max,
   sql,
@@ -54,9 +53,6 @@ import {
 import type {
   AnomalyWithSymbol,
   BacktestGrid,
-  BriefCounts,
-  BriefView,
-  BriefWindow,
   CompanyIndexRow,
   CompanyPageModel,
   DocumentItem,
@@ -70,7 +66,6 @@ import type {
   Snapshot,
   SourceRef,
   StatusModel,
-  Tier3Group,
   TripwireView,
   UpcomingItem,
 } from "@/ui/model";
@@ -94,7 +89,11 @@ export interface DemoUser {
   exists: boolean;
 }
 
-/** The single demo user; falls back to `companies.in_portfolio` when no row exists. */
+/**
+ * The single demo user. The portfolio is the union of the user's own list
+ * and `companies.in_portfolio` (the seeded portfolio and the add/remove
+ * actions keep both in step; the union covers a DB where only one was set).
+ */
 export async function getDemoUser(): Promise<DemoUser> {
   const rows = await db
     .select()
@@ -102,29 +101,26 @@ export async function getDemoUser(): Promise<DemoUser> {
     .where(eq(t.users.id, DEMO_USER_ID))
     .limit(1);
   const u = rows[0];
-  if (u) {
-    const isins = parseJsonColumn(StringArray, u.portfolioIsinsJson, []);
-    if (isins.length)
-      return {
-        id: u.id,
-        portfolioIsins: isins,
-        prefs: parseJsonColumn(UserPrefs, u.prefsJson, {}),
-        exists: true,
-      };
-  }
+  const own = u ? parseJsonColumn(StringArray, u.portfolioIsinsJson, []) : [];
   const cos = await db
     .select({ isin: t.companies.isin })
     .from(t.companies)
     .where(eq(t.companies.inPortfolio, true));
+  const known = new Set(cos.map((c) => c.isin));
+  const all = await db.select({ isin: t.companies.isin }).from(t.companies);
+  const exists = new Set(all.map((c) => c.isin));
+  const portfolioIsins = [
+    ...new Set([...own.filter((i) => exists.has(i)), ...known]),
+  ];
   return {
     id: DEMO_USER_ID,
-    portfolioIsins: cos.map((c) => c.isin),
+    portfolioIsins,
     prefs: u ? parseJsonColumn(UserPrefs, u.prefsJson, {}) : {},
     exists: Boolean(u),
   };
 }
 
-async function companiesByIsin(
+export async function companiesByIsin(
   isins: string[],
 ): Promise<Map<string, CompanyRow>> {
   if (!isins.length) return new Map();
@@ -210,39 +206,48 @@ function bioToCard(
  *  1. a bare category payload (ResultsCard / fields object),
  *  2. the UI envelope `{ title, oneLiner, priority?, periodEnd?, sources?, card }`,
  *  3. the ingest's CardPayload `{ version: 1, title, oneLiner, fields, bio?, sources[], tags[] … }`.
+ *
+ * `adaptCardPayload` is the object form (used by the engine-backed brief in
+ * `src/lib/brief.ts`, whose cards already carry the parsed payload).
  */
+export function adaptCardPayload(obj: unknown): {
+  envelope: Envelope;
+  card: unknown;
+} {
+  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+    const o = obj as Record<string, unknown>;
+    if (typeof o.title === "string" || "card" in o) {
+      const env: Envelope = {
+        title: typeof o.title === "string" ? o.title : undefined,
+        oneLiner: typeof o.oneLiner === "string" ? o.oneLiner : undefined,
+        priority: typeof o.priority === "number" ? o.priority : undefined,
+        periodEnd: typeof o.periodEnd === "string" ? o.periodEnd : undefined,
+        sources: Array.isArray(o.sources)
+          ? (o.sources as SourceRef[]).filter(
+              (s) => s && typeof s.url === "string",
+            )
+          : undefined,
+      };
+      if ("card" in o) return { envelope: env, card: o.card ?? null };
+      // ingest CardPayload
+      const tags = Array.isArray(o.tags) ? (o.tags as string[]) : [];
+      if (o.bio && typeof o.bio === "object")
+        return {
+          envelope: env,
+          card: bioToCard(o.bio as Record<string, unknown>, env.title, tags),
+        };
+      if (o.fields && typeof o.fields === "object")
+        return { envelope: env, card: o.fields };
+      return { envelope: env, card: null };
+    }
+    return { envelope: {}, card: obj };
+  }
+  return { envelope: {}, card: obj ?? null };
+}
+
 function parseCardJson(raw: string): { envelope: Envelope; card: unknown } {
   try {
-    const obj: unknown = JSON.parse(raw);
-    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      const o = obj as Record<string, unknown>;
-      if (typeof o.title === "string" || "card" in o) {
-        const env: Envelope = {
-          title: typeof o.title === "string" ? o.title : undefined,
-          oneLiner: typeof o.oneLiner === "string" ? o.oneLiner : undefined,
-          priority: typeof o.priority === "number" ? o.priority : undefined,
-          periodEnd: typeof o.periodEnd === "string" ? o.periodEnd : undefined,
-          sources: Array.isArray(o.sources)
-            ? (o.sources as SourceRef[]).filter(
-                (s) => s && typeof s.url === "string",
-              )
-            : undefined,
-        };
-        if ("card" in o) return { envelope: env, card: o.card ?? null };
-        // ingest CardPayload
-        const tags = Array.isArray(o.tags) ? (o.tags as string[]) : [];
-        if (o.bio && typeof o.bio === "object")
-          return {
-            envelope: env,
-            card: bioToCard(o.bio as Record<string, unknown>, env.title, tags),
-          };
-        if (o.fields && typeof o.fields === "object")
-          return { envelope: env, card: o.fields };
-        return { envelope: env, card: null };
-      }
-      return { envelope: {}, card: obj };
-    }
-    return { envelope: {}, card: obj ?? null };
+    return adaptCardPayload(JSON.parse(raw));
   } catch {
     return { envelope: {}, card: null };
   }
@@ -260,7 +265,7 @@ function looksLikeResultsCard(c: unknown): boolean {
  * consolidated first, standalone as the fallback. Best-effort — a missing or
  * half-built engine module leaves the card as it was.
  */
-async function attachResultsCards(cards: EventCard[]): Promise<void> {
+export async function attachResultsCards(cards: EventCard[]): Promise<void> {
   const todo = cards.filter(
     (c) =>
       c.category === "results" && c.tier < 3 && !looksLikeResultsCard(c.card),
@@ -444,13 +449,6 @@ async function announcementsForEvents(
     map.set(r.eventKey, list);
   }
   return map;
-}
-
-function sortCards(cards: EventCard[]): EventCard[] {
-  return cards.sort(
-    (a, b) =>
-      a.tier - b.tier || b.priority - a.priority || b.filedAtMs - a.filedAtMs,
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -714,125 +712,31 @@ export async function getUpcoming(
 }
 
 // ---------------------------------------------------------------------------
-// Brief
+// Brief — rendered from the engine's `buildBrief` through `src/lib/brief.ts`
+// (single source of truth; the UI adapters below are reused there).
 // ---------------------------------------------------------------------------
 
-export interface BriefOptions {
-  now: number;
-  window: BriefWindow;
-  isins: string[];
-  thresholds?: AnomalyThresholds;
-}
-
-export async function countEventsInWindow(
-  isins: string[],
-  window: BriefWindow,
-): Promise<number> {
-  if (!isins.length) return 0;
-  const r = await db
-    .select({ n: count() })
-    .from(t.events)
+/**
+ * When the data was last checked: the newest finished ingestion job, else the
+ * newest stored announcement for the companies in scope.
+ */
+export async function getCheckedAt(isins: string[]): Promise<number | null> {
+  const job = await db
+    .select({ m: max(t.jobs.updatedAt) })
+    .from(t.jobs)
     .where(
       and(
-        inArray(t.events.isin, isins),
-        gte(t.events.lastAt, window.fromMs),
-        lt(t.events.firstAt, window.toMs),
+        inArray(t.jobs.kind, ["announcements", "eod", "digest"]),
+        eq(t.jobs.state, "done"),
       ),
     );
-  return r[0]?.n ?? 0;
-}
-
-export async function getBrief(o: BriefOptions): Promise<BriefView> {
-  const { isins, window } = o;
-  const thresholds = o.thresholds ?? DEFAULT_THRESHOLDS;
-  const empty: BriefView = {
-    window,
-    counts: { filings: 0, events: 0, needsYou: 0, filedAway: 0 },
-    tier1: [],
-    tier2: [],
-    tier3: [],
-    anomalies: [],
-    upcoming: [],
-    checkedAtMs: null,
-    companiesChecked: isins.length,
-  };
-  if (!isins.length)
-    return { ...empty, quiet: { reason: "No companies in the portfolio yet" } };
-
-  const evRows = await db
-    .select()
-    .from(t.events)
-    .where(
-      and(
-        inArray(t.events.isin, isins),
-        gte(t.events.lastAt, window.fromMs),
-        lt(t.events.firstAt, window.toMs),
-      ),
-    )
-    .orderBy(asc(t.events.tier), desc(t.events.lastAt));
-
-  const [cos, anns, filings, checked, anomalies, upcoming] = await Promise.all([
-    companiesByIsin(isins),
-    announcementsForEvents(evRows.map((e) => e.eventKey)),
-    db
-      .select({ n: count() })
-      .from(t.announcements)
-      .where(
-        and(
-          inArray(t.announcements.isin, isins),
-          gte(t.announcements.filedAt, window.fromMs),
-          lt(t.announcements.filedAt, window.toMs),
-        ),
-      ),
-    db
-      .select({ m: max(t.announcements.createdAt) })
-      .from(t.announcements)
-      .where(inArray(t.announcements.isin, isins)),
-    getAnomalies(isins, window.fromMs, window.toMs, thresholds),
-    getUpcoming(isins, o.now),
-  ]);
-
-  const cards = sortCards(
-    evRows.map((e) =>
-      toEventCard(e, cos.get(e.isin), anns.get(e.eventKey) ?? []),
-    ),
-  );
-  await attachResultsCards(cards);
-  const tier1 = cards.filter((c) => c.tier === 1);
-  const tier2 = cards.filter((c) => c.tier === 2);
-  const t3 = cards.filter((c) => c.tier === 3);
-  const groups = new Map<Category, EventCard[]>();
-  for (const c of t3) {
-    const l = groups.get(c.category) ?? [];
-    l.push(c);
-    groups.set(c.category, l);
-  }
-  const tier3: Tier3Group[] = [...groups.entries()]
-    .map(([category, items]) => ({ category, count: items.length, items }))
-    .sort((a, b) => b.count - a.count);
-
-  const counts: BriefCounts = {
-    filings: filings[0]?.n ?? 0,
-    events: cards.length,
-    needsYou: tier1.length,
-    filedAway: t3.length,
-  };
-  const quiet =
-    cards.length === 0 && anomalies.length === 0
-      ? { reason: "Nothing needs you" }
-      : undefined;
-  return {
-    window,
-    counts,
-    tier1,
-    tier2,
-    tier3,
-    anomalies,
-    upcoming,
-    quiet,
-    checkedAtMs: checked[0]?.m ?? null,
-    companiesChecked: isins.length,
-  };
+  if (job[0]?.m) return job[0].m;
+  if (!isins.length) return null;
+  const r = await db
+    .select({ m: max(t.announcements.createdAt) })
+    .from(t.announcements)
+    .where(inArray(t.announcements.isin, isins));
+  return r[0]?.m ?? null;
 }
 
 // ---------------------------------------------------------------------------

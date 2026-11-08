@@ -7,8 +7,9 @@ import {
   getDemoUser,
   getTripwires,
 } from "@/lib/queries";
-import { ThresholdEditor, type ThresholdValues } from "@/ui/ThresholdEditor";
-import { saveTripwires } from "./actions";
+import { BacktestLive } from "@/ui/alerts/BacktestLive";
+import type { ThresholdValues } from "@/ui/ThresholdEditor";
+import { backtestForValues, saveTripwires } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Alerts" };
@@ -52,6 +53,8 @@ export default async function AlertsPage() {
         )
       : DEFAULT_CATEGORIES,
   };
+  // the exact engine backtest for the saved rules, server-rendered; the client recomputes on change
+  const initialBacktest = await backtestForValues(initial).catch(() => null);
 
   return (
     <main className="flex-1 pb-8">
@@ -71,7 +74,13 @@ export default async function AlertsPage() {
         </p>
       </header>
       <div className="mt-4 border-t border-rule">
-        <ThresholdEditor initial={initial} grid={grid} action={saveTripwires} />
+        <BacktestLive
+          initial={initial}
+          grid={grid}
+          action={saveTripwires}
+          backtest={backtestForValues}
+          initialBacktest={initialBacktest}
+        />
       </div>
       <p className="gutter receipt mt-4">
         Calendar flags: ex-dates and special sessions (Muhurat 8 Nov) are

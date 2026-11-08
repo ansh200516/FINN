@@ -25,6 +25,11 @@ pnpm dev            # http://localhost:3000 (LAN-bound for phone testing)
 No API keys are needed for the seeded portfolio. Set `GEMINI_API_KEY` in
 `.env.local` (see `.env.example`) for live extraction and the Ask sheet.
 
+Jobs (same code as the CLIs; each call runs until a 50 s deadline and can be
+continued): `curl -X POST -H "Authorization: Bearer $JOBS_SECRET" localhost:3000/api/jobs/eod`.
+Vercel cron hits `GET /api/jobs/eod` at 20:30 IST on weekdays. Set
+`FINN_REFRESH_ON_VISIT=true` in production so an open brief refreshes a stale feed.
+
 Checks: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` (or `pnpm check`).
 
 ## Layout

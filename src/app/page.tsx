@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { after } from "next/server";
+import { getBriefView } from "@/lib/brief";
 import { editionLabel, readTime } from "@/lib/format";
-import {
-  countEventsInWindow,
-  DEFAULT_THRESHOLDS,
-  getBrief,
-  getDemoUser,
-  getTripwires,
-} from "@/lib/queries";
+import { scheduleRefreshOnVisit } from "@/lib/jobs";
+import { DEFAULT_THRESHOLDS, getDemoUser, getTripwires } from "@/lib/queries";
 import {
   addDaysKey,
   formatIst,
@@ -20,16 +17,9 @@ import { Dateline } from "@/ui/Dateline";
 import { EndOfEdition } from "@/ui/EndOfEdition";
 import { FilingCard, OneLinerRow } from "@/ui/FilingCard";
 import { Fold } from "@/ui/Fold";
-import type { BriefWindow } from "@/ui/model";
 import { QuietState } from "@/ui/QuietState";
 import { TierHeader } from "@/ui/TierHeader";
 import { WindowScrubber } from "@/ui/WindowScrubber";
-import {
-  presetWindow,
-  resolveWindow,
-  widenedSentence,
-  widenSequence,
-} from "@/ui/window";
 
 export const dynamic = "force-dynamic";
 
@@ -97,19 +87,19 @@ export default async function BriefPage({
         : DEFAULT_THRESHOLDS.pricePct,
   };
 
-  let win: BriefWindow = resolveWindow(now, q);
-  const auto = (win as { auto?: boolean }).auto === true;
-  let brief = await getBrief({ now, window: win, isins, thresholds });
-  if (auto && brief.counts.events === 0) {
-    for (const preset of widenSequence(now)) {
-      const candidate = presetWindow(now, preset);
-      if (await countEventsInWindow(isins, candidate)) {
-        win = { ...candidate, widened: widenedSentence(now, candidate) };
-        brief = await getBrief({ now, window: win, isins, thresholds });
-        break;
-      }
-    }
-  }
+  // one source of truth: the engine's buildBrief (cached 60 s, tag "brief");
+  // an empty auto window widens to 7 d / 30 d inside the engine and says why
+  const { view: brief, window: win } = await getBriefView({
+    now,
+    query: q,
+    isins,
+    thresholds,
+  });
+
+  // FINN_REFRESH_ON_VISIT=true: a stale feed (> 6 h) schedules a rules-only
+  // announcements job after the response is sent (Vercel `waitUntil`)
+  const refresh = await scheduleRefreshOnVisit(now);
+  if (refresh) after(refresh);
 
   const shown = brief.tier1.length + brief.tier2.length;
   const minutes = readTime(brief.tier1.length, brief.tier2.length);

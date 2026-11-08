@@ -7,7 +7,9 @@ import { db } from "@/db/client";
 import { TripwireRule } from "@/db/json";
 import { tripwires, users } from "@/db/schema";
 import { CATEGORIES } from "@/engine/types";
-import { DEMO_USER_ID } from "@/lib/queries";
+import { backtestSentence } from "@/lib/alerts";
+import { invalidateBrief } from "@/lib/brief";
+import { DEMO_USER_ID, getDemoUser } from "@/lib/queries";
 
 const Input = z.object({
   volumeRatio: z.number().min(1).max(10),
@@ -22,6 +24,76 @@ export type SaveTripwiresState =
   | { ok: true; savedAt: number }
   | { ok: false; error: string }
   | null;
+
+export interface BacktestLine {
+  sentence: string;
+  fires: number;
+  sessions: number;
+  days: number;
+  last: { symbol: string; date: string; dateIst: string } | null;
+}
+
+export interface BacktestResponse {
+  volume: BacktestLine | null;
+  price: BacktestLine | null;
+  category: BacktestLine | null;
+  companies: number;
+  days: number;
+}
+
+const BacktestInput = z.object({
+  volumeRatio: z.number().min(1).max(10),
+  lookbackDays: z.number().int().min(5).max(60).default(20),
+  pricePct: z.number().min(0.5).max(30),
+  volumeEnabled: z.boolean().default(true),
+  priceEnabled: z.boolean().default(true),
+  categories: z.array(z.enum(CATEGORIES)).max(17).default([]),
+});
+
+/**
+ * Live backtest for the editor: the engine's DB-backed `backtest(rule, isins, 60)`
+ * over the demo portfolio for each enabled rule, rendered as one sentence
+ * ("Would have fired 4× in the last 41 sessions · last: THERMAX 6 Nov").
+ */
+export async function backtestForValues(
+  input: unknown,
+): Promise<BacktestResponse> {
+  const v = BacktestInput.parse(input);
+  const user = await getDemoUser();
+  const isins = user.portfolioIsins;
+  const now = Date.now();
+  const days = 60;
+  const [volume, price, category] = await Promise.all([
+    v.volumeEnabled
+      ? backtestSentence(
+          {
+            kind: "volume_ratio",
+            params: { ratio: v.volumeRatio, lookbackDays: v.lookbackDays },
+          },
+          isins,
+          days,
+          now,
+        )
+      : null,
+    v.priceEnabled
+      ? backtestSentence(
+          { kind: "price_move", params: { pct: v.pricePct } },
+          isins,
+          days,
+          now,
+        )
+      : null,
+    v.categories.length
+      ? backtestSentence(
+          { kind: "category", params: { categories: v.categories } },
+          isins,
+          days,
+          now,
+        )
+      : null,
+  ]);
+  return { volume, price, category, companies: isins.length, days };
+}
 
 /**
  * Upserts the demo user's three default tripwires (volume, price, category)
@@ -100,5 +172,7 @@ export async function saveTripwires(
   }
   revalidatePath("/alerts");
   revalidatePath("/");
+  // the brief's anomaly strip uses the saved thresholds
+  await invalidateBrief();
   return { ok: true, savedAt: now };
 }

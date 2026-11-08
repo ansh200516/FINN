@@ -1,7 +1,7 @@
 /**
  * engine/extract — LLM-assisted extraction with code gates (contracts).
  */
-import type { AnnouncementRaw, Category } from "../types";
+import type { Category } from "../types";
 
 export interface ExtractedBio {
   name: string;
@@ -32,15 +32,27 @@ export interface SectionMap {
   }>;
 }
 
-// Builder C implementations: pdf-text.ts, transcript.ts, guidance.ts
+// Builder A implementations: attachment-text.ts, bio.ts, oneliner.ts
 export {
-  classifyTextQuality,
-  type ExtractedPage,
-  type ExtractedPdf,
-  extractPdfPages,
-  LOW_TEXT_CHARS,
-  type TextQuality,
-} from "./pdf-text";
+  type AttachmentText,
+  type ExtractAttachmentOptions,
+  extractAttachmentText,
+  MAX_TEXT_CHARS,
+  pdfBytesToText,
+  shouldFetchAttachment,
+  tidyText,
+  xmlToLines,
+} from "./attachment-text";
+export {
+  backfillBioFromHistory,
+  detectProfilePointer,
+  type ExtractBioOptions,
+  educationFrom,
+  extractBio,
+  findBriefProfile,
+  type ProfileCandidate,
+  pageAt,
+} from "./bio";
 export {
   adjectiveBand,
   applyCueWords,
@@ -52,8 +64,8 @@ export {
   extractGuidance,
   extractGuidanceDetailed,
   type GateStats,
-  gateStatement,
   GUIDANCE_PROMPT_VERSION,
+  gateStatement,
   guidanceId,
   METRICS,
   type ParsedHorizon,
@@ -62,6 +74,65 @@ export {
   reconcileHorizon,
   type VerifiedStatement,
 } from "./guidance";
+export {
+  cleanSubject,
+  computeTotals,
+  type ExtractBatchOptions,
+  extractOneLiner,
+  extractOneLinersBatch,
+  fallbackOneLiner,
+  fallbackTitle,
+  focusText,
+  gateFields,
+  gateItem,
+  LLM_CATEGORIES,
+  type OneLinerInput,
+  type OneLinerResult,
+  rulesOnlyResult,
+  sourceTextFor,
+} from "./oneliner";
+// Builder C implementations: pdf-text.ts, transcript.ts, guidance.ts, sections.ts
+export {
+  classifyTextQuality,
+  type ExtractedPage,
+  type ExtractedPdf,
+  extractPdfPages,
+  LOW_TEXT_CHARS,
+  type TextQuality,
+} from "./pdf-text";
+// Builder B implementation (preliminary results from the filing PDF): results-pdf.ts
+export {
+  detectUnit,
+  extractDates,
+  extractResultsFromPdf,
+  extractResultsWithLlm,
+  linesFromItems,
+  numericTokens,
+  type PdfExtractContext,
+  type PdfResultsExtraction,
+  type PdfStatement,
+  parseIndianNumber,
+  parseStatements,
+  pdfPagesText,
+  pdfTolerance,
+  UNIT_MULTIPLIER,
+  type UnitName,
+  verifyStatements,
+} from "./results-pdf";
+// Builder C: annual-report page map (regex anchors; optional one-call TOC cross-check)
+export {
+  type AnchorLabel,
+  buildPageMap,
+  detectFolioOffset,
+  getSectionText,
+  isTocPage,
+  mapSections,
+  mapSectionsForDocument,
+  type PageMap,
+  type PageMapSection,
+  SECTIONS_PROMPT_VERSION,
+  type SectionLabel,
+} from "./sections";
 export {
   type FiscalPeriod,
   inferPeriodFromText,
@@ -81,35 +152,3 @@ export {
   quarterEndsOf,
   splitSpeakerTurns,
 } from "./transcript";
-
-/** Appointment / cessation filing → brief profile of the person. */
-export async function extractBio(
-  _filingText: string,
-  _ctx: { isin: string; announcementId: string },
-): Promise<ExtractedBio | null> {
-  throw new Error("not implemented: extract.extractBio");
-}
-
-/** Category-specific one-liner + fields, number-grounded against the filing text. */
-export async function extractOneLiner(
-  _raw: AnnouncementRaw,
-  _category: Category,
-  _filingText?: string,
-): Promise<OneLiner> {
-  throw new Error("not implemented: extract.extractOneLiner");
-}
-
-// Builder C: annual-report page map (regex anchors; optional one-call TOC cross-check)
-export {
-  type AnchorLabel,
-  buildPageMap,
-  detectFolioOffset,
-  getSectionText,
-  isTocPage,
-  mapSections,
-  mapSectionsForDocument,
-  type PageMap,
-  type PageMapSection,
-  type SectionLabel,
-  SECTIONS_PROMPT_VERSION,
-} from "./sections";

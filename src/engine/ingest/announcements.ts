@@ -24,6 +24,7 @@ import {
   educationFrom,
   findBriefProfile,
   pageAt,
+  peopleFromProfiles,
   profileScore,
 } from "../extract/bio";
 import type { ExtractedBio } from "../extract/index";
@@ -117,6 +118,11 @@ export interface CardPayload {
   /** category-shaped, list-valued fields after the gates (see extract/oneliner.ts) */
   fields: Record<string, unknown> | null;
   bio?: BioPayload | null;
+  /**
+   * Same records as `bio.people` when the brief-profile annexure names more
+   * than one person. Additive; single-person cards omit it.
+   */
+  people?: ExtractedBio["people"];
   extraction: {
     by: "llm" | "rules" | "none";
     model?: string;
@@ -1053,6 +1059,10 @@ async function buildBio(
       : excerpt
         ? "medium"
         : "low";
+  const people = peopleFromProfiles(
+    [excerpt, ...rulesCandidates.map((c) => c.excerpt)],
+    changes,
+  );
   return {
     name: name || "(name not extracted)",
     role: String(appointed?.role ?? "").trim() || "(role not extracted)",
@@ -1070,6 +1080,7 @@ async function buildBio(
     sourceUrl: backfilledFrom?.url ?? (w.raw.attchmntFile || null),
     confidence,
     backfilledFrom,
+    ...(people.length ? { people } : {}),
   };
 }
 
@@ -1173,6 +1184,7 @@ function buildCardPayload(
     priority,
     fields: ol?.fields ?? null,
     bio,
+    ...(bio?.people?.length ? { people: bio.people } : {}),
     extraction: ol
       ? {
           by: ol.source,

@@ -3,6 +3,16 @@
  */
 import type { Category } from "../types";
 
+/** One person carved out of a multi-person brief-profile annexure. */
+export interface BioPerson {
+  name: string;
+  role: string | null;
+  action: string | null;
+  effectiveDate: string | null;
+  excerpt: string;
+  priorRoles: string[];
+}
+
 export interface ExtractedBio {
   name: string;
   role: string;
@@ -12,6 +22,11 @@ export interface ExtractedBio {
   priorRoles: string[];
   education: string | null;
   page: number | null;
+  /**
+   * Per-person profiles when the annexure names more than one appointee.
+   * Additive: the single-person fields above stay the primary appointee.
+   */
+  people?: BioPerson[];
 }
 
 export interface OneLiner {
@@ -45,6 +60,7 @@ export {
 } from "./attachment-text";
 export {
   backfillBioFromHistory,
+  dedupeLeadingName,
   detectProfilePointer,
   type ExtractBioOptions,
   educationFrom,
@@ -52,6 +68,9 @@ export {
   findBriefProfile,
   type ProfileCandidate,
   pageAt,
+  peopleFromProfiles,
+  splitAnnexurePeople,
+  trimAtSentence,
 } from "./bio";
 export {
   adjectiveBand,

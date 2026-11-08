@@ -5,10 +5,14 @@ import {
   xmlToLines,
 } from "@/engine/extract/attachment-text";
 import {
+  dedupeLeadingName,
   detectProfilePointer,
   educationFrom,
   findBriefProfile,
   pageAt,
+  splitAnnexurePeople,
+  trimAtSentence,
+  wordCount,
 } from "@/engine/extract/bio";
 
 const filing = `[[page 1]]
@@ -69,6 +73,105 @@ describe("pointer / education / page helpers", () => {
     expect(pageAt("no markers here", 5)).toBeNull();
     expect(pageAt(filing, 0)).toBe(1);
     expect(pageAt(filing, filing.indexOf("Brief Profile"))).toBe(2);
+  });
+});
+
+/** Voltas 6 Nov 2026 brief-profile annexure: two appointees, each name doubled at the start. */
+const VOLTAS_ANNEXURE =
+  "Mr. Jayant Balan Mr. Jayant Balan is a Mechanical Engineer and PGDM from SP Jain Institute of Management & Research. Mr. Balan joined the Tata Group in 1999 as part of the Tata Administrative Service and moved to Voltas in 2001. Over past two and a half decades, Mr. Balan has held leadership roles across manufacturing, supply chain, strategy, international operations, and consumer durables. Mr. Balan was serving as CEO of Voltbek Home Appliances Private Limited since 2019 before transitioning to the role of Head – Room Air Conditioner Business of the Company in January 2026. Mr. Venkatesalu Palaniswamy Mr. Venkatesalu Palaniswamy is a Commerce Graduate, Alumni of Harvard Business School (Advanced Management Program – AMP), Master’s in Management from Symbiosis (SIIB) Pune, CFA from the Institute of Chartered Financial Analysts of India (ICFAI). Mr. Venkatesalu Palaniswamy is the Managing Director of Trent Limited. Prior to that, he held the position of Executive Director and Chief Executive Officer of Trent. He joined Trent in 2008 and has been with the company for over 15 years and continues to pioneer Trent’s successful journey from strength to strength.";
+
+const VOLTAS_CHANGES = [
+  {
+    person: "Mr. Noel N. Tata",
+    role: "Chairman and Director",
+    action: "retired",
+    effective_date: "11th November, 2026",
+  },
+  {
+    person: "Mr. Sunil Alaric D’Souza",
+    role: "Chairman",
+    action: "appointed",
+    effective_date: "12th November, 2026",
+  },
+  {
+    person: "Mr. Mukundan Menon C.P.",
+    role: "Managing Director",
+    action: "retired",
+    effective_date: "24th May, 2027",
+  },
+  {
+    person: "Mr. Jayant Balan",
+    role: "Managing Director",
+    action: "appointed",
+    effective_date: "25th May, 2027",
+    prior_roles: ["Head – Room Air Conditioner Business, Voltas"],
+  },
+  {
+    person: "Mr. Venkatesalu Palaniswamy",
+    role: "Director (Non-Independent Non-Executive)",
+    action: "appointed",
+    effective_date: "12th November, 2026",
+    prior_roles: ["Managing Director, Trent Limited"],
+  },
+];
+
+describe("splitAnnexurePeople", () => {
+  it("splits the Voltas annexure on change-table names and strips the doubled heading", () => {
+    const people = splitAnnexurePeople(VOLTAS_ANNEXURE, VOLTAS_CHANGES);
+    expect(people.map((p) => p.name)).toEqual([
+      "Mr. Jayant Balan",
+      "Mr. Venkatesalu Palaniswamy",
+    ]);
+    expect(people[0]).toMatchObject({
+      role: "Managing Director",
+      action: "appointed",
+      effectiveDate: "25th May, 2027",
+      priorRoles: ["Head – Room Air Conditioner Business, Voltas"],
+    });
+    expect(people[1]).toMatchObject({
+      role: "Director (Non-Independent Non-Executive)",
+      action: "appointed",
+      effectiveDate: "12th November, 2026",
+    });
+    expect(
+      people[0]?.excerpt.startsWith("Mr. Jayant Balan is a Mechanical"),
+    ).toBe(true);
+    expect(
+      people[0]?.excerpt.includes("Mr. Jayant Balan Mr. Jayant Balan"),
+    ).toBe(false);
+    expect(
+      people[1]?.excerpt.startsWith(
+        "Mr. Venkatesalu Palaniswamy is a Commerce",
+      ),
+    ).toBe(true);
+    expect(people[1]?.excerpt.includes("Mr. Venkatesalu Palaniswamy Mr.")).toBe(
+      false,
+    );
+    for (const p of people)
+      expect(wordCount(p.excerpt)).toBeLessThanOrEqual(90);
+    // a later "Mr. Balan" inside Jayant's paragraph is not its own person
+    expect(people).toHaveLength(2);
+  });
+
+  it("keeps a single-person profile intact and trims at a sentence boundary", () => {
+    const one =
+      "Mr. Rajib Mukhopadhyay is a Chartered Accountant with over 28 years of experience in finance, treasury and corporate strategy.";
+    const people = splitAnnexurePeople(one, [
+      { person: "Mr. Rajib Mukhopadhyay", role: "CFO", action: "appointed" },
+    ]);
+    expect(people).toHaveLength(1);
+    expect(people[0]?.excerpt).toBe(one);
+    expect(
+      dedupeLeadingName(`Mr. Jayant Balan Mr. Jayant Balan is a engineer.`),
+    ).toBe("Mr. Jayant Balan is a engineer.");
+    const long = Array.from(
+      { length: 40 },
+      (_, i) => `Sentence ${i} has several extra words in it.`,
+    ).join(" ");
+    const trimmed = trimAtSentence(long, 90);
+    expect(wordCount(trimmed)).toBeLessThanOrEqual(90);
+    expect(trimmed.endsWith(".")).toBe(true);
+    expect(wordCount(long)).toBeGreaterThan(90);
   });
 });
 

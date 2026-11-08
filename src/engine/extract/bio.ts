@@ -14,7 +14,7 @@ import { verifyQuote } from "../llm/verify";
 import { fetchAnnouncementHistory } from "../sources/nse-announcements";
 import type { AnnouncementRaw } from "../types";
 import { extractAttachmentText } from "./attachment-text";
-import type { ExtractedBio } from "./index";
+import type { BioPerson, ExtractedBio } from "./index";
 import {
   type ExtractBatchOptions,
   extractOneLinersBatch,
@@ -171,6 +171,189 @@ export function educationFrom(excerpt: string): string | null {
   return m ? m[0].trim() : null;
 }
 
+// ---------------------------------------------------------------------------
+// Multi-person brief-profile annexures
+// ---------------------------------------------------------------------------
+
+const HONORIFIC_NAME =
+  /\b(Mr|Ms|Mrs|Dr)\.?\s+((?:[A-Z][A-Za-z.'’-]*\s+){0,5}[A-Z][A-Za-z.'’-]*)/g;
+
+/** "Mr. Jayant Balan Mr. Jayant Balan is…" → "Mr. Jayant Balan is…". */
+export function dedupeLeadingName(text: string): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  const m =
+    /^(Mr|Ms|Mrs|Dr)\.?\s+([A-Z][A-Za-z.'’-]*(?:\s+[A-Z][A-Za-z.'’-]*){0,5})\s+\1\.?\s+\2(?=\s|[,.:;]|$)/.exec(
+      t,
+    );
+  if (!m?.[1] || !m[2]) return t;
+  return `${m[1]}. ${m[2]}${t.slice(m[0].length)}`.replace(/\s+/g, " ").trim();
+}
+
+export function wordCount(text: string): number {
+  const t = text.trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+
+/** Keep at most `maxWords`, cutting back to the last sentence boundary inside the window. */
+export function trimAtSentence(text: string, maxWords = 90): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return clean;
+  const slice = words.slice(0, maxWords).join(" ");
+  if (/[.!?]$/.test(slice)) return slice;
+  let end = -1;
+  for (const mark of [". ", "! ", "? "]) {
+    const i = slice.lastIndexOf(mark);
+    if (i > end) end = i;
+  }
+  if (end >= 0) {
+    const kept = slice.slice(0, end + 1).trim();
+    if (wordCount(kept) >= 12) return kept;
+  }
+  return slice;
+}
+
+function significantTokens(name: string): string[] {
+  const stripped = name
+    .replace(/\b(mr|ms|mrs|dr|shri|smt|prof)\.?\s+/gi, " ")
+    .replace(/[’]/g, "'")
+    .replace(/\./g, " ");
+  return stripped
+    .split(/[^A-Za-z']+/)
+    .map((t) => t.toLowerCase())
+    .filter((t) => t.length > 1);
+}
+
+function namesMatch(captured: string[], person: string[]): boolean {
+  if (!captured.length || !person.length) return false;
+  if (captured.join(" ") === person.join(" ")) return true;
+  if (captured.length < 2) return false;
+  if (captured[captured.length - 1] !== person[person.length - 1]) return false;
+  const have = new Set(person);
+  return captured.every((t) => have.has(t));
+}
+
+interface NamedChange {
+  name: string;
+  role: string | null;
+  action: string | null;
+  effectiveDate: string | null;
+  priorRoles: string[];
+  tokens: string[];
+}
+
+function strField(
+  o: Record<string, unknown>,
+  ...keys: string[]
+): string | null {
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+function normalizeChanges(
+  changes: ReadonlyArray<Record<string, unknown>>,
+): NamedChange[] {
+  const out: NamedChange[] = [];
+  for (const c of changes) {
+    const name = strField(c, "person", "name");
+    if (!name) continue;
+    const tokens = significantTokens(name);
+    if (!tokens.length) continue;
+    const prior = c.priorRoles ?? c.prior_roles;
+    out.push({
+      name,
+      role: strField(c, "role"),
+      action: strField(c, "action"),
+      effectiveDate: strField(c, "effectiveDate", "effective_date"),
+      priorRoles: Array.isArray(prior)
+        ? prior.filter((x): x is string => typeof x === "string" && !!x.trim())
+        : [],
+      tokens,
+    });
+  }
+  return out;
+}
+
+function bestChange(
+  captured: string[],
+  named: NamedChange[],
+): NamedChange | null {
+  let best: { row: NamedChange; extra: number } | null = null;
+  for (const row of named) {
+    if (!namesMatch(captured, row.tokens)) continue;
+    const extra = Math.abs(row.tokens.length - captured.length);
+    if (!best || extra < best.extra) best = { row, extra };
+  }
+  return best?.row ?? null;
+}
+
+/** Join profile paragraphs, dropping a later copy that is already contained. */
+export function joinProfileText(
+  parts: Array<string | null | undefined>,
+): string {
+  const out: string[] = [];
+  for (const p of parts) {
+    if (!p) continue;
+    const t = p.replace(/\s+/g, " ").trim();
+    if (t.length < 80) continue;
+    const head = t.slice(0, 60);
+    if (out.some((o) => o.includes(head) || t.includes(o.slice(0, 60))))
+      continue;
+    out.push(t);
+  }
+  return out.join("\n\n");
+}
+
+/**
+ * Split a brief-profile annexure into one record per change-table person.
+ * Boundaries are `Mr./Ms./Mrs./Dr. <Name>` where the name matches the change
+ * table. A second mention of the same person (the duplicated heading, or a
+ * later "Mr. Surname") does not start a new section. Excerpts lose a repeated
+ * leading name and are cut to ≤90 words on a sentence boundary.
+ */
+export function splitAnnexurePeople(
+  text: string,
+  changes: ReadonlyArray<Record<string, unknown>>,
+): BioPerson[] {
+  const named = normalizeChanges(changes);
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean || !named.length) return [];
+  const hits: Array<{ at: number; row: NamedChange }> = [];
+  for (const m of clean.matchAll(HONORIFIC_NAME)) {
+    if (m.index === undefined) continue;
+    const row = bestChange(significantTokens(m[2] ?? ""), named);
+    if (!row) continue;
+    if (hits.some((h) => h.row === row)) continue;
+    hits.push({ at: m.index, row });
+  }
+  const people: BioPerson[] = [];
+  hits.forEach((h, i) => {
+    const end = hits[i + 1]?.at ?? clean.length;
+    const excerpt = trimAtSentence(dedupeLeadingName(clean.slice(h.at, end)));
+    if (wordCount(excerpt) < 8) return;
+    people.push({
+      name: h.row.name,
+      role: h.row.role,
+      action: h.row.action,
+      effectiveDate: h.row.effectiveDate,
+      excerpt,
+      priorRoles: h.row.priorRoles,
+    });
+  });
+  return people;
+}
+
+/** Profile paragraphs + the filing's change table → `people[]`. */
+export function peopleFromProfiles(
+  parts: Array<string | null | undefined>,
+  changes: ReadonlyArray<Record<string, unknown>>,
+): BioPerson[] {
+  return splitAnnexurePeople(joinProfileText(parts), changes);
+}
+
 export interface ExtractBioOptions extends ExtractBatchOptions {
   symbol?: string;
   companyName?: string;
@@ -263,6 +446,10 @@ export async function extractBio(
         (x): x is string => typeof x === "string",
       )
     : [];
+  const people = peopleFromProfiles(
+    [excerpt, ...candidates.map((c) => c.excerpt)],
+    changes,
+  );
   return {
     name: name || "(name not extracted)",
     role: role || "(role not extracted)",
@@ -275,5 +462,6 @@ export async function extractBio(
     education: educationFrom(excerpt),
     page:
       off !== null ? pageAt(text, text.indexOf(excerpt.slice(0, 30))) : null,
+    ...(people.length ? { people } : {}),
   };
 }

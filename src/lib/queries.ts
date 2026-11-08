@@ -198,6 +198,9 @@ function bioToCard(
         : "high",
     education: typeof bio.education === "string" ? bio.education : undefined,
     page: typeof bio.page === "number" ? bio.page : undefined,
+    ...(Array.isArray(bio.people) && bio.people.length
+      ? { people: bio.people }
+      : {}),
   };
 }
 

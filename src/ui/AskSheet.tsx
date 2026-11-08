@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { ASK_WAIT_SLOW_MS, askFailureCopy, askWaitCopy } from "./ask/status";
 import { Sheet } from "./Sheet";
 
 export interface AskBudget {
@@ -46,9 +47,22 @@ function pickReason(
     : null;
 }
 
+function isAskBody(body: unknown): body is AskOk | AskErr {
+  return (
+    !!body &&
+    typeof body === "object" &&
+    "ok" in body &&
+    typeof body.ok === "boolean"
+  );
+}
+
 /**
  * The Ask field pinned above the bar on a company page. Posts to /api/ask;
  * the answer is grounded in that company's filings only.
+ *
+ * The wait is a receipt line, not a spinner. It names the read, then after
+ * eight seconds says the read is still going. The fetch is not aborted —
+ * the server keeps its timeout. The line does not pulse.
  */
 export function AskSheet({
   symbol,
@@ -59,18 +73,31 @@ export function AskSheet({
   budget: AskBudget | null;
   docCount: number;
 }) {
+  const waitId = useId();
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
+  const [waitedMs, setWaitedMs] = useState(0);
   const [liveBudget, setLiveBudget] = useState<AskBudget | null>(budget);
   const [result, setResult] = useState<AskOk | null>(null);
   const [error, setError] = useState<string | null>(null);
   const shown = liveBudget ?? budget;
   const canSubmit = question.trim().length > 0 && !busy;
 
+  useEffect(() => {
+    if (!busy) return;
+    const id = setTimeout(
+      () => setWaitedMs(ASK_WAIT_SLOW_MS),
+      ASK_WAIT_SLOW_MS,
+    );
+    return () => clearTimeout(id);
+  }, [busy]);
+
   async function onAsk() {
     const q = question.trim();
     if (!q || busy) return;
+    // The question stays in the field if this fails or times out.
+    setWaitedMs(0);
     setBusy(true);
     setError(null);
     try {
@@ -79,19 +106,41 @@ export function AskSheet({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ symbol, question: q }),
       });
-      const body = (await r.json()) as AskOk | AskErr;
+      if (r.status === 408 || r.status === 504) {
+        setResult(null);
+        setError(askFailureCopy({ status: r.status }));
+        return;
+      }
+      let body: unknown;
+      try {
+        body = await r.json();
+      } catch {
+        setResult(null);
+        setError(askFailureCopy({ status: r.status }));
+        return;
+      }
+      if (!isAskBody(body)) {
+        setResult(null);
+        setError(askFailureCopy({ status: r.status }));
+        return;
+      }
       const next = pickReason(body.budget);
       if (next) setLiveBudget(next);
       if (!body.ok) {
         setResult(null);
-        setError(body.error);
+        setError(askFailureCopy({ status: r.status, error: body.error }));
         return;
       }
       setResult(body);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "network error");
+      setError(
+        askFailureCopy({
+          error: e instanceof Error ? e.message : null,
+        }),
+      );
     } finally {
       setBusy(false);
+      setWaitedMs(0);
     }
   }
 
@@ -163,7 +212,6 @@ export function AskSheet({
             </p>
           </div>
         ) : null}
-        {error ? <p className="small text-ink-2 mt-2">{error}</p> : null}
         <div className="mt-3 card px-3 py-3">
           <p className="small text-ink">
             Answers come only from this company's documents.
@@ -191,13 +239,28 @@ export function AskSheet({
             </li>
           </ul>
         </div>
+        {busy ? (
+          <output
+            id={waitId}
+            className="receipt mt-3 block"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {askWaitCopy(symbol, waitedMs)}
+          </output>
+        ) : error ? (
+          <p className="small text-ink-2 mt-3" role="alert">
+            {error}
+          </p>
+        ) : null}
         <button
           type="button"
           disabled={!canSubmit}
           onClick={() => void onAsk()}
+          aria-describedby={busy ? waitId : undefined}
           className={`hit mt-3 w-full rounded-[var(--r-chip)] bg-ink text-bg font-medium${canSubmit ? "" : " opacity-50"}`}
         >
-          {busy ? "Asking…" : "Ask"}
+          Ask
         </button>
       </Sheet>
     </>

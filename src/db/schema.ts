@@ -428,3 +428,5 @@ export type AlertRow = typeof alerts.$inferSelect;
 export type LlmLedgerRow = typeof llmLedger.$inferSelect;
 export type LlmCacheRow = typeof llmCache.$inferSelect;
 export type JobRow = typeof jobs.$inferSelect;
+
+export * from "./schema-docs"; // document_pages + document_meta (Builder C)

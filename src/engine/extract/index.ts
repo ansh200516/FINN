@@ -1,12 +1,7 @@
 /**
  * engine/extract — LLM-assisted extraction with code gates (contracts).
  */
-import type {
-  AnnouncementRaw,
-  Category,
-  DocumentText,
-  GuidanceStatement,
-} from "../types";
+import type { AnnouncementRaw, Category } from "../types";
 
 export interface ExtractedBio {
   name: string;
@@ -37,20 +32,55 @@ export interface SectionMap {
   }>;
 }
 
-/** Transcript → verified guidance statements (verbatim quotes only). */
-export async function extractGuidance(
-  _doc: DocumentText,
-  _ctx: { isin: string; period: string | null },
-): Promise<GuidanceStatement[]> {
-  throw new Error("not implemented: extract.extractGuidance");
-}
-
-/** Pure-ish: split a transcript into speaker turns for chunked extraction. */
-export function splitSpeakerTurns(
-  _doc: DocumentText,
-): Array<{ speaker: string | null; page: number; text: string }> {
-  throw new Error("not implemented: extract.splitSpeakerTurns");
-}
+// Builder C implementations: pdf-text.ts, transcript.ts, guidance.ts
+export {
+  classifyTextQuality,
+  type ExtractedPage,
+  type ExtractedPdf,
+  extractPdfPages,
+  LOW_TEXT_CHARS,
+  type TextQuality,
+} from "./pdf-text";
+export {
+  adjectiveBand,
+  applyCueWords,
+  type Band,
+  callFiscalYear,
+  chunkTurns,
+  dedupeStatements,
+  type ExtractGuidanceResult,
+  extractGuidance,
+  extractGuidanceDetailed,
+  type GateStats,
+  gateStatement,
+  GUIDANCE_PROMPT_VERSION,
+  guidanceId,
+  METRICS,
+  type ParsedHorizon,
+  parseHorizon,
+  persistGuidance,
+  reconcileHorizon,
+  type VerifiedStatement,
+} from "./guidance";
+export {
+  type FiscalPeriod,
+  inferPeriodFromText,
+  makePeriod,
+  managementTurns,
+  matchRoster,
+  type ParsedTranscript,
+  type Participant,
+  parseLongDate,
+  parsePeriodLabel,
+  parseTranscript,
+  periodForQuarterEnd,
+  periodForTranscriptDate,
+  periodSortKey,
+  previousQuarter,
+  previousYearPeriod,
+  quarterEndsOf,
+  splitSpeakerTurns,
+} from "./transcript";
 
 /** Appointment / cessation filing → brief profile of the person. */
 export async function extractBio(
@@ -69,7 +99,17 @@ export async function extractOneLiner(
   throw new Error("not implemented: extract.extractOneLiner");
 }
 
-/** Annual report → section page map (regex anchors first, LLM for ambiguous pages). */
-export async function mapSections(_doc: DocumentText): Promise<SectionMap> {
-  throw new Error("not implemented: extract.mapSections");
-}
+// Builder C: annual-report page map (regex anchors; optional one-call TOC cross-check)
+export {
+  type AnchorLabel,
+  buildPageMap,
+  detectFolioOffset,
+  getSectionText,
+  isTocPage,
+  mapSections,
+  mapSectionsForDocument,
+  type PageMap,
+  type PageMapSection,
+  type SectionLabel,
+  SECTIONS_PROMPT_VERSION,
+} from "./sections";

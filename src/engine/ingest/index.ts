@@ -5,7 +5,6 @@ import type {
   AnnouncementRaw,
   Anomaly,
   Classification,
-  DocumentKind,
   PriceBar,
   ResultsQuarter,
 } from "../types";
@@ -67,10 +66,21 @@ export function parseXbrlResults(
   throw new Error("not implemented: ingest.parseXbrlResults");
 }
 
-/** Discover, download and text-extract documents for a company. */
-export async function ingestDocuments(
-  _isin: string,
-  _kinds: DocumentKind[],
-): Promise<IngestSummary> {
-  throw new Error("not implemented: ingest.ingestDocuments");
-}
+// Builder C implementation (documents: discover → download → page text): documents.ts
+export {
+  dedupeDocuments,
+  type DiscoveryOptions,
+  type DiscoveryResult,
+  discoverDocuments,
+  DOCS_CACHE_DIR,
+  docIdForSha,
+  type IngestDocumentsOptions,
+  type IngestDocumentsResult,
+  type IngestedDocument,
+  ingestDocuments,
+  ingestOneDocument,
+  listDocuments,
+  loadDocumentText,
+  loadPageText,
+  recentQuarterLabels,
+} from "./documents";

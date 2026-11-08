@@ -1,0 +1,1098 @@
+<section id="documents">class="card card-large">
+      <div class="flex flex-space-between margin-bottom-16">
+        <h2 class="margin-0">Documents</h2>
+      </div>
+
+      <div class="flex-row flex-gap-small">
+        
+          <div class="documents flex-column" style="flex: 2 1 250px;">
+            <h3 class="margin-bottom-8">Announcements</h3>
+
+            <div class="show-more-box" style="flex-basis: 300px">
+              <div id="company-announcements-tab">
+                <div class="flex">
+  <div class="options small" style="margin-bottom: 0">
+    <button
+      type="button"
+      class="active"
+      
+      onclick="Utils.ajaxLoad(event, '/announcements/recent/3279/')"
+      data-swap="#company-announcements-tab"
+    >
+      Recent
+    </button>
+    <button
+      type="button"
+      
+      
+      onclick="Utils.ajaxLoad(event, '/announcements/important/3279/')"
+      data-swap="#company-announcements-tab"
+    >
+      Important
+    </button>
+    <button
+      type="button"
+      
+      
+      onclick="Utils.ajaxLoad(event, '/announcements/search/3279/')"
+      data-swap="#company-announcements-tab"
+    >
+      Search
+    </button>
+    <a class="button" href="https://www.bseindia.com/stock-share-price/supreme-industries-ltd/SUPREMEIND/509930/corp-announcements/" target="_blank" rel="noopener noreferrer">
+      All
+      <i class="icon-link-ext smaller"></i>
+    </a>
+  </div>
+</div>
+
+
+  
+  <ul class="list-links">
+    
+      <li class="overflow-wrap-anywhere">
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=7dd24b0a-fe76-46ff-a723-5bfb0af1be46.pdf"
+           target="_blank"
+           rel="noopener noreferrer">
+          Announcement under Regulation 30 (LODR)-Newspaper Publication
+
+          
+            <span class="ink-600 smaller"><time datetime="2026-11-05T14:45:48+05:30">5 Nov</time></span>
+          
+        </a>
+      </li>
+    
+      <li class="overflow-wrap-anywhere">
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=ceb674b9-cd2e-4ef8-bf77-bece0e59fe0f.pdf"
+           target="_blank"
+           rel="noopener noreferrer">
+          Announcement under Regulation 30 (LODR)-Earnings Call Transcript
+
+          
+            <div class="ink-600 smaller"><time datetime="2026-11-01T17:24:16+05:30">1 Nov</time> - Transcript of the earnings conference call held on Monday, the 26th October, 2026.</div>
+          
+        </a>
+      </li>
+    
+      <li class="overflow-wrap-anywhere">
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=74d043ce-144b-49d2-842e-5c6589c04c4f.pdf"
+           target="_blank"
+           rel="noopener noreferrer">
+          Announcement under Regulation 30 (LODR)-Newspaper Publication
+
+          
+            <span class="ink-600 smaller"><time datetime="2026-10-28T15:47:38+05:30">28 Oct</time></span>
+          
+        </a>
+      </li>
+    
+      <li class="overflow-wrap-anywhere">
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=3275f3aa-5197-4f42-b37e-d7101cf9acbc.pdf"
+           target="_blank"
+           rel="noopener noreferrer">
+          Announcement under Regulation 30 (LODR)-Analyst / Investor Meet - Outcome
+
+          
+            <div class="ink-600 smaller"><time datetime="2026-10-26T18:23:06+05:30">26 Oct</time> - Audio recording link for Q2 and half-year 2026 analyst conference call shared.</div>
+          
+        </a>
+      </li>
+    
+      <li class="overflow-wrap-anywhere">
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=71a16e06-ba48-4934-b921-728a0664f9bb.pdf"
+           target="_blank"
+           rel="noopener noreferrer">
+          Announcement under Regulation 30 (LODR)-Investor Presentation
+
+          
+            <span class="ink-600 smaller"><time datetime="2026-10-26T13:25:44+05:30">26 Oct</time></span>
+          
+        </a>
+      </li>
+    
+  </ul>
+
+
+
+
+              </div>
+            </div>
+          </div>
+        
+
+        <div class="documents annual-reports flex-column"
+             style="flex: 1 1 180px;
+                    max-width: 200px">
+          <h3>Annual reports</h3>
+          <div class="show-more-box">
+  <ul class="list-links">
+    
+      <li>
+        <a href="https://www.bseindia.com/xml-data/corpfiling/AttachHis/2fff9f50-86c5-4045-b4d8-afc16b252bbc.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2026</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+            <button type="button"
+                    class="button-chip plausible-event-name=Annual+Report+Summary"
+                    data-title="Annual Report Summary - Supreme Inds."
+                    data-is-bottom-modal="true"
+                    aria-haspopup="dialog"
+                    data-url="/annual-reports/73650119/summary/"
+                    onclick="Modal.openInModal(event)">AI Summary</button>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/xml-data/corpfiling/AttachHis/604b2939-2da2-4a59-96e1-49d5860e63c0.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2025</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/xml-data/corpfiling/AttachHis/479d0531-0dee-4dd0-aada-e8d23d9a0782.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2024</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/xml-data/corpfiling/AttachHis/fcea32ee-b759-480a-8aee-d5a8e0b1a791.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2023</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/73076509930.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2022</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/68494509930.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2021</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300320.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2020</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300319.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2019</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300318.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2018</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300317.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2017</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300316.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2016</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300615.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2015</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300614.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2014</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300613.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2013</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+      <li>
+        <a href="https://www.bseindia.com/bseplus/AnnualReport/509930/5099300612.pdf"
+           class="plausible-event-name=Annual+Report plausible-event-user=unregistered"
+           target="_blank"
+           rel="noopener noreferrer">Annual Report 2012</a>
+        <div class="flex flex-align-center gap-8 margin-top-4">
+          <span class="ink-600 smaller">from bse</span>
+          
+        </div>
+      </li>
+    
+  </ul>
+
+</div>
+          
+        </div>
+
+        
+          <div class="documents credit-ratings flex-column"
+               style="flex: 1 1 160px;
+                      max-width: fit-content">
+            <h3>Credit ratings</h3>
+            <div class="show-more-box">
+              
+<ul class="list-links">
+
+  <li>
+    <a href="https://www.crisil.com/mnt/winshare/Ratings/RatingList/RatingDocs/TheSupremeIndustriesLimited_December 16_ 2025_RR_384891.html" class="plausible-event-name=Credit+Rating plausible-event-user=unregistered" target="_blank" rel="noopener noreferrer">
+      Rating update
+      <div class="ink-600 smaller">
+        16 Dec 2025 from crisil
+      </div>
+    </a>
+  </li>
+
+  <li>
+    <a href="https://www.crisil.com/mnt/winshare/Ratings/RatingList/RatingDocs/TheSupremeIndustriesLimited_December 24_ 2024_RR_359399.html" class="plausible-event-name=Credit+Rating plausible-event-user=unregistered" target="_blank" rel="noopener noreferrer">
+      Rating update
+      <div class="ink-600 smaller">
+        24 Dec 2024 from crisil
+      </div>
+    </a>
+  </li>
+
+  <li>
+    <a href="https://www.crisil.com/mnt/winshare/Ratings/RatingList/RatingDocs/TheSupremeIndustriesLimited_December 27, 2023_RR_331903.html" class="plausible-event-name=Credit+Rating plausible-event-user=unregistered" target="_blank" rel="noopener noreferrer">
+      Rating update
+      <div class="ink-600 smaller">
+        27 Dec 2023 from crisil
+      </div>
+    </a>
+  </li>
+
+  <li>
+    <a href="https://www.crisil.com/mnt/winshare/Ratings/RatingList/RatingDocs/TheSupremeIndustriesLimited_March 20, 2023_RR_314751.html" class="plausible-event-name=Credit+Rating plausible-event-user=unregistered" target="_blank" rel="noopener noreferrer">
+      Rating update
+      <div class="ink-600 smaller">
+        20 Mar 2023 from crisil
+      </div>
+    </a>
+  </li>
+
+  <li>
+    <a href="https://www.crisil.com/mnt/winshare/Ratings/RatingList/RatingDocs/TheSupremeIndustriesLimited_March 25, 2022_RR_288064.html" class="plausible-event-name=Credit+Rating plausible-event-user=unregistered" target="_blank" rel="noopener noreferrer">
+      Rating update
+      <div class="ink-600 smaller">
+        25 Mar 2022 from crisil
+      </div>
+    </a>
+  </li>
+
+  <li>
+    <a href="https://www.crisil.com/mnt/winshare/Ratings/RatingList/RatingDocs/TheSupremeIndustriesLimited_April 05, 2021_RR_263224.html" class="plausible-event-name=Credit+Rating plausible-event-user=unregistered" target="_blank" rel="noopener noreferrer">
+      Rating update
+      <div class="ink-600 smaller">
+        5 Apr 2021 from crisil
+      </div>
+    </a>
+  </li>
+
+</ul>
+
+
+            </div>
+          </div>
+        
+
+        
+          <div class="documents concalls flex-column"
+               style="flex: 2 1 260px;
+                      max-width: fit-content">
+            <div class="flex flex-space-between flex-align-center margin-bottom-8">
+              <h3 class="margin-0">Concalls</h3>
+              <button class="a font-size-12 font-weight-500 sub"
+                      onclick="Modal.openInModal(event)"
+                      data-url="/concalls/add-3279/"
+                      data-title="Supreme Inds. - Add Link">
+                <i class="icon-flag"></i>
+                <span class="underline-link">Add Missing</span>
+              </button>
+            </div>
+            <div class="show-more-box"><ul class="list-links">
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Nov 2026</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=ceb674b9-cd2e-4ef8-bf77-bece0e59fe0f.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/23353298/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Nov 2026"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=71a16e06-ba48-4934-b921-728a0664f9bb.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+        <a href="https://www.supreme.co.in/Supreme-Q2-Con-call.mp3"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">REC</a>
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Aug 2026</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=acb375ae-1b6a-45f0-965f-7e1f3b1b986e.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/23267662/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Aug 2026"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=ab3571ba-e06a-4385-a041-c1d1962896e0.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+        <a href="https://www.supreme.co.in/images/pdf/Concall-Q1.mp3"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">REC</a>
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">May 2026</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=e38318d7-f5b4-4c4f-9e83-2ff827ace27e.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/23153706/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - May 2026"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=dab5ef89-c409-46a8-b5e3-d64862c76f57.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+        <a href="https://youtu.be/W5DlO8MvKb0"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">REC</a>
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Jan 2026</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=29e92509-f6c0-492e-81b8-a12fdda58dbf.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/23070757/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Jan 2026"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=4a647268-f6bf-4319-80f9-feac9e561179.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+        <a href="https://youtu.be/kMuDqZ91cGY"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">REC</a>
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Oct 2025</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=19931203-8786-4ae7-8067-64a6437bff1b.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/23043383/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Oct 2025"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=fa48aca4-cb65-4b46-b0e5-0ca834a123b1.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+        <a href="https://www.supreme.co.in/images/pdf/10036295.mp3"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">REC</a>
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Jul 2025</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=e48cfbfc-c670-4912-b9d7-73fa106a3057.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/23021226/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Jul 2025"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=71e7c712-7ebb-4c36-8055-36d4ffdd07c7.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Apr 2025</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=e4073be6-5938-4594-aeca-17751919671e.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/22994616/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Apr 2025"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=6d199128-bcc9-4863-a9f0-626b56c0aadc.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+        <a href="https://www.youtube.com/watch?v=ZVTHyj5mfiM"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">REC</a>
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Jan 2025</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=afd0306a-a408-43b0-a47f-4809f79ab52c.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/22972914/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Jan 2025"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=c5d95934-1dad-4832-b2c4-28dea48c1499.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Oct 2024</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=027d406d-5bdf-491e-b04a-e2544b0d1c8c.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/22950983/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Oct 2024"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=c7378ba9-830f-48e8-bdac-f7a528b5b28c.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Jul 2024</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=932fa7c8-d4e8-4237-b799-e452261278b1.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/22930635/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Jul 2024"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=40a6e43a-8e89-4e2b-81da-19da1da503fe.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">May 2024</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=7b26e7a4-a3bb-4cb8-8624-35d805deca95.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/22388060/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - May 2024"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=2fd8e87c-7c16-4a74-b040-75e9e8628f9e.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Jan 2024</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=043283db-3f36-46e6-99a5-05a53b172b3b.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/18698438/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Jan 2024"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=9d300619-828f-4f25-ad58-1007f7284ca9.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Nov 2023</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=67abbaad-aebd-40cb-bc92-2b147f1c7878.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/15781426/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Nov 2023"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=efc85f1d-ac43-4eea-857e-76761803f9f7.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Aug 2023</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=e7b5f5a0-f3a2-421c-a992-941bb10898fd.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/12782418/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Aug 2023"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=115c290e-d1cb-4265-b73b-b32fc1f3d202.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">May 2023</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=1c0c17f0-9088-4355-9731-566889ba955a.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/10040150/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - May 2023"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=171ba889-6776-4279-96f7-3a6311d0f70e.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Apr 2023</div>
+
+      
+        <div class="button-chip">Transcript</div>
+      
+
+      
+        <div class="button-chip">AI Summary</div>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=72c75f10-2468-4630-993f-716b292f72df.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Jan 2023</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=1d703d0c-fcf8-4186-b964-ffeb7b146906.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/7177616/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Jan 2023"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=fa7093bf-d4ee-4c0d-827d-dd9080fae763.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Nov 2022</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=eeb96508-1477-42f1-8834-c534859c7140.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/4886737/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Nov 2022"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=6fd1e30c-e4ec-4acf-b4b4-e3dba53cbb7e.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Jul 2022</div>
+
+      
+        <a class="button-chip"
+           href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=75947e9f-b1f4-4d58-b337-2c0dab54f72f.pdf"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Raw Transcript">Transcript</a>
+      
+
+      
+        <button class="button-chip plausible-event-name=Concall+Notes plausible-event-user=unregistered plausible-event-source=transcript"
+                type="button"
+                data-url="/concalls/summary/2510703/"
+                onclick="Modal.openInModal(event)"
+                data-title="Concall Summary - Jul 2022"
+                data-is-bottom-modal="true">AI Summary</button>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=a50f7ebb-58fc-461b-9e51-9ce5a696c523.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">May 2021</div>
+
+      
+        <div class="button-chip">Transcript</div>
+      
+
+      
+        <div class="button-chip">AI Summary</div>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=800f3fe1-fbfb-4580-8720-27ed29ef7fbb.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">May 2021</div>
+
+      
+        <div class="button-chip">Transcript</div>
+      
+
+      
+        <div class="button-chip">AI Summary</div>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=4993c725-32b6-4255-91f4-3a8e0cd37a23.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">Jun 2020</div>
+
+      
+        <div class="button-chip">Transcript</div>
+      
+
+      
+        <div class="button-chip">AI Summary</div>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=f1c35f85-265e-49a8-adc1-5f389e4125c4.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+    <li class="flex flex-gap-8 flex-wrap-420">
+      <div class="ink-600 font-size-15 font-weight-500 nowrap"
+           style="width: 74px">May 2019</div>
+
+      
+        <div class="button-chip">Transcript</div>
+      
+
+      
+        <div class="button-chip">AI Summary</div>
+      
+
+      
+        <a href="https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=f263ac64-2bb1-44d4-a124-0f1a414df258.pdf"
+           class="button-chip"
+           target="_blank"
+           rel="noopener noreferrer">PPT</a>
+      
+
+      
+    </li>
+  
+</ul>
+</div>
+          </div>
+        
+      </div>
+    </section>

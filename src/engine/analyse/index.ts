@@ -4,7 +4,6 @@
 import type {
   AnnouncementRaw,
   Classification,
-  LedgerRow,
   PriceBar,
   ResultsBasis,
   ResultsCard,
@@ -12,7 +11,6 @@ import type {
   Tier,
   Tripwire,
   TripwireHit,
-  Verdict,
 } from "../types";
 
 /** Pure: quarters (any order) → results card for a basis; null if fewer than 1 quarter. */
@@ -31,17 +29,31 @@ export function pctChange(
   throw new Error("not implemented: analyse.pctChange");
 }
 
-/** Pure: adjudicate one open promise against delivered numbers. */
-export function adjudicate(
-  _row: LedgerRow,
-  _delivered: {
-    value: number | null;
-    unit: string | null;
-    source: string | null;
-  },
-): Verdict {
-  throw new Error("not implemented: analyse.adjudicate");
-}
+// Builder C implementation (promise ledger): ledger.ts
+export {
+  type AdjudicatedRow,
+  type AdjudicateOptions,
+  adjudicate,
+  adjudicateAll,
+  compareBand,
+  compareDirection,
+  computeDelivered,
+  type Delivered,
+  ebit,
+  ebitdaOp,
+  getLedger,
+  type LedgerInput,
+  loadLedgerInputs,
+  type MetricFamily,
+  metricFamily,
+  operatingMarginBasisFor,
+  type SettleResult,
+  scopeOf,
+  settleGuidance,
+  summarise,
+  TOLERANCE,
+  type TranscriptMeta,
+} from "./ledger";
 
 /** Pure: materiality × weight × novelty → priority 0..100 and tier. */
 export function computePriority(

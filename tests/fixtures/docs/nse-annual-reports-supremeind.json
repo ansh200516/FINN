@@ -1,0 +1,37 @@
+{
+  "data": [
+    {
+      "companyName": "Supreme Industries Limited",
+      "fromYr": "2025",
+      "toYr": "2026",
+      "submission_type": "New",
+      "broadcast_dttm": "01-JUN-2026 16:46:39",
+      "disseminationDateTime": "01-JUN-2026 16:46:41",
+      "timeTaken": "00:00:02",
+      "fileName": "https://nsearchives.nseindia.com/annual_reports/AR_29321_SUPREMEIND_2025_2026_A_7275995_01062026164639.pdf",
+      "attFileSize": "6.94 MB"
+    },
+    {
+      "companyName": "Supreme Industries Limited",
+      "fromYr": "2024",
+      "toYr": "2025",
+      "submission_type": "New",
+      "broadcast_dttm": "22-MAY-2025 17:55:52",
+      "disseminationDateTime": "22-MAY-2025 17:55:54",
+      "timeTaken": "00:00:02",
+      "fileName": "https://nsearchives.nseindia.com/annual_reports/AR_26446_SUPREMEIND_2024_2025_A_22052025175552.pdf",
+      "attFileSize": null
+    },
+    {
+      "companyName": "Supreme Industries Limited",
+      "fromYr": "2023",
+      "toYr": "2024",
+      "submission_type": "-",
+      "broadcast_dttm": "-",
+      "disseminationDateTime": "-",
+      "timeTaken": "::",
+      "fileName": "https://nsearchives.nseindia.com/annual_reports/AR_24023_SUPREMEIND_2023_2024_22052024124435_05252024152612.zip",
+      "attFileSize": null
+    }
+  ]
+}

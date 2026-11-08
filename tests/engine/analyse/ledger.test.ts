@@ -9,6 +9,7 @@ import {
   type LedgerInput,
   metricFamily,
   quartersFor,
+  quoteContext,
   summarise,
 } from "@/engine/analyse/ledger";
 import { makePeriod } from "@/engine/extract/transcript";
@@ -949,6 +950,121 @@ describe("same quantity", () => {
       );
       expect(byId(rows, id).delivered?.value, id).toBeNull();
     }
+  });
+
+  it("does not score Amber's RAC answer or Candere's PAT direction against the company", () => {
+    const amberQuote =
+      "So we feel that the industry should be flattish this year, whereas we have again and again maintained our guidance, and we are hopeful to deliver about 14% to 15% kind of a growth.";
+    const amberQuestion =
+      "Sir, my first question is on RAC. So how should we read calendar '25 -- '26 from an RAC point of view?";
+    const candereQuote =
+      "Way forward, this financial year, we will end Candere with PAT neutral PAT positive and the revenue target for the year will be around INR500 crores.";
+    const context = quoteContext(
+      [
+        { role: "analyst", text: amberQuestion },
+        {
+          role: "management",
+          text: `See, this is how we look at room AC sector in the country. ${amberQuote}`,
+        },
+      ],
+      amberQuote,
+    );
+    expect(context).toMatch(/\bRAC\b/);
+    expect(context).toMatch(/room AC/);
+
+    const rac = adjudicateAll(
+      [
+        input({
+          id: "rac",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 14,
+          high: 15,
+          quote: amberQuote,
+          context,
+          ...fy26,
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rac, "rac").verdict).toBe("unverifiable");
+    expect(byId(rac, "rac").evidence.note).toBe(
+      "segment, not the company total",
+    );
+    expect(byId(rac, "rac").delivered?.value).toBeNull();
+
+    // The stored quote never says RAC. Without the question, do not invent a scope.
+    const bare = adjudicateAll(
+      [
+        input({
+          id: "bare",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 14,
+          high: 15,
+          quote: amberQuote,
+          ...fy26,
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(bare, "bare").verdict).toBe("missed");
+    expect(byId(bare, "bare").delivered?.value).not.toBeNull();
+
+    const pat = adjudicateAll(
+      [
+        input({
+          id: "canderePat",
+          metric: "pat",
+          quote: candereQuote,
+          direction: "qualitative",
+          low: null,
+          high: null,
+          unit: "qualitative",
+          ...fy26,
+          isExplicit: false,
+          comparison: "absolute",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(pat, "canderePat").verdict).toBe("unverifiable");
+    expect(byId(pat, "canderePat").evidence.note).toBe(
+      "segment, not the company total",
+    );
+    expect(byId(pat, "canderePat").delivered?.value).toBeNull();
+    expect(String(byId(pat, "canderePat").evidence.note)).not.toMatch(
+      /13503950000|1,350/,
+    );
+
+    const company = adjudicateAll(
+      [
+        input({
+          id: "co",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 14,
+          high: 15,
+          quote: "we expect consolidated revenue growth of 14% to 15% for FY26",
+          context: amberQuestion,
+          ...fy26,
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(company, "co").verdict).toBe("missed");
+    expect(byId(company, "co").delivered?.value).not.toBeNull();
   });
 
   it("still scores a company total that names itself, including a wide miss", () => {

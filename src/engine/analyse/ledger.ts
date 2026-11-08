@@ -16,7 +16,9 @@
  *     (capex, volumes, order book, constant-currency growth, bank ratios…),
  *     or the quote is not the same quantity as the XBRL line (a non-INR
  *     currency, a segment/product/subsidiary, AUM or another non-P&L noun).
- *     Beat / Miss is written only when metric, unit, and scope match.
+ *     A named product in the question the line answers counts, even when
+ *     the stored quote omits it. Beat / Miss is written only when metric,
+ *     unit, and scope match.
  *   - EBITDA = PBEIT + finance costs + D&A − other income (ex-other-income
  *     convention); EBIT = PBEIT + finance costs − other income; "operating margin"
  *     is settled only when the EBITDA and EBIT readings agree
@@ -36,12 +38,14 @@ import { assessGuidanceGrounding } from "../extract/guidance";
 import {
   type FiscalPeriod,
   parsePeriodLabel,
+  parseTranscript,
   periodForQuarterEnd,
   previousQuarter,
   previousYearPeriod,
   quarterEndsOf,
 } from "../extract/transcript";
 import { transcriptCoverage } from "../ingest/documents";
+import { normalizeForMatch, verifyQuote } from "../llm/verify";
 import type {
   GuidanceStatus,
   LedgerRow,
@@ -90,6 +94,11 @@ export interface LedgerInput {
   source?: "transcript" | "annual_report";
   revision: "new" | "maintained" | "raised" | "cut" | "withdrawn";
   comparison: "yoy" | "qoq" | "absolute" | "cc" | null;
+  /**
+   * Question this line answers, plus the same-answer lead-in.
+   * A named product here scopes the promise when the quote itself omits it.
+   */
+  context?: string | null;
   /** when the promise was made, ms UTC */
   statedAt: number;
   /** period of the call the statement was made in ('Q2FY27') */
@@ -157,7 +166,14 @@ const SCOPE_RE =
  * revision chain (that would re-open a superseded row and score it).
  */
 const SLICE_RE =
-  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere)\b/i;
+  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere|sidwal|racs?|room\s+acs?)\b/i;
+
+/**
+ * Named products a neighbouring question can scope, when the quote omits them.
+ * Generic slice nouns ("segment", "division", "international") stay off this
+ * list: they show up beside company-wide answers and must not unsettle those.
+ */
+const CONTEXT_SCOPE_RE = /\b(racs?|room\s+acs?|candere|sidwal|power[- ]one)\b/i;
 
 /** The speaker named the consolidated / company total, not a slice of it. */
 const COMPANY_TOTAL_RE =
@@ -239,9 +255,13 @@ function metricMismatch(quote: string, family: MetricFamily): boolean {
  * An absolute rupee band with no company-total word and no slice word is
  * scored only when it is the same order of magnitude as the company line;
  * otherwise the scope is not in the quote and the row is not Beat/Miss.
+ * `context` is the question and the same-answer lead-in. A named product
+ * there scopes the line. A quote that already names the company total is
+ * left alone.
  */
 export function quantityIssue(args: {
   quote: string;
+  context?: string | null;
   family: MetricFamily;
   unit: string | null;
   deliveredUnit: string | null;
@@ -258,6 +278,13 @@ export function quantityIssue(args: {
   }
   if (metricMismatch(args.quote, args.family)) return QUANTITY_NOTE.metric;
   if (SLICE_RE.test(args.quote)) return QUANTITY_NOTE.segment;
+  const beside = args.context?.trim() ?? "";
+  if (
+    beside &&
+    !COMPANY_TOTAL_RE.test(args.quote) &&
+    CONTEXT_SCOPE_RE.test(`${args.quote}\n${beside}`)
+  )
+    return QUANTITY_NOTE.segment;
   const absolute =
     (args.family === "revenue" ||
       args.family === "ebitda" ||
@@ -279,6 +306,31 @@ export function quantityIssue(args: {
     Math.min(Math.abs(band), Math.abs(actual));
   if (ratio > SLICE_RATIO) return QUANTITY_NOTE.segment;
   return null;
+}
+
+/**
+ * The question immediately before `quote`, plus the same answer's lead-in.
+ * Empty when the quote is not in `turns` — callers must not invent a scope.
+ */
+export function quoteContext(
+  turns: ReadonlyArray<{ role: string; text: string }>,
+  quote: string,
+): string {
+  const i = turns.findIndex((t) => verifyQuote(quote, t.text) !== null);
+  if (i < 0) return "";
+  const prev = i > 0 ? turns[i - 1] : undefined;
+  const question =
+    prev && (prev.role === "analyst" || prev.text.includes("?"))
+      ? prev.text.slice(-1200)
+      : "";
+  const cur = turns[i];
+  if (!cur) return question.trim();
+  const off = verifyQuote(quote, cur.text);
+  const lead =
+    off !== null && off > 0
+      ? normalizeForMatch(cur.text).slice(Math.max(0, off - 400), off)
+      : "";
+  return `${question}\n${lead}`.trim();
 }
 
 /** grouping key for revision chains: margins of any flavour chain together; segment-level statements chain separately */
@@ -950,6 +1002,7 @@ export function adjudicateAll(
           ? null
           : quantityIssue({
               quote: s.quote,
+              context: s.context,
               family,
               unit: s.unit,
               deliveredUnit: delivered.unit,
@@ -968,6 +1021,11 @@ export function adjudicateAll(
         row.verdict = "unverifiable";
         row.evidence.note = issue;
         row.evidence.rule = null;
+        row.evidence.priorYear = null;
+        if (issue === QUANTITY_NOTE.segment && scope === "company") {
+          const named = CONTEXT_SCOPE_RE.exec(`${s.quote}\n${s.context ?? ""}`);
+          if (named?.[1]) row.evidence.scope = named[1].toLowerCase();
+        }
         row.delivered = { value: null, unit: null, source: null };
         row.settledByQuarter = null;
         continue;
@@ -1252,6 +1310,39 @@ function statedAtOf(ev: Record<string, unknown>, fallback: number): number {
 }
 
 /** Load inputs for a company from the DB. */
+/** Speaker turns for transcript docs, so a quote can see the question it answers. */
+async function quoteTurnsFor(
+  docIds: string[],
+  kindById: Map<string, string>,
+): Promise<Map<string, Array<{ role: string; text: string }>>> {
+  const ids = [...new Set(docIds)].filter(
+    (id) => kindById.get(id) === "transcript",
+  );
+  const out = new Map<string, Array<{ role: string; text: string }>>();
+  if (!ids.length) return out;
+  const pages = await db
+    .select({
+      docId: documentPages.docId,
+      page: documentPages.page,
+      text: documentPages.text,
+    })
+    .from(documentPages)
+    .where(inArray(documentPages.docId, ids));
+  const byDoc = new Map<string, { page: number; text: string }[]>();
+  for (const p of pages) {
+    const list = byDoc.get(p.docId) ?? [];
+    list.push({ page: p.page, text: p.text });
+    byDoc.set(p.docId, list);
+  }
+  for (const id of ids) {
+    const ps = byDoc.get(id);
+    if (!ps?.length) continue;
+    ps.sort((a, b) => a.page - b.page);
+    out.set(id, parseTranscript({ docId: id, pages: ps }).turns);
+  }
+  return out;
+}
+
 export async function loadLedgerInputs(isin: string): Promise<{
   inputs: LedgerInput[];
   quarters: ResultsQuarter[];
@@ -1331,6 +1422,10 @@ export async function loadLedgerInputs(isin: string): Promise<{
       seenQuote.add(k);
       return true;
     });
+  const turnsByDoc = await quoteTurnsFor(
+    uniqueRows.map((g) => g.docId),
+    new Map(drows.map((d) => [d.id, d.kind])),
+  );
   const grounding: SettleResult["grounding"] = {
     checked: 0,
     dropped: 0,
@@ -1341,6 +1436,10 @@ export async function loadLedgerInputs(isin: string): Promise<{
   };
   const inputs: LedgerInput[] = uniqueRows.map((g) => {
     const ev = evidenceOf(g.evidenceJson);
+    const asked = typeof ev.question === "string" ? ev.question : "";
+    const beside = [asked, quoteContext(turnsByDoc.get(g.docId) ?? [], g.quote)]
+      .filter((s) => s.trim())
+      .join("\n");
     const rev = ev.revision;
     const cmp = ev.comparison;
     const assessed = assessGuidanceGrounding({
@@ -1399,6 +1498,7 @@ export async function loadLedgerInputs(isin: string): Promise<{
         cmp === "yoy" || cmp === "qoq" || cmp === "absolute" || cmp === "cc"
           ? cmp
           : null,
+      context: beside || null,
       statedAt: statedAtOf(ev, g.createdAt),
       statedPeriod:
         typeof ev.statedPeriod === "string" ? ev.statedPeriod : null,

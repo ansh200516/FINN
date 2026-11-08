@@ -32,11 +32,24 @@ Vercel cron hits `GET /api/jobs/eod` at 20:30 IST on weekdays. Set
 
 Checks: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` (or `pnpm check`).
 
+## Deploy
+
+Production: https://finn-gray.vercel.app (Vercel region `bom1`).
+
+Env vars live on the Vercel project, not in git:
+
+- `DATABASE_URL` — Postgres URL for the Supabase project **ENAM** (`postgres://` or `postgresql://`). `file:` stays local libSQL. `libsql://` still needs `DATABASE_AUTH_TOKEN`.
+- `GEMINI_API_KEY` — live extraction. If it is unset, LLM features read `llm_cache` only. Leave `FINN_LLM_CACHE_ONLY` unset when the key is set.
+- `JOBS_SECRET` — bearer for `/api/jobs/*`. `CRON_SECRET` is the same value so Vercel cron is accepted.
+- `NEXT_PUBLIC_APP_URL` — `https://finn-gray.vercel.app`
+
+Apply the Postgres schema with `pnpm db:push:pg`, then load a sqlite snapshot with `pnpm db:load:pg` (`SQLITE_PATH` defaults to `data/finn.db`). Both read `DATABASE_URL` from the environment.
+
 ## Layout
 
 ```
 src/app         routes: / (brief) /c/[symbol] /alerts /inbox /add /status, api/health, api/jobs/*
-src/db          Drizzle + libSQL (file: locally, libsql:// Turso in prod), schema, zod JSON parsers
+src/db          Drizzle. libSQL for file: and libsql:; Postgres when DATABASE_URL is postgres://
 src/engine      sources/ ingest/ extract/ analyse/ llm/ — the headless engine (see src/engine/README.md)
 src/lib         env, logger, IST + NSE trading-calendar helpers
 scripts         db/migrate, ingest:* CLIs (same code as the API jobs), llm-smoke
@@ -46,8 +59,9 @@ docs            research + decisions; problem statement/ holds the brief
 ```
 
 Stack: Next.js 16.4 (App Router, Turbopack), React 19.3, Tailwind 4 (CSS-first
-tokens in `globals.css`), TypeScript strict, Drizzle + libSQL, Gemini via
-`@google/genai`, Biome, Vitest. Deploys to Vercel `bom1` zero-config.
+tokens in `globals.css`), TypeScript strict, Drizzle (libSQL locally, Postgres
+in production), Gemini via `@google/genai`, Biome, Vitest. Deploys to Vercel
+`bom1`.
 
 Design and engineering decisions: `docs/research/20-synthesis-and-decision.md`.
 Working agreements for builder agents: `CONTRIBUTING-AGENTS.md`.

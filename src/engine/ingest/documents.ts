@@ -23,6 +23,13 @@ import {
 } from "@/db/schema";
 import { verifyQuote } from "@/engine/llm/verify";
 import { logger } from "@/lib/logger";
+import {
+  addDaysKey,
+  istDateKey,
+  istTimeOn,
+  istWeekday,
+  NSE_HOLIDAYS_2026,
+} from "@/lib/time";
 import { extractPdfPages } from "../extract/pdf-text";
 import {
   inferPeriodFromText,
@@ -35,8 +42,10 @@ import {
   resolveTranscriptPeriod,
 } from "../extract/transcript";
 import {
+  BROWSER_UA,
   DownloadError,
   downloadPdf,
+  fetchBseTranscriptPdfs,
   isBseUrl,
   normaliseBseUrl,
 } from "../sources/bse-docs";
@@ -441,6 +450,113 @@ export function pdfUrlsInText(text: string): string[] {
   return [...new Set(out)];
 }
 
+/** Pure: every http(s) URL in a letter, trailing punctuation stripped. */
+export function httpUrlsInText(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"')\]]+/gi))
+    out.push(m[0].replace(/[.,;:]+$/, ""));
+  return [...new Set(out)];
+}
+
+function periodMentioned(blob: string, period: string): boolean {
+  const compact = blob.replace(/[\s_-]+/g, "").toLowerCase();
+  return compact.includes(period.replace(/[\s_-]+/g, "").toLowerCase());
+}
+
+/**
+ * Transcript PDF hrefs on an IR page the cover letter named. When `period` is
+ * set, only links that mention that period are returned (so a Q2 letter does
+ * not pull the Q1 file sitting on the same landing page).
+ */
+export function transcriptPdfUrlsInHtml(
+  html: string,
+  pageUrl: string,
+  period: string | null,
+): string[] {
+  const found: Array<{ url: string; rank: number }> = [];
+  for (const m of html.matchAll(/<a\b([^>]*?)>([\s\S]*?)<\/a>/gi)) {
+    const attrs = m[1] ?? "";
+    const label = (m[2] ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    const hrefM = /href\s*=\s*["']([^"']+)["']/i.exec(attrs);
+    if (!hrefM?.[1]) continue;
+    let abs: string;
+    try {
+      abs = new URL(hrefM[1], pageUrl).href;
+    } catch {
+      continue;
+    }
+    if (!/\.pdf(?:\?|#|$)/i.test(abs)) continue;
+    const blob = `${abs} ${label}`;
+    if (!/transcript|earnings?\s*call|analyst\s*call/i.test(blob)) continue;
+    if (
+      /presentation|press[-\s]*release|unaudited|financial\s*results|recording/i.test(
+        label,
+      ) &&
+      !/transcript/i.test(label)
+    )
+      continue;
+    let rank = 1;
+    if (period && periodMentioned(blob, period)) rank += 10;
+    else if (period && /Q[1-4]\s*FY\s*\d{2}/i.test(blob)) rank -= 5;
+    found.push({ url: abs.split("#")[0] ?? abs, rank });
+  }
+  const periodHits = found.filter((f) => f.rank >= 10);
+  const pick = periodHits.length ? periodHits : found.filter((f) => f.rank > 0);
+  return [...new Set(pick.map((f) => f.url))].slice(0, 3);
+}
+
+/** Weekday that is not an NSE holiday. Sundays stay non-working even on Muhurat. */
+export function isFilingWorkingDay(dateKey: string): boolean {
+  const wd = istWeekday(dateKey);
+  if (wd === 0 || wd === 6) return false;
+  return !NSE_HOLIDAYS_2026[dateKey];
+}
+
+/**
+ * When the earnings-call transcript is due: the 5th working day after the
+ * results broadcast, end of that IST day (SEBI LODR, transcript within five
+ * working days). `broadcastMs` is the results filing instant.
+ */
+export function transcriptExpectedBy(broadcastMs: number): number {
+  let key = istDateKey(broadcastMs);
+  let left = 5;
+  for (let i = 0; i < 40 && left > 0; i++) {
+    key = addDaysKey(key, 1);
+    if (isFilingWorkingDay(key)) left--;
+  }
+  return istTimeOn(key, "23:59");
+}
+
+function ymdCompact(ms: number, shiftDays: number): string {
+  return addDaysKey(istDateKey(ms), shiftDays).replaceAll("-", "");
+}
+
+async function fetchTextPage(url: string): Promise<string | null> {
+  const uas = [
+    BROWSER_UA,
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15",
+  ];
+  for (const ua of uas) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": ua,
+          Accept: "text/html,application/xhtml+xml",
+        },
+        redirect: "follow",
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) continue;
+      const ct = res.headers.get("content-type") ?? "";
+      if (/pdf/i.test(ct)) return null;
+      return (await res.text()).slice(0, 1_500_000);
+    } catch {
+      // try the other UA
+    }
+  }
+  return null;
+}
+
 interface StoredDoc {
   id: string;
   url: string;
@@ -616,9 +732,10 @@ async function writeFailure(
 }
 
 /**
- * Try to find the real transcript behind a covering letter: (a) a PDF link in
- * the letter, (b) screener's transcript link for the same quarter (opt-in).
- * BSE's attachment API is TLS-fingerprinted and not available here.
+ * Try to find the real transcript behind a covering letter:
+ * (a) a PDF link in the letter, (b) a BSE "Earnings Call Transcript" attachment
+ * (empty when the API is blocked), (c) a transcript PDF linked from the IR
+ * page the letter names, (d) screener's transcript link for the quarter.
  */
 async function recoverFromCoverLetter(
   isin: string,
@@ -636,6 +753,24 @@ async function recoverFromCoverLetter(
   }> = [];
   for (const u of pdfUrlsInText(text).slice(0, 3))
     candidates.push({ url: u, source: "ir" });
+  const scrip = /scrip\s*code:\s*(\d{5,7})/i.exec(text)?.[1];
+  if (scrip && d.publishedAtMs) {
+    const bse = await fetchBseTranscriptPdfs(
+      scrip,
+      ymdCompact(d.publishedAtMs, -3),
+      ymdCompact(d.publishedAtMs, 14),
+    );
+    for (const u of bse.slice(0, 3))
+      candidates.push({ url: normaliseBseUrl(u), source: "bse" });
+  }
+  for (const page of httpUrlsInText(text)
+    .filter((u) => !/\.pdf(?:\?|$)/i.test(u))
+    .slice(0, 2)) {
+    const html = await fetchTextPage(page);
+    if (!html) continue;
+    for (const u of transcriptPdfUrlsInHtml(html, page, period))
+      candidates.push({ url: u, source: "ir" });
+  }
   if (symbol && screenerAllowed()) {
     try {
       const parsed = parseScreenerDocuments(
@@ -1410,9 +1545,13 @@ export async function reclassifyTranscripts(
       r.chars ??
       doc.pages.reduce((n, p) => n + p.text.replace(/\s+/g, "").length, 0);
     const fullText = doc.pages.map((p) => p.text).join("\n");
+    const structure = safeJson(r.structureJson);
+    const cover = isCoverLetterOnly(doc.pages.length, chars);
+    const unrecoveredCover =
+      cover && r.textStatus === "cover_only" && !structure.recoveredDocId;
     let to: "cover_only" | "not_transcript" | "ok" | null = null;
     let note = "";
-    if (isCoverLetterOnly(doc.pages.length, chars)) {
+    if (cover) {
       to = r.textStatus === "cover_only" ? null : "cover_only";
       note = `${doc.pages.length} page(s), ${chars} chars`;
     } else {
@@ -1431,41 +1570,43 @@ export async function reclassifyTranscripts(
         note = `${parsed.turns.length} turns, ${parsed.turns.filter((t) => t.role === "management").length} management turns — restored`;
       }
     }
-    if (!to) continue;
-    let recoveredDocId: string | null = null;
-    if (opts.write !== false) {
-      if (to === "cover_only") {
-        const d: DiscoveredDocument = {
-          kind: "transcript",
-          period: r.period,
-          url: r.url,
-          source: (r.source as DiscoveredDocument["source"] | null) ?? "nse",
-          publishedAtMs: r.publishedAt,
-          title: r.title,
-          announcementId: r.announcementId,
-        };
-        const rec = await recoverFromCoverLetter(
-          r.isin,
-          symbols.get(r.isin) ?? null,
-          d,
-          r.period,
-          fullText,
-          { depth: 0 },
-        );
-        recoveredDocId = rec?.id ?? null;
-      }
+    if (!to && !unrecoveredCover) continue;
+    let recoveredDocId: string | null =
+      (structure.recoveredDocId as string | undefined) ?? null;
+    if (opts.write !== false && (to === "cover_only" || unrecoveredCover)) {
+      const d: DiscoveredDocument = {
+        kind: "transcript",
+        period: r.period,
+        url: r.url,
+        source: (r.source as DiscoveredDocument["source"] | null) ?? "nse",
+        publishedAtMs: r.publishedAt,
+        title: r.title,
+        announcementId: r.announcementId,
+      };
+      const rec = await recoverFromCoverLetter(
+        r.isin,
+        symbols.get(r.isin) ?? null,
+        d,
+        r.period,
+        fullText,
+        { depth: 0 },
+      );
+      if (rec?.id) recoveredDocId = rec.id;
+    }
+    if (opts.write !== false && to) {
       await db
         .update(documents)
         .set({ textStatus: to })
         .where(eq(documents.id, r.id));
-      const structure = safeJson(r.structureJson);
+    }
+    if (opts.write !== false && (to || recoveredDocId)) {
       await db
         .update(documentMeta)
         .set({
           structureJson: JSON.stringify({
             ...structure,
             recoveredDocId,
-            reclassified: to,
+            reclassified: to ?? r.textStatus,
           }),
           updatedAt: Date.now(),
         })
@@ -1478,9 +1619,11 @@ export async function reclassifyTranscripts(
       symbol: symbols.get(r.isin) ?? null,
       period: r.period,
       from: r.textStatus,
-      to,
+      to: to ?? "cover_only",
       recoveredDocId,
-      note,
+      note: unrecoveredCover
+        ? `${note}; recovery ${recoveredDocId ? `→ ${recoveredDocId}` : "none"}`
+        : note,
     });
   }
   return changes;
@@ -1560,9 +1703,9 @@ export async function listDocuments(
 
 /**
  * Transcript coverage for the latest reported quarter. When results are filed
- * but no usable transcript exists yet, `pending` carries the SEBI expectation
- * (transcript within 5 working days of the call; calls follow results by a few
- * days → results filing + 10 calendar days). Companies that never hold calls
+ * but no usable transcript exists yet, `pending.expectedBy` is the SEBI
+ * deadline: the 5th working day after the results broadcast (`transcriptExpectedBy`,
+ * weekends and `NSE_HOLIDAYS_2026` skipped). Companies that never hold calls
  * (no transcript in six quarters, expectation long past) get `holdsConcalls=false`
  * and no pending marker.
  */
@@ -1612,7 +1755,7 @@ export async function transcriptCoverage(
     !ok.some((d) => d.period === latestResultsPeriod)
   ) {
     const filedAt = latestQ?.filedAt ?? null;
-    const expectedBy = filedAt !== null ? filedAt + 10 * 86_400_000 : null;
+    const expectedBy = filedAt !== null ? transcriptExpectedBy(filedAt) : null;
     // a long-overdue expectation for a company with no calls on record is not "pending"
     const stale = expectedBy !== null && expectedBy < now - 45 * 86_400_000;
     if (holdsConcalls || !stale)

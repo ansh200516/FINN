@@ -6,7 +6,11 @@ import {
   docIdForSha,
   recentQuarterLabels,
 } from "@/engine/ingest/documents";
-import { alternateBseUrl, normaliseBseUrl } from "@/engine/sources/bse-docs";
+import {
+  alternateBseUrl,
+  bseTranscriptPdfUrls,
+  normaliseBseUrl,
+} from "@/engine/sources/bse-docs";
 import {
   annualReportsFromNse,
   transcriptsFromAnnouncements,
@@ -277,5 +281,58 @@ describe("duplicates and cover letters (Bugs 2 & 3)", () => {
     expect(raw.pages).toHaveLength(1);
     expect(chars).toBeLessThan(2500);
     expect(raw.pages[0]?.text).toMatch(/made available on the\s+website/);
+  });
+
+  it("follows the IR page named in the IndusInd letter and skips other quarters", async () => {
+    const {
+      httpUrlsInText,
+      isFilingWorkingDay,
+      pdfUrlsInText,
+      transcriptExpectedBy,
+      transcriptPdfUrlsInHtml,
+    } = await import("@/engine/ingest/documents");
+    const { istDateKey, istTimeOn } = await import("@/lib/time");
+    const raw = JSON.parse(
+      readFileSync(join(FIX, "indusindbk-q2fy27-cover.pages.json"), "utf8"),
+    ) as { pages: Array<{ text: string }> };
+    const letter = raw.pages[0]?.text ?? "";
+    expect(pdfUrlsInText(letter)).toEqual([]);
+    expect(httpUrlsInText(letter)).toContain(
+      "https://www.indusind.com/in/en/investors/investor-landing.html",
+    );
+    const html = [
+      '<a href="/content/dam/indusind-corporate/investors/QuarterFinancialResults/FY2026-2027/Quarter2/Press-Release-Q2-FY27.pdf"><span>Press Release Q2 FY27</span></a>',
+      '<a href="/content/dam/indusind-corporate/investors/QuarterFinancialResults/FY2026-2027/Quarter2/Analyst-Call-Transcript-Q2FY27.pdf"><span>Analyst Call Transcript Q2FY27</span></a>',
+      '<a href="/content/dam/indusind-corporate/investors/QuarterFinancialResults/FY2026-2027/Quarter1/IndusInd-Bank_Analyst-Call_Q1FY27_20260722.pdf"><span>Analyst Call Transcript Q1 FY27</span></a>',
+    ].join("\n");
+    expect(
+      transcriptPdfUrlsInHtml(
+        html,
+        "https://www.indusind.com/in/en/investors/investor-landing.html",
+        "Q2FY27",
+      ),
+    ).toEqual([
+      "https://www.indusind.com/content/dam/indusind-corporate/investors/QuarterFinancialResults/FY2026-2027/Quarter2/Analyst-Call-Transcript-Q2FY27.pdf",
+    ]);
+    // Friday 6 Nov 2026 → 5th working day is Mon 16 Nov (weekend + Diwali 10 Nov)
+    expect(isFilingWorkingDay("2026-11-08")).toBe(false);
+    expect(isFilingWorkingDay("2026-11-10")).toBe(false);
+    expect(
+      istDateKey(transcriptExpectedBy(istTimeOn("2026-11-06", "18:00"))),
+    ).toBe("2026-11-16");
+    expect(
+      bseTranscriptPdfUrls({
+        Table: [
+          {
+            NEWSSUB:
+              "Announcement under Regulation 30 (LODR)-Earnings Call Transcript",
+            ATTACHMENTNAME: "abc-def.pdf",
+          },
+          { NEWSSUB: "Board Meeting Intimation", ATTACHMENTNAME: "nope.pdf" },
+        ],
+      }),
+    ).toEqual([
+      "https://www.bseindia.com/xml-data/corpfiling/AttachLive/abc-def.pdf",
+    ]);
   });
 });

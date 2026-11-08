@@ -710,6 +710,146 @@ export function numberFriendly(quote: string): string {
     .replace(/(\d)\s*[-–—]\s*(?=\d)/g, "$1 to ");
 }
 
+/** Scales a stored rupee/dollar figure back into the unit the speaker used. */
+const QUOTE_SCALES = [1, 1e3, 1e5, 1e6, 1e7, 1e9] as const;
+
+function closeEnough(a: number, b: number): boolean {
+  if (a === b) return true;
+  const tol = Math.max(Math.abs(a), Math.abs(b), 1) * 1e-6;
+  return Math.abs(a - b) <= tol;
+}
+
+/**
+ * True when `value` occurs in `quote` as written, or in crore / lakh / million /
+ * billion (the ledger stores money in rupees). A computed product
+ * ("70% of 70,000" → 49,000) does not pass unless 49,000 itself is written.
+ */
+export function numberInQuote(quote: string, value: number): boolean {
+  if (!Number.isFinite(value)) return false;
+  const have = extractNumbers(numberFriendly(quote)).map((n) => n.value);
+  if (!have.length) return false;
+  for (const scale of QUOTE_SCALES) {
+    const scaled = value / scale;
+    const forms = new Set<number>([scaled]);
+    for (const d of [0, 1, 2, 3, 4]) forms.add(Number(scaled.toFixed(d)));
+    for (const c of forms) {
+      if (c === 0 && value !== 0) continue;
+      if (have.some((h) => closeEnough(h, c))) return true;
+    }
+  }
+  return false;
+}
+
+const MIX_SHARE_RE = /\d+(?:\.\d+)?\s*%\s+of\b/i;
+const GROWTH_WORD_RE =
+  /\b(grow(?:th|ing|s)?|cagr|increas(?:e|ing)|decline|de-?growth)\b/i;
+const MONEY_WORD_RE =
+  /(?:₹|\$|\brs\.?\b|\binr\b|\busd\b|\bcrores?\b|\blakhs?\b|\bmillion\b|\bbillion\b)/i;
+
+/** "50% of revenue" is a mix, not a growth rate. */
+export function isMixShareQuote(quote: string): boolean {
+  return MIX_SHARE_RE.test(quote) && !GROWTH_WORD_RE.test(quote);
+}
+
+export type GroundingAction =
+  | "explicit"
+  | "dropped"
+  | "retyped"
+  | "ambiguous"
+  | "qualitative";
+
+export interface GroundingAssessment {
+  metric: string;
+  low: number | null;
+  high: number | null;
+  isExplicit: boolean;
+  typeIssue: boolean;
+  typeNote: string | null;
+  derived: boolean;
+  action: GroundingAction;
+}
+
+/**
+ * Ledger-side grounding. Explicit numbers must appear in the quote (any unit).
+ * Derived bands are cleared. A growth metric tagged as an INR/USD level is
+ * retyped only when the quote is actually a money amount; otherwise it is
+ * ambiguous and not adjudicated.
+ */
+export function assessGuidanceGrounding(row: {
+  quote: string;
+  metric: string;
+  low: number | null;
+  high: number | null;
+  unit: string | null;
+  isExplicit: boolean;
+  typeIssue?: boolean;
+  typeNote?: string | null;
+}): GroundingAssessment {
+  const values = [row.low, row.high].filter((v): v is number => v !== null);
+  const base = {
+    metric: row.metric,
+    low: row.low,
+    high: row.high,
+    isExplicit: row.isExplicit,
+    typeIssue: row.typeIssue === true,
+    typeNote: row.typeNote ?? null,
+    derived: false,
+  };
+  if (values.length && !values.every((v) => numberInQuote(row.quote, v))) {
+    return {
+      ...base,
+      low: null,
+      high: null,
+      isExplicit: false,
+      typeIssue: false,
+      typeNote: "derived figure",
+      derived: true,
+      action: "dropped",
+    };
+  }
+  if (
+    row.metric.endsWith("_growth") &&
+    (row.unit === "INR" || row.unit === "USD") &&
+    values.length
+  ) {
+    const to = GROWTH_TO_LEVEL[row.metric];
+    const magnitude = Math.max(...values.map((v) => Math.abs(v)));
+    if (
+      to &&
+      to !== "other" &&
+      magnitude >= 1e5 &&
+      MONEY_WORD_RE.test(row.quote)
+    )
+      return {
+        ...base,
+        metric: to,
+        isExplicit: true,
+        typeIssue: false,
+        typeNote: `retyped ${row.metric} → ${to} (level in ${row.unit})`,
+        action: "retyped",
+      };
+    return {
+      ...base,
+      isExplicit: false,
+      typeIssue: true,
+      typeNote: "metric ambiguous",
+      action: "ambiguous",
+    };
+  }
+  if (row.metric.endsWith("_growth") && isMixShareQuote(row.quote)) {
+    return {
+      ...base,
+      isExplicit: false,
+      typeIssue: true,
+      typeNote: "metric ambiguous",
+      action: "ambiguous",
+    };
+  }
+  if (!values.length || !row.isExplicit)
+    return { ...base, action: "qualitative" };
+  return { ...base, action: "explicit" };
+}
+
 /** Pure: run every code gate on one model statement. Null = dropped (reason in `stats`). */
 export function gateStatement(
   s: ModelStatementT,

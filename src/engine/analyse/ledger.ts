@@ -29,6 +29,7 @@ import {
   resultsQuarters,
 } from "@/db/schema";
 import { logger } from "@/lib/logger";
+import { assessGuidanceGrounding } from "../extract/guidance";
 import {
   type FiscalPeriod,
   parsePeriodLabel,
@@ -73,6 +74,15 @@ export interface LedgerInput {
   /** metric/unit pair could not be reconciled — never adjudicated */
   typeIssue?: boolean;
   typeNote?: string | null;
+  /** numbers were computed (not written in the quote) — never adjudicated */
+  derived?: boolean;
+  /** how assessGuidanceGrounding classified this row on load */
+  groundingAction?:
+    | "explicit"
+    | "dropped"
+    | "retyped"
+    | "ambiguous"
+    | "qualitative";
   /** where the statement came from (default transcript) */
   source?: "transcript" | "annual_report";
   revision: "new" | "maintained" | "raised" | "cut" | "withdrawn";
@@ -260,13 +270,10 @@ export function computeDelivered(
     basis: null,
     note,
   });
-  if (family === "other")
-    return none(
-      `'${metric}' is not derivable from exchange P&L data (needs annual report / press release)`,
-    );
+  if (family === "other") return none(`no comparable XBRL line (${metric})`);
   if (family === "revenue_growth" && comparison === "cc")
     return none(
-      "constant-currency growth is not derivable from INR exchange filings",
+      "no comparable XBRL line — constant-currency growth is not derivable from INR exchange filings",
     );
 
   const ends = opts.ends ?? quarterEndsOf(period);
@@ -413,7 +420,7 @@ export function computeDelivered(
         note: "tax expense / PBT",
       };
     default:
-      return none(`'${metric}' not derivable`);
+      return none(`no comparable XBRL line (${metric})`);
   }
 }
 
@@ -686,8 +693,10 @@ export function adjudicateAll(
     // revisions: compare each statement with the next one from a later document
     for (let i = 0; i < g.length - 1; i++) {
       const prev = g[i] as LedgerInput;
-      const next = g.slice(i + 1).find((n) => n.docId !== prev.docId);
-      if (!next) continue;
+      const next = g
+        .slice(i + 1)
+        .find((n) => n.docId !== prev.docId && !n.derived);
+      if (!next || prev.derived) continue;
       const pr = rows.get(prev.id) as AdjudicatedRow;
       if (pr.verdict) continue;
       if (next.revision === "withdrawn") {
@@ -755,6 +764,12 @@ export function adjudicateAll(
         row.evidence.note = "management withdrew this guidance";
         continue;
       }
+      if (s.derived) {
+        row.status = "settled";
+        row.verdict = "unverifiable";
+        row.evidence.note = "derived figure";
+        continue;
+      }
       const family = resolveFamily(s.metric, s.quote, opts);
       const period = s.horizon ? parsePeriodLabel(s.horizon) : null;
       // (c) only explicit, cleanly typed statements are adjudicated
@@ -789,7 +804,7 @@ export function adjudicateAll(
               source: null,
               settledBy: null,
               basis: null,
-              note: `segment-level target ('${scope}') — exchange results are consolidated; needs the segment note / press release`,
+              note: `no comparable XBRL line — segment-level target ('${scope}'); exchange results are consolidated`,
             } as Delivered)
           : computeDelivered(family, s.metric, period, s.comparison, quarters);
       row.evidence.scope = scope;
@@ -1043,6 +1058,15 @@ export interface SettleResult {
   coverage: Awaited<ReturnType<typeof transcriptCoverage>> | null;
   /** set when the ledger is built from the annual report because no earnings-call transcript exists */
   sourceNote: string | null;
+  /** grounding pass over the rows that were loaded (derived / retyped / still explicit) */
+  grounding: {
+    checked: number;
+    dropped: number;
+    retyped: number;
+    explicit: number;
+    ambiguous: number;
+    qualitative: number;
+  };
 }
 
 function evidenceOf(raw: string | null): Record<string, unknown> {
@@ -1068,6 +1092,7 @@ export async function loadLedgerInputs(isin: string): Promise<{
   inputs: LedgerInput[];
   quarters: ResultsQuarter[];
   transcripts: TranscriptMeta[];
+  grounding: SettleResult["grounding"];
 }> {
   const grows = await db.select().from(guidance).where(eq(guidance.isin, isin));
   const qrows = await db
@@ -1142,10 +1167,36 @@ export async function loadLedgerInputs(isin: string): Promise<{
       seenQuote.add(k);
       return true;
     });
+  const grounding: SettleResult["grounding"] = {
+    checked: 0,
+    dropped: 0,
+    retyped: 0,
+    explicit: 0,
+    ambiguous: 0,
+    qualitative: 0,
+  };
   const inputs: LedgerInput[] = uniqueRows.map((g) => {
     const ev = evidenceOf(g.evidenceJson);
     const rev = ev.revision;
     const cmp = ev.comparison;
+    const assessed = assessGuidanceGrounding({
+      quote: g.quote,
+      metric: g.metric,
+      low: g.low,
+      high: g.high,
+      unit: g.unit,
+      isExplicit: ev.isExplicit === true,
+      typeIssue: ev.typeIssue === true,
+      typeNote: typeof ev.typeNote === "string" ? ev.typeNote : null,
+    });
+    const derived = assessed.derived || ev.derived === true;
+    grounding.checked++;
+    const action = assessed.action;
+    if (action === "dropped") grounding.dropped++;
+    else if (action === "retyped") grounding.retyped++;
+    else if (action === "ambiguous") grounding.ambiguous++;
+    else if (action === "explicit") grounding.explicit++;
+    else grounding.qualitative++;
     return {
       id: g.id,
       isin: g.isin,
@@ -1154,10 +1205,10 @@ export async function loadLedgerInputs(isin: string): Promise<{
       role: g.role,
       page: g.page,
       quote: g.quote,
-      metric: g.metric,
+      metric: assessed.metric,
       direction: g.direction,
-      low: g.low,
-      high: g.high,
+      low: derived ? null : assessed.low,
+      high: derived ? null : assessed.high,
       unit: g.unit,
       horizon: g.horizon,
       horizonEnd:
@@ -1166,10 +1217,12 @@ export async function loadLedgerInputs(isin: string): Promise<{
           : g.horizon
             ? (parsePeriodLabel(g.horizon)?.end ?? null)
             : null,
-      isExplicit: ev.isExplicit === true,
+      isExplicit: derived ? false : assessed.isExplicit,
       approx: ev.approx === true,
-      typeIssue: ev.typeIssue === true,
-      typeNote: typeof ev.typeNote === "string" ? ev.typeNote : null,
+      typeIssue: derived ? false : assessed.typeIssue,
+      typeNote: derived ? "derived figure" : assessed.typeNote,
+      derived,
+      groundingAction: action,
       source: ev.source === "annual_report" ? "annual_report" : "transcript",
       revision:
         rev === "maintained" ||
@@ -1188,7 +1241,7 @@ export async function loadLedgerInputs(isin: string): Promise<{
       evidence: ev,
     };
   });
-  return { inputs, quarters, transcripts };
+  return { inputs, quarters, transcripts, grounding };
 }
 
 /** IT services guide EBIT ("operating") margins; everyone else means EBITDA margin (OPM). */
@@ -1214,7 +1267,8 @@ export async function settleGuidance(
   isin: string,
   opts: { now?: number; write?: boolean } = {},
 ): Promise<SettleResult> {
-  const { inputs, quarters, transcripts } = await loadLedgerInputs(isin);
+  const { inputs, quarters, transcripts, grounding } =
+    await loadLedgerInputs(isin);
   const basis = await operatingMarginBasisFor(isin);
   const rows = adjudicateAll(
     inputs,
@@ -1228,9 +1282,14 @@ export async function settleGuidance(
     for (const r of rows) {
       const original = inputById.get(r.id)?.evidence ?? {};
       // keep extraction provenance, replace ledger fields
+      const repaired = inputById.get(r.id);
       const merged = {
         ...original,
         ...r.evidence,
+        isExplicit: repaired?.isExplicit === true,
+        derived: repaired?.derived === true,
+        typeIssue: repaired?.typeIssue === true,
+        typeNote: repaired?.typeNote ?? null,
         delivered: r.delivered,
         settledAt: Date.now(),
       };
@@ -1240,6 +1299,9 @@ export async function settleGuidance(
           status: r.status,
           settledByQuarter: r.settledByQuarter,
           verdict: r.verdict,
+          metric: repaired?.metric,
+          low: repaired?.low ?? null,
+          high: repaired?.high ?? null,
           evidenceJson: JSON.stringify(merged),
         })
         .where(eq(guidance.id, r.id));
@@ -1273,14 +1335,19 @@ export async function settleGuidance(
     );
   }
   const arRows = rows.filter((r) => r.evidence.source === "annual_report");
+  const coverPending =
+    coverage?.pending &&
+    coverage.coverOnlyPeriods.includes(coverage.pending.period);
   const sourceNote =
     rows.length && arRows.length === rows.length
       ? `commitments taken from the ${inputs.find((i) => i.source === "annual_report")?.statedPeriod ?? "latest"} annual report — no earnings-call transcript is available for this company`
-      : coverage?.coverOnlyPeriods.length && !coverage.latestTranscriptPeriod
-        ? "transcripts were filed as cover letters only — showing annual-report commitments where available"
-        : null;
-  log.info({ isin, rows: rows.length, ...stats }, "ledger settled");
-  return { rows, summary, stats, coverage, sourceNote };
+      : coverPending
+        ? `the ${coverage?.pending?.period} transcript on file is a cover letter only — the earnings-call PDF was not recovered`
+        : coverage?.coverOnlyPeriods.length && !coverage.latestTranscriptPeriod
+          ? "transcripts were filed as cover letters only — showing annual-report commitments where available"
+          : null;
+  log.info({ isin, rows: rows.length, ...stats, grounding }, "ledger settled");
+  return { rows, summary, stats, coverage, sourceNote, grounding };
 }
 
 /** Read-only ledger for the UI (no writes). */

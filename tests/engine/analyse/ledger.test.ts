@@ -365,7 +365,9 @@ describe("adjudicateAll", () => {
       verdict: "unverifiable",
       status: "settled",
     });
-    expect(String(byId(rows, "v").evidence.note)).toMatch(/not derivable/);
+    expect(String(byId(rows, "v").evidence.note)).toMatch(
+      /no comparable XBRL line/,
+    );
     expect(byId(rows, "cc").verdict).toBe("unverifiable");
   });
   it("is 'not_addressed' when a due promise has no actuals and the next call is silent; stays open otherwise", () => {
@@ -759,5 +761,31 @@ describe("revision chains", () => {
     expect(String(byId(rows, "a").evidence.note)).toMatch(
       /does not match the stated 'raised'/,
     );
+  });
+
+  it("marks a derived figure unverifiable and does not score it", () => {
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "prod",
+          metric: "volume",
+          quote: "we will utilise 70% of the 70,000 ton capacity",
+          low: 49_000,
+          high: 49_000,
+          unit: "units",
+          isExplicit: true,
+          derived: true,
+          comparison: "absolute",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(rows, "prod")).toMatchObject({
+      verdict: "unverifiable",
+      status: "settled",
+    });
+    expect(byId(rows, "prod").evidence.note).toBe("derived figure");
   });
 });

@@ -12,7 +12,7 @@
  */
 import { parseArgs } from "node:util";
 import { inArray } from "drizzle-orm";
-import { db } from "@/db/client";
+import { db, getRawClient } from "@/db/client";
 import { companies } from "@/db/schema";
 import {
   dedupeStoredDocuments,
@@ -27,6 +27,7 @@ import { logger } from "@/lib/logger";
 const log = logger.child({ job: "documents" });
 
 async function main(): Promise<void> {
+  await getRawClient().execute("PRAGMA busy_timeout = 20000");
   const { values } = parseArgs({
     args: process.argv.slice(2),
     options: {

@@ -10,6 +10,7 @@ vi.mock("@/engine/llm/gateway", () => ({
 import {
   adjectiveBand,
   applyCueWords,
+  assessGuidanceGrounding,
   chunkTurns,
   dedupeStatements,
   extractGuidanceDetailed,
@@ -18,6 +19,7 @@ import {
   guidanceId,
   type ModelStatementT,
   numberFriendly,
+  numberInQuote,
   parseHorizon,
   reconcileMetricUnit,
 } from "@/engine/extract/guidance";
@@ -601,5 +603,94 @@ describe("horizon guard", () => {
         cp,
       ).label,
     ).toBe("FY30");
+  });
+});
+
+describe("quote grounding", () => {
+  it("accepts a quoted number in any unit and rejects a computed product", () => {
+    expect(
+      numberInQuote("capex guidance is around INR3,000 crores", 3_000 * 1e7),
+    ).toBe(true);
+    expect(
+      numberInQuote("EBITDA 20.5 to 21.2 post investment", 21.199999999999),
+    ).toBe(true);
+    expect(
+      numberInQuote("achieving 70% of our 70,000 ton capacity", 49_000),
+    ).toBe(false);
+    expect(numberInQuote("we expect mid-twenties EBITDA growth", 24)).toBe(
+      false,
+    );
+  });
+
+  it("drops derived bands, retypes a real INR level, and rejects a mix share tagged as growth", () => {
+    expect(
+      assessGuidanceGrounding({
+        quote: "Wavin will get to around 48,000, 49,000 tons",
+        metric: "volume",
+        low: 48_000,
+        high: 49_000,
+        unit: "units",
+        isExplicit: true,
+      }).action,
+    ).toBe("explicit");
+    expect(
+      assessGuidanceGrounding({
+        quote: "we expect mid-twenties EBITDA growth",
+        metric: "ebitda_growth",
+        low: 24,
+        high: 26,
+        unit: "%",
+        isExplicit: false,
+      }),
+    ).toMatchObject({
+      action: "dropped",
+      derived: true,
+      low: null,
+      high: null,
+      isExplicit: false,
+      typeNote: "derived figure",
+    });
+    expect(
+      assessGuidanceGrounding({
+        quote: "we expect to cross INR15,000 crores in revenue",
+        metric: "revenue_growth",
+        low: 15_000 * 1e7,
+        high: 15_000 * 1e7,
+        unit: "INR",
+        isExplicit: true,
+      }),
+    ).toMatchObject({
+      action: "retyped",
+      metric: "revenue",
+      isExplicit: true,
+    });
+    expect(
+      assessGuidanceGrounding({
+        quote: "capex growth of INR3,000 crores over two years",
+        metric: "capex_growth",
+        low: 3_000 * 1e7,
+        high: 3_000 * 1e7,
+        unit: "INR",
+        isExplicit: true,
+      }),
+    ).toMatchObject({
+      action: "ambiguous",
+      typeIssue: true,
+      isExplicit: false,
+    });
+    expect(
+      assessGuidanceGrounding({
+        quote: "by FY30 at least 50% of revenue come from the CDMO segment",
+        metric: "revenue_growth",
+        low: 50,
+        high: 50,
+        unit: "%",
+        isExplicit: true,
+      }),
+    ).toMatchObject({
+      action: "ambiguous",
+      typeIssue: true,
+      isExplicit: false,
+    });
   });
 });

@@ -9,7 +9,7 @@
  */
 import { parseArgs } from "node:util";
 import { eq, inArray } from "drizzle-orm";
-import { db } from "@/db/client";
+import { db, getRawClient } from "@/db/client";
 import { companies, guidance } from "@/db/schema";
 import { settleGuidance } from "@/engine/analyse/ledger";
 import {
@@ -25,6 +25,7 @@ import { logger } from "@/lib/logger";
 const log = logger.child({ job: "research" });
 
 async function main(): Promise<void> {
+  await getRawClient().execute("PRAGMA busy_timeout = 20000");
   const { values } = parseArgs({
     args: process.argv.slice(2),
     options: {
@@ -239,6 +240,10 @@ async function main(): Promise<void> {
       if (!values.json) {
         console.log(
           `\n== ${c.nseSymbol} ledger — ${l.summary} (${l.rows.length} rows, ${Date.now() - t0} ms)${l.sourceNote ? `\n   note: ${l.sourceNote}` : ""}${l.coverage?.pending ? `\n   transcript pending for ${l.coverage.pending.period}: results filed ${l.coverage.pending.resultsFiledAt ? new Date(l.coverage.pending.resultsFiledAt).toISOString().slice(0, 10) : "?"}, expected by ${l.coverage.pending.expectedBy ? new Date(l.coverage.pending.expectedBy).toISOString().slice(0, 10) : "?"}` : ""}${l.coverage?.coverOnlyPeriods.length ? `\n   cover-letter-only transcripts: ${l.coverage.coverOnlyPeriods.join(", ")}` : ""}`,
+        );
+        const g = l.grounding;
+        console.log(
+          `   grounding checked=${g.checked} dropped=${g.dropped} retyped=${g.retyped} explicit=${g.explicit} ambiguous=${g.ambiguous} qualitative=${g.qualitative}`,
         );
         for (const r of l.rows) {
           const d = r.delivered;

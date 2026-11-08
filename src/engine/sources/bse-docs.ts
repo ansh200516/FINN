@@ -1,8 +1,8 @@
 /**
  * BSE document helpers + the generic PDF downloader (owner: Builder C).
  *
- * The BSE *API* is TLS-fingerprinted (403 to plain fetch) so it is not used.
- * BSE PDF *files* download fine with a desktop UA and no cookies:
+ * The BSE *JSON API* is TLS-fingerprinted (403 to plain fetch). `fetchBseTranscriptPdfs`
+ * tries once and returns [] when blocked. BSE PDF *files* download fine with a desktop UA:
  *   https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=<uuid>.pdf   (302 →)
  *   https://www.bseindia.com/xml-data/corpfiling/AttachLive|AttachHis/<uuid>.pdf
  * Both direct paths serve any uuid, so the aspx hop can be skipped.
@@ -171,5 +171,75 @@ export async function downloadPdf(
       return { ...r, url };
     }
     throw e;
+  }
+}
+
+/**
+ * Pull transcript PDF URLs out of an `AnnSubCategoryGetData` body.
+ * Recent filings live on AttachLive; the downloader tries AttachHis on 404.
+ */
+export function bseTranscriptPdfUrls(body: unknown): string[] {
+  const table = Array.isArray(body)
+    ? body
+    : body &&
+        typeof body === "object" &&
+        Array.isArray((body as { Table?: unknown }).Table)
+      ? ((body as { Table: unknown[] }).Table ?? [])
+      : [];
+  const out: string[] = [];
+  for (const row of table) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const att = String(r.ATTACHMENTNAME ?? "");
+    if (!/\.pdf$/i.test(att)) continue;
+    const blob = `${r.NEWSSUB ?? ""} ${r.HEADLINE ?? ""} ${r.SUBCATNAME ?? ""}`;
+    if (!/transcript/i.test(blob)) continue;
+    out.push(`https://www.bseindia.com/xml-data/corpfiling/AttachLive/${att}`);
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * Earnings-call transcript attachments for a BSE scrip, or [] when the API
+ * is blocked (403) or returns something that is not the Table payload.
+ * Dates are `YYYYMMDD`.
+ */
+export async function fetchBseTranscriptPdfs(
+  scripCode: string,
+  fromYmd: string,
+  toYmd: string,
+): Promise<string[]> {
+  const qs = new URLSearchParams({
+    pageno: "1",
+    strCat: "Company Update",
+    strPrevDate: fromYmd,
+    strScrip: scripCode,
+    strSearch: "P",
+    strToDate: toYmd,
+    strType: "C",
+    subcategory: "Earnings Call Transcript",
+  });
+  const url = `https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?${qs}`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": BROWSER_UA,
+        Accept: "application/json, text/plain, */*",
+        Referer: "https://www.bseindia.com/",
+        Origin: "https://www.bseindia.com",
+      },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+    const t = text.trim();
+    if (!t.startsWith("{") && !t.startsWith("[")) return [];
+    return bseTranscriptPdfUrls(JSON.parse(t) as unknown);
+  } catch (e) {
+    log.info(
+      { scripCode, err: e instanceof Error ? e.message : String(e) },
+      "bse transcript lookup unavailable",
+    );
+    return [];
   }
 }

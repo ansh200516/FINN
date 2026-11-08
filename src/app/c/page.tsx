@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { groupIndian, relativeIst } from "@/lib/format";
 import { getCompaniesIndex, getDemoUser } from "@/lib/queries";
 import { DeltaChip } from "@/ui/DeltaChip";
@@ -19,7 +18,7 @@ export default async function CompaniesPage() {
 
   const Row = ({ r }: { r: (typeof rows)[number] }) => (
     <li className="border-b border-rule last:border-b-0">
-      <Link
+      <a
         href={`/c/${encodeURIComponent(r.symbol)}`}
         className="row-touch gutter flex items-center gap-3 py-2 no-callout"
       >
@@ -55,7 +54,7 @@ export default async function CompaniesPage() {
             <span className="block">{r.openPromises} open</span>
           ) : null}
         </span>
-      </Link>
+      </a>
     </li>
   );
 
@@ -77,12 +76,12 @@ export default async function CompaniesPage() {
             close · 1 d · last filing · open promises
           </p>
         </div>
-        <Link
+        <a
           href="/add"
           className="hit inline-flex items-center rounded-[var(--r-chip)] bg-ink px-4 text-bg small font-medium shrink-0"
         >
           + Add
-        </Link>
+        </a>
       </header>
 
       {!rows.length ? (
@@ -91,12 +90,12 @@ export default async function CompaniesPage() {
             title="No companies yet"
             reason="Add any NSE symbol — the research job starts the moment it resolves."
           >
-            <Link
+            <a
               href="/add"
               className="hit inline-flex items-center text-accent small"
             >
               Add a company →
-            </Link>
+            </a>
           </Empty>
         </div>
       ) : null}

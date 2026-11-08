@@ -14,6 +14,7 @@ import {
 } from "@/lib/format";
 import { getAskBudget, getCompanyPage } from "@/lib/queries";
 import { formatIst } from "@/lib/time";
+import { loadTranscriptPendingBy } from "@/lib/transcriptPending";
 import { AskSheet } from "@/ui/AskSheet";
 import { CategoryGlyph } from "@/ui/CategoryGlyph";
 import { DeltaChip } from "@/ui/DeltaChip";
@@ -25,6 +26,7 @@ import { priceHeadline, volumeWord } from "@/ui/prices";
 import { SectionAccordion } from "@/ui/SectionAccordion";
 import { Sparkline } from "@/ui/Sparkline";
 import { TierHeader } from "@/ui/TierHeader";
+import { TranscriptPending } from "@/ui/TranscriptPending";
 
 export const dynamic = "force-dynamic";
 
@@ -210,16 +212,9 @@ export default async function CompanyPage({
     getAskBudget(),
   ]);
   if (!model) notFound();
-  const {
-    company,
-    snapshot,
-    prices,
-    ledger,
-    quarters,
-    events,
-    documents,
-    pendingTranscripts,
-  } = model;
+  const { company, snapshot, prices, ledger, quarters, events, documents } =
+    model;
+  const transcriptPendingBy = await loadTranscriptPendingBy(company.isin);
   const now = Date.now();
   const consolidated = quarters.filter((q) => q.basis === "consolidated");
   const standalone = quarters.filter((q) => q.basis === "standalone");
@@ -436,6 +431,12 @@ export default async function CompanyPage({
           Promise ledger
         </TierHeader>
         <div className="gutter mt-2">
+          {transcriptPendingBy != null ? (
+            <TranscriptPending
+              expectedBy={transcriptPendingBy}
+              className="mb-2"
+            />
+          ) : null}
           {ledger.length ? (
             <>
               <LedgerList rows={ledger} symbol={company.symbol} />
@@ -454,15 +455,6 @@ export default async function CompanyPage({
               reason="Management holds no transcribed calls that we can find on the exchanges or screener.in, so the ledger cannot be built. Research for this name is annual-report only."
             />
           )}
-          {pendingTranscripts.length ? (
-            <ul className="m-0 mt-2 p-0 list-none">
-              {pendingTranscripts.map((p) => (
-                <li key={p} className="receipt py-1">
-                  ◐ {p}
-                </li>
-              ))}
-            </ul>
-          ) : null}
         </div>
       </section>
 

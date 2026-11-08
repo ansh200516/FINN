@@ -238,8 +238,6 @@ export interface CompanyPageModel {
   quarters: QuarterRow[];
   events: EventCard[];
   documents: DocumentItem[];
-  /** transcripts expected but not yet filed: "Q2 FY27 call held 26 Oct · transcript pending" */
-  pendingTranscripts: string[];
 }
 
 export interface LedgerRowView extends LedgerRow {

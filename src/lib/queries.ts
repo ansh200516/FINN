@@ -1084,9 +1084,6 @@ export async function getCompanyPage(
         : "preliminary"
       : null,
   };
-  const pendingTranscripts = documents
-    .filter((d) => d.kind === "transcript" && d.textStatus === "pending")
-    .map((d) => `${d.period ?? "Latest"} call · transcript pending`);
   return {
     company: {
       isin: c.isin,
@@ -1104,7 +1101,6 @@ export async function getCompanyPage(
     quarters,
     events,
     documents,
-    pendingTranscripts,
   };
 }
 

@@ -18,7 +18,9 @@
  *     currency, a segment/product/subsidiary, AUM or another non-P&L noun).
  *     A named product in the question the line answers counts, even when
  *     the stored quote omits it. Beat / Miss is written only when metric,
- *     unit, and scope match.
+ *     unit, and scope match. An open row does not carry the company
+ *     revenue, EBITDA, or PAT figure as "so far" when the promise is a
+ *     different quantity, and a figure saved on the previous row is cleared.
  *   - EBITDA = PBEIT + finance costs + D&A − other income (ex-other-income
  *     convention); EBIT = PBEIT + finance costs − other income; "operating margin"
  *     is settled only when the EBITDA and EBIT readings agree
@@ -306,6 +308,85 @@ export function quantityIssue(args: {
     Math.min(Math.abs(band), Math.abs(actual));
   if (ratio > SLICE_RATIO) return QUANTITY_NOTE.segment;
   return null;
+}
+
+/**
+ * Whether a year-to-date company reading may sit beside a promise whose year
+ * has not closed. The due-year test needs a finished line. Until then, a
+ * full-year company promise still ahead of year-to-date is the same quantity.
+ * A rupee band the company total has already outgrown by more than
+ * {@link SLICE_RATIO} is a product or slice, and the company figure stays off.
+ */
+function interimFitsPromise(args: {
+  quote: string;
+  context?: string | null;
+  family: MetricFamily;
+  unit: string | null;
+  low: number | null;
+  high: number | null;
+  value: number;
+  valueUnit: string | null;
+}): boolean {
+  if (
+    quantityIssue({
+      quote: args.quote,
+      context: args.context,
+      family: args.family,
+      unit: args.unit,
+      deliveredUnit: args.valueUnit,
+      deliveredValue: null,
+      low: args.low,
+      high: args.high,
+    })
+  )
+    return false;
+  const absolute =
+    (args.family === "revenue" ||
+      args.family === "ebitda" ||
+      args.family === "pat") &&
+    args.unit !== "%" &&
+    args.unit !== "bp" &&
+    (args.valueUnit == null || args.valueUnit === "INR") &&
+    (args.unit == null || args.unit === "INR" || args.unit.startsWith("INR"));
+  if (!absolute || COMPANY_TOTAL_RE.test(args.quote)) return true;
+  const band =
+    args.low !== null && args.high !== null
+      ? (args.low + args.high) / 2
+      : (args.low ?? args.high);
+  if (band === null || band === 0 || args.value === 0) return true;
+  return Math.abs(args.value) <= Math.abs(band) * SLICE_RATIO;
+}
+
+/** Slice, currency, or metric — known without a finished XBRL line. */
+function quoteLeavesCompanyLine(
+  s: Pick<
+    LedgerInput,
+    "quote" | "context" | "metric" | "unit" | "comparison" | "low" | "high"
+  >,
+  opts: AdjudicateOptions,
+): boolean {
+  const family = resolveFamily(s.metric, s.quote, opts);
+  if (s.comparison === "cc" || family === "other") return false;
+  return (
+    quantityIssue({
+      quote: s.quote,
+      context: s.context,
+      family,
+      unit: s.unit,
+      deliveredUnit: null,
+      deliveredValue: null,
+      low: s.low,
+      high: s.high,
+    }) != null
+  );
+}
+
+function clearCompanyFigure(row: AdjudicatedRow): void {
+  row.evidence.interim = null;
+  row.evidence.rule = null;
+  row.evidence.priorYear = null;
+  row.delivered = { value: null, unit: null, source: null };
+  row.settledByQuarter = null;
 }
 
 /**
@@ -953,6 +1034,8 @@ export function adjudicateAll(
         row.status = "settled";
         row.verdict = "unverifiable";
         row.evidence.note = "derived figure";
+        // A saved company interim must not survive on a slice the quote names.
+        if (quoteLeavesCompanyLine(s, opts)) clearCompanyFigure(row);
         continue;
       }
       const family = resolveFamily(s.metric, s.quote, opts);
@@ -1011,8 +1094,11 @@ export function adjudicateAll(
               high: s.high,
             });
       if (issue) {
-        // Due or not: never Beat/Miss a different quantity. Open rows stay
-        // open; a due row is unverifiable with the reason on the evidence note.
+        // Due or not: never Beat/Miss a different quantity, and never print
+        // the company line as "so far". `interim: null` is how the save drops
+        // a figure already stored on this row. Open rows stay open; a due
+        // row is unverifiable with the reason on the evidence note.
+        clearCompanyFigure(row);
         if (!due) {
           row.evidence.note = `due after ${s.horizonEnd}`;
           continue;
@@ -1020,37 +1106,48 @@ export function adjudicateAll(
         row.status = "settled";
         row.verdict = "unverifiable";
         row.evidence.note = issue;
-        row.evidence.rule = null;
-        row.evidence.priorYear = null;
         if (issue === QUANTITY_NOTE.segment && scope === "company") {
           const named = CONTEXT_SCOPE_RE.exec(`${s.quote}\n${s.context ?? ""}`);
           if (named?.[1]) row.evidence.scope = named[1].toLowerCase();
         }
-        row.delivered = { value: null, unit: null, source: null };
-        row.settledByQuarter = null;
         continue;
       }
 
       if (!due) {
         // interim: show progress to date when the metric is computable
+        // and it is the same quantity as the promise. `interim: null`
+        // drops a company total already saved on this row.
         row.evidence.note = `due after ${s.horizonEnd}`;
-        if (delivered.value !== null)
-          row.evidence.interim = {
-            value: delivered.value,
-            unit: delivered.unit,
-            note: delivered.note,
-          };
-        else {
-          const partial = partialProgress(
+        const candidate =
+          delivered.value !== null
+            ? {
+                value: delivered.value,
+                unit: delivered.unit,
+                note: delivered.note,
+              }
+            : partialProgress(
+                family,
+                s.metric,
+                period,
+                s.comparison,
+                quarters,
+                now,
+              );
+        if (
+          candidate &&
+          interimFitsPromise({
+            quote: s.quote,
+            context: s.context,
             family,
-            s.metric,
-            period,
-            s.comparison,
-            quarters,
-            now,
-          );
-          if (partial) row.evidence.interim = partial;
-        }
+            unit: s.unit,
+            low: s.low,
+            high: s.high,
+            value: candidate.value,
+            valueUnit: candidate.unit,
+          })
+        )
+          row.evidence.interim = candidate;
+        else if (candidate) row.evidence.interim = null;
         continue;
       }
 
@@ -1526,6 +1623,37 @@ export async function operatingMarginBasisFor(
   return c ? "ebitda" : "auto";
 }
 
+/**
+ * Evidence written back onto a guidance row. Extraction fields on `original`
+ * stay; ledger fields come from this pass. A null `interim` means the promise
+ * is not the company line, so a figure saved by an earlier settle is removed.
+ */
+export function mergeLedgerEvidence(
+  original: Record<string, unknown>,
+  row: Pick<AdjudicatedRow, "evidence" | "delivered">,
+  repaired: {
+    isExplicit: boolean;
+    derived: boolean;
+    typeIssue: boolean;
+    typeNote: string | null;
+  },
+  settledAt: number = Date.now(),
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...original,
+    ...row.evidence,
+    isExplicit: repaired.isExplicit,
+    derived: repaired.derived,
+    typeIssue: repaired.typeIssue,
+    typeNote: repaired.typeNote,
+    delivered: row.delivered,
+    settledAt,
+  };
+  if ("interim" in row.evidence && row.evidence.interim == null)
+    delete merged.interim;
+  return merged;
+}
+
 /** Adjudicate every statement of a company and write verdicts back (idempotent). */
 export async function settleGuidance(
   isin: string,
@@ -1547,16 +1675,12 @@ export async function settleGuidance(
       const original = inputById.get(r.id)?.evidence ?? {};
       // keep extraction provenance, replace ledger fields
       const repaired = inputById.get(r.id);
-      const merged = {
-        ...original,
-        ...r.evidence,
+      const merged = mergeLedgerEvidence(original, r, {
         isExplicit: repaired?.isExplicit === true,
         derived: repaired?.derived === true,
         typeIssue: repaired?.typeIssue === true,
         typeNote: repaired?.typeNote ?? null,
-        delivered: r.delivered,
-        settledAt: Date.now(),
-      };
+      });
       await db
         .update(guidance)
         .set({

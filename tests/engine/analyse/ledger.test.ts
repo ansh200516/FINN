@@ -7,6 +7,7 @@ import {
   computeDelivered,
   ebitdaOp,
   type LedgerInput,
+  mergeLedgerEvidence,
   metricFamily,
   quartersFor,
   quoteContext,
@@ -1086,5 +1087,172 @@ describe("same quantity", () => {
     );
     expect(byId(rows, "co").verdict).toBe("missed");
     expect(byId(rows, "co").delivered?.value).toBe(FY26_REV * CR);
+  });
+
+  it("does not keep a company interim on an open brand promise, including one already saved", () => {
+    const beardo =
+      "Beardo perfectly exemplifies this. Since we took over the brand under Marico's leadership in 2020, the business has scaled by more than 6x and is expected to cross INR400 crores this year.";
+    const companyTotal = 7854 * CR;
+    const ytd = [
+      q("2025-06-30", 3000, 10, 3, 90, 200, 50, 150),
+      q("2025-09-30", 3000, 10, 3, 90, 200, 50, 150),
+      q("2025-12-31", 3000, 10, 3, 90, 200, 50, 150),
+      q("2026-03-31", 3000, 10, 3, 90, 200, 50, 150),
+      q("2026-06-30", 4000, 10, 3, 90, 200, 50, 150),
+      q("2026-09-30", 3854, 10, 3, 90, 200, 50, 150),
+    ];
+    const openFy27 = {
+      horizon: "FY27",
+      horizonEnd: "2027-03-31",
+      docId: "doc_q2fy27",
+      statedAt: T_Q2FY27,
+      statedPeriod: "Q2FY27",
+      isExplicit: true,
+    };
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "beardo",
+          metric: "revenue",
+          unit: "INR",
+          low: 400 * CR,
+          high: null,
+          quote: beardo,
+          comparison: "absolute",
+          ...openFy27,
+        }),
+        input({
+          id: "division",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 30,
+          high: 35,
+          quote:
+            "For the full year, we expect this division to deliver growth of about 30% to 35% for the full year, as informed earlier.",
+          comparison: "yoy",
+          ...openFy27,
+        }),
+        input({
+          id: "usd",
+          metric: "ebitda",
+          unit: "USD",
+          low: 6e9,
+          high: null,
+          quote:
+            "we are on track to deliver a lifetime high annual EBITDA of over $6 billion",
+          comparison: "absolute",
+          ...openFy27,
+        }),
+        input({
+          id: "shampoo",
+          metric: "revenue",
+          unit: "INR",
+          low: 100 * CR,
+          high: 100 * CR,
+          quote:
+            "We are witnessing very good traction in shampoos and are confident of achieving INR100 crores plus ARR this year.",
+          comparison: "absolute",
+          ...openFy27,
+        }),
+        input({
+          id: "vertical",
+          metric: "revenue_growth",
+          unit: "%",
+          low: null,
+          high: null,
+          quote:
+            "We expect this vertical to deliver high double-digit revenue growth in the current fiscal.",
+          comparison: "yoy",
+          ...openFy27,
+          isExplicit: false,
+          derived: true,
+        }),
+        input({
+          id: "company",
+          metric: "revenue",
+          unit: "INR",
+          low: 20_000 * CR,
+          high: 20_000 * CR,
+          quote: "we expect consolidated revenue of INR20,000 crores for FY27",
+          comparison: "absolute",
+          ...openFy27,
+        }),
+        input({
+          id: "ebitda",
+          metric: "ebitda",
+          unit: "INR",
+          low: 2_000 * CR,
+          high: 2_000 * CR,
+          quote:
+            "we maintain our FY27 EBITDA guidance to be upwards of INR2,000 crores",
+          comparison: "absolute",
+          ...openFy27,
+        }),
+      ],
+      ytd,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const repaired = {
+      isExplicit: true,
+      derived: false,
+      typeIssue: false,
+      typeNote: null,
+    };
+    const saved = {
+      interim: {
+        value: companyTotal,
+        unit: "INR",
+        note: "2 of 4 quarters of FY27 (YTD):",
+      },
+    };
+
+    for (const id of ["beardo", "division", "usd", "shampoo"] as const) {
+      const row = byId(rows, id);
+      expect(row.status, id).toBe("open");
+      expect(row.verdict, id).toBeNull();
+      expect(row.delivered?.value ?? null, id).toBeNull();
+      expect(row.evidence.interim ?? null, id).toBeNull();
+      const stored = mergeLedgerEvidence(saved, row, repaired);
+      expect(stored.interim ?? null, id).toBeNull();
+      expect(JSON.stringify(stored), id).not.toContain(String(companyTotal));
+      const delivered = stored.delivered as { value?: number | null } | null;
+      expect(delivered?.value ?? null, id).toBeNull();
+    }
+
+    const brand = byId(rows, "beardo");
+    expect(brand.quote).toBe(beardo);
+    expect(String(brand.evidence.note)).toMatch(/^due after /);
+
+    const vertical = byId(rows, "vertical");
+    expect(vertical.status).toBe("settled");
+    expect(vertical.verdict).toBe("unverifiable");
+    expect(vertical.evidence.note).toBe("derived figure");
+    expect(vertical.evidence.interim ?? null).toBeNull();
+    expect(
+      mergeLedgerEvidence(saved, vertical, {
+        ...repaired,
+        isExplicit: false,
+        derived: true,
+      }).interim ?? null,
+    ).toBeNull();
+
+    const company = byId(rows, "company");
+    expect(company.status).toBe("open");
+    expect(company.verdict).toBeNull();
+    const interim = company.evidence.interim as { value: number };
+    expect(interim.value).toBe(companyTotal);
+    const storedCo = mergeLedgerEvidence(
+      { interim: { value: 1, unit: "INR", note: "stale" } },
+      company,
+      repaired,
+    );
+    expect((storedCo.interim as { value: number }).value).toBe(companyTotal);
+
+    // Full-year company EBITDA still ahead of a smaller YTD stays. The
+    // ratio is wide only because the year is unfinished.
+    const ebitda = byId(rows, "ebitda");
+    expect(ebitda.status).toBe("open");
+    expect((ebitda.evidence.interim as { value: number }).value).toBe(566 * CR);
   });
 });

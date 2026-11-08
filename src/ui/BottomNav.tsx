@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
@@ -75,7 +74,7 @@ export function BottomNav() {
           const active = t.match(pathname);
           return (
             <li key={t.href} className="min-w-0">
-              <Link
+              <a
                 href={t.href}
                 aria-current={active ? "page" : undefined}
                 className={`flex h-full flex-col items-center justify-center gap-0.5 no-callout ${
@@ -90,7 +89,7 @@ export function BottomNav() {
                   className={`block h-[3px] w-[3px] rounded-full ${active ? "bg-accent" : "bg-transparent"}`}
                   aria-hidden="true"
                 />
-              </Link>
+              </a>
             </li>
           );
         })}

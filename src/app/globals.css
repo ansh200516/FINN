@@ -752,19 +752,9 @@
   }
 }
 
-/* Cross-document view transitions as a progressive enhancement (Safari 18.2+, Chrome 126+). */
-::view-transition {
-  pointer-events: none;
-}
-@media (prefers-reduced-motion: no-preference) {
-  @view-transition {
-    navigation: auto;
-  }
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 160ms;
-  }
-}
+/* No `@view-transition { navigation: auto }`. Chrome paints a full-viewport
+   root snapshot for that, and Next's client router cancels the document
+   navigation. The snapshot stays up and clicks never reach the links. */
 
 @media (prefers-reduced-motion: reduce) {
   * {

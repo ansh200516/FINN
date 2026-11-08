@@ -4,6 +4,7 @@ out
 dist
 build
 data/cache
+data/finn.db
 data/raw
 data/*.db
 data/*.db-journal

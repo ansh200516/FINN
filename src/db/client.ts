@@ -43,14 +43,19 @@ export function getPg(): Sql {
     );
   }
   if (!holder.pg) {
-    // prepare:false — Supavisor transaction mode (port 6543) has no prepared statements.
+    // Supavisor transaction mode (port 6543): no prepared statements, and
+    // pipelined queries on the one connection never get a ReadyForQuery, so
+    // Promise.all page reads (Companies, Alerts) stay on the loading shell.
     holder.pg = postgres(url, {
       prepare: false,
+      fetch_types: false,
       max: 1,
+      // one query in flight — Supavisor drops pipelined batches
+      max_pipeline: 1,
       idle_timeout: 20,
       connect_timeout: 15,
       ssl: "require",
-    });
+    } as Parameters<typeof postgres>[1]);
   }
   return holder.pg;
 }

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { istDateKey } from "@/lib/time";
 import type { BriefWindow, WindowPreset } from "./model";
 
@@ -27,22 +26,22 @@ export function WindowScrubber({
     <nav className="gutter mt-4" aria-label="Brief window">
       <div className="segmented">
         {PRESETS.map((p) => (
-          <Link
+          <a
             key={p.key}
             href={`/?w=${p.key}`}
             aria-current={active === p.key ? "true" : undefined}
             className="no-callout"
           >
             {p.label}
-          </Link>
+          </a>
         ))}
-        <Link
+        <a
           href="/?w=close"
           aria-current={window.preset === "close" ? "true" : undefined}
           className="no-callout"
         >
           Since close
-        </Link>
+        </a>
       </div>
       <details className="mt-2 group">
         <summary className="hit inline-flex items-center gap-2 receipt text-ink-2 -ml-1 pl-1 select-none">

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { UpcomingItem } from "./model";
 
 /**
@@ -40,7 +39,7 @@ export function ComingUp({
             <ul className="m-0 p-0 list-none flex-1 min-w-0">
               {list.map((u) => (
                 <li key={`${u.isin}-${u.what}`} className="min-w-0">
-                  <Link
+                  <a
                     href={`/c/${encodeURIComponent(u.symbol)}`}
                     className="flex items-baseline gap-2 min-w-0 py-0.5 no-callout"
                   >
@@ -50,7 +49,7 @@ export function ComingUp({
                     <span className="small text-ink-2 min-w-0 truncate">
                       {u.what}
                     </span>
-                  </Link>
+                  </a>
                 </li>
               ))}
             </ul>

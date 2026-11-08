@@ -1,0 +1,204 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------------
+   FINN design tokens — "Ledger" (docs/research/07-design-ux.md §6)
+   Paper theme by default; Ink via [data-theme="ink"] or prefers-color-scheme.
+   ------------------------------------------------------------------------ */
+:root {
+  /* colour — paper */
+  --bg: #f6f2ea;
+  --surface: #fdfbf6;
+  --ink: #15130f;
+  --ink-2: #4b4740;
+  --ink-3: #6f6a60;
+  --rule: #e2dcce;
+  --accent: #1f3fa8;
+  --up: #1a7a4c;
+  --down: #b3261e;
+  --warn: #8f6400;
+  --shadow-sheet: 0 -8px 24px rgba(21, 19, 15, 0.12);
+
+  /* type (next/font exposes --font-plex-sans / --font-plex-mono) */
+  --font-sans:
+    var(--font-plex-sans), "IBM Plex Sans", system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono:
+    var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+  --font-serif: "Newsreader", "IBM Plex Serif", Georgia, serif;
+  --fs-eyebrow: 11px;
+  --lh-eyebrow: 14px;
+  --ls-eyebrow: 0.08em;
+  --fs-meta: 12px;
+  --lh-meta: 16px;
+  --fs-small: 13px;
+  --lh-small: 18px;
+  --fs-body: 15px;
+  --lh-body: 22px;
+  --fs-row: 15px;
+  --lh-row: 20px;
+  --fs-title: 17px;
+  --lh-title: 22px;
+  --fs-headline: 20px;
+  --lh-headline: 26px;
+  --ls-headline: -0.01em;
+  --fs-dateline: 24px;
+  --lh-dateline: 28px;
+  --fs-num-lg: 28px;
+  --lh-num-lg: 32px;
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+
+  /* space (4-pt) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --gutter: 16px;
+  --card-pad-y: 12px;
+  --card-pad-x: 16px;
+  --row-h: 40px;
+  --row-h-touch: 48px;
+  --hit-min: 44px;
+  --bar-h: 56px;
+
+  /* shape */
+  --r-chip: 4px;
+  --r-card: 8px;
+  --r-sheet: 16px;
+  --r-pill: 999px;
+  --hairline: 1px;
+
+  /* motion */
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* layers */
+  --z-bar: 30;
+  --z-sheet: 40;
+  --z-toast: 50;
+
+  /* data viz */
+  --spark-w: 56px;
+  --spark-h: 14px;
+  --spark-stroke: 1.25px;
+}
+
+[data-theme="ink"] {
+  --bg: #0f1013;
+  --surface: #17181c;
+  --ink: #ece8df;
+  --ink-2: #aca79c;
+  --ink-3: #8a857c;
+  --rule: #272a30;
+  --accent: #93a9ff;
+  --up: #4fc98c;
+  --down: #f2776d;
+  --warn: #e3b64a;
+  --shadow-sheet: 0 -8px 24px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="paper"]) {
+    --bg: #0f1013;
+    --surface: #17181c;
+    --ink: #ece8df;
+    --ink-2: #aca79c;
+    --ink-3: #8a857c;
+    --rule: #272a30;
+    --accent: #93a9ff;
+    --up: #4fc98c;
+    --down: #f2776d;
+    --warn: #e3b64a;
+    --shadow-sheet: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Expose tokens to Tailwind utilities: bg-bg, text-ink-2, border-rule, text-up, font-mono … */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-rule: var(--rule);
+  --color-accent: var(--accent);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-warn: var(--warn);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+  --radius-chip: var(--r-chip);
+  --radius-card: var(--r-card);
+  --radius-sheet: var(--r-sheet);
+}
+
+html {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums lining-nums;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.num {
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0;
+}
+.delta-up {
+  color: var(--up);
+}
+.delta-down {
+  color: var(--down);
+}
+.delta-warn {
+  color: var(--warn);
+}
+.eyebrow {
+  font: var(--w-medium) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.receipt {
+  font: var(--w-regular) var(--fs-eyebrow) / var(--lh-eyebrow) var(--font-mono);
+  color: var(--ink-3);
+}
+.rule {
+  border-top: var(--hairline) solid var(--rule);
+}
+.rule-stitched {
+  border-top: var(--hairline) dotted var(--ink-3);
+}
+.card-material {
+  border-left: 2px solid var(--ink);
+  padding-left: calc(var(--card-pad-x) - 2px);
+}
+.bar {
+  height: calc(var(--bar-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion override must beat every component rule */
+    animation-duration: 1ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: same */
+    transition-duration: 1ms !important;
+  }
+}

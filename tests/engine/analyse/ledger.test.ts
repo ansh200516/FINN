@@ -1759,3 +1759,262 @@ describe("same quantity", () => {
     ).toBe(70.8);
   });
 });
+
+describe("a named business is not the company line", () => {
+  const fy26 = {
+    horizon: "FY26",
+    horizonEnd: "2026-03-31",
+    isExplicit: true,
+    comparison: "absolute" as const,
+  };
+  const openFy27 = {
+    horizon: "FY27",
+    horizonEnd: "2027-03-31",
+    isExplicit: true,
+    comparison: "absolute" as const,
+    docId: "doc_q2fy27",
+    statedAt: T_Q2FY27,
+    statedPeriod: "Q2FY27",
+  };
+
+  it("does not score L&T's P&M target of 8.5% as a beat against the company EBITDA margin", () => {
+    const quote =
+      "With the execution momentum expected to pick up in H2, we are reasonably confident to achieve our full year EBITDA margin target of 8.5%.";
+    const lead =
+      "Coming to the EBITDA margin for the P&M business. As you may have seen, the EBITDA margin for the P&M business has improved by 10 basis points in H1 FY '26.";
+    const context = quoteContext(
+      [{ role: "management", text: `${lead} ${quote}` }],
+      quote,
+    );
+    expect(quote).toMatch(/target of 8\.5%/);
+    expect(context).toMatch(/P&M business/);
+
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "pm",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 8.5,
+          high: 8.5,
+          quote,
+          context,
+          ...fy26,
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const row = byId(rows, "pm");
+    expect(row.verdict).not.toBe("beat");
+    expect(row.verdict).toBe("unverifiable");
+    expect(row.evidence.note).toBe("segment, not the company total");
+    expect(row.delivered?.value ?? null).toBeNull();
+    expect(row.evidence.interim ?? null).toBeNull();
+
+    // The same 8.5% sentence, with no division named, is the company margin.
+    const company = adjudicateAll(
+      [
+        input({
+          id: "co",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 8.5,
+          high: 8.5,
+          quote,
+          ...fy26,
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(company, "co").verdict).toBe("beat");
+    expect(byId(company, "co").delivered?.value).not.toBeNull();
+  });
+
+  it("does not keep the company EBITDA margin on a Projects, Products and Manufacturing guide", () => {
+    const quote =
+      "This has been factored in that the momentum of execution being a little softer in H1 FY'27, while we are guiding a stable margin profile for FY'27.";
+    const question =
+      "My first question -- the only question is that Projects, Products and Manufacturing margin have been range-bound between 7.7% to 7.8%. The guidance again is 7.8%.";
+    const context = quoteContext(
+      [
+        { role: "analyst", text: question },
+        { role: "management", text: quote },
+      ],
+      quote,
+    );
+    expect(context).toMatch(/Projects, Products and Manufacturing/);
+    expect(context).toMatch(/7\.8%/);
+
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "ppm",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: null,
+          high: null,
+          quote,
+          context,
+          ...openFy27,
+          isExplicit: false,
+          direction: "flat",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const row = byId(rows, "ppm");
+    expect(row.status).toBe("open");
+    expect(row.verdict).toBeNull();
+    expect(row.evidence.interim ?? null).toBeNull();
+    expect(row.delivered?.value ?? null).toBeNull();
+    expect(JSON.stringify(row.evidence)).not.toMatch(/8\.8/);
+  });
+
+  it("does not keep company revenue growth on a sports line", () => {
+    const quote =
+      "So, we did see that turn through the quarter and we hope that this will continue. Beyond the festive season as we look to the rest of the year.";
+    const filler =
+      "The series viewership stayed strong across digital and television. ".repeat(
+        12,
+      );
+    const before = `I will now move on to the sports business. ${filler}`;
+    expect(before.length).toBeGreaterThan(400);
+    expect(before.length).toBeLessThan(1000);
+    const context = quoteContext(
+      [{ role: "management", text: `${before}${quote}` }],
+      quote,
+    );
+    expect(context).toMatch(/sports business/i);
+
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "sports",
+          metric: "revenue_growth",
+          unit: "qualitative",
+          low: null,
+          high: null,
+          quote,
+          context,
+          ...openFy27,
+          isExplicit: false,
+          direction: "qualitative",
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const row = byId(rows, "sports");
+    expect(row.verdict).toBeNull();
+    expect(row.evidence.interim ?? null).toBeNull();
+    expect(row.delivered?.value ?? null).toBeNull();
+    expect(JSON.stringify(row.evidence)).not.toMatch(/27\.0/);
+  });
+
+  it("does not score Inox Green's EBITDA guide against Inox Wind EBITDA", () => {
+    const quote =
+      "With all our investments formally folding into Inox Green's balance sheet, along with organic growth, we maintain our FY27 EBITDA guidance to be upwards of INR600 crores.";
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "green",
+          metric: "ebitda",
+          unit: "INR",
+          low: 600 * CR,
+          high: null,
+          quote,
+          ...fy26,
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const row = byId(rows, "green");
+    expect(row.verdict).not.toBe("beat");
+    expect(row.verdict).toBe("unverifiable");
+    expect(row.evidence.note).toBe("segment, not the company total");
+    expect(row.evidence.scope).toBe("inox green");
+    expect(row.delivered?.value ?? null).toBeNull();
+    expect(row.evidence.interim ?? null).toBeNull();
+  });
+
+  it("clears revenue growth when a later turn calls the same band loan growth", () => {
+    const quote =
+      "I would say probably between 26%, 27% growth we should deliver now on a full year basis.";
+    const question =
+      "what would be the growth guidance here onwards for near and medium term?";
+    const later =
+      "Yes, I was just saying 26%, 27% loan growth guidance is inclusive of all these calibrations that you have already made and are planning to make?";
+    const turns = [
+      { role: "analyst", text: question },
+      { role: "management", text: quote },
+      { role: "analyst", text: later },
+      { role: "management", text: "Yes." },
+    ];
+    const context = quoteContext(turns, quote);
+    expect(context).toMatch(/loan growth guidance/i);
+    expect(context).not.toMatch(/\bAUM\b/);
+
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "loan",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 26,
+          high: 27,
+          quote,
+          context,
+          ...openFy27,
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const row = byId(rows, "loan");
+    expect(row.status).toBe("open");
+    expect(row.verdict).toBeNull();
+    expect(row.evidence.interim ?? null).toBeNull();
+    expect(row.delivered?.value ?? null).toBeNull();
+
+    // Without the later turn the question does not name a different metric.
+    const bare = quoteContext(
+      [
+        { role: "analyst", text: question },
+        { role: "management", text: quote },
+      ],
+      quote,
+    );
+    expect(bare).not.toMatch(/loan growth/i);
+    const kept = adjudicateAll(
+      [
+        input({
+          id: "bare",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 26,
+          high: 27,
+          quote,
+          context: bare,
+          ...openFy27,
+          comparison: "yoy",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(byId(kept, "bare").evidence.interim ?? null).not.toBeNull();
+  });
+});

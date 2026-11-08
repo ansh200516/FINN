@@ -18,11 +18,13 @@
  *     currency, a segment/product/subsidiary, AUM or another non-P&L noun).
  *     A named product in the question the line answers counts, even when
  *     the stored quote omits it, and so does the earlier part of the same
- *     remark ("here" after the speaker has named the segment). Beat / Miss
- *     is written only when metric, unit, and scope match. An open row does
- *     not carry the company revenue, EBITDA, PAT, or margin figure as "so far" when the promise
- *     is a different quantity (a basis-point change, a named ratio, AUM,
- *     volume, a mix), and a figure saved on the previous row is cleared.
+ *     remark ("here", or a named division such as P&M or sports). A later
+ *     turn that calls the same percent band loan growth is a different
+ *     metric. Beat / Miss is written only when metric, unit, and scope
+ *     match. An open row does not carry the company revenue, EBITDA, PAT,
+ *     or margin figure as "so far" when the promise is a different quantity
+ *     (a basis-point change, a named ratio, AUM, loan growth, volume, a
+ *     mix), and a figure saved on the previous row is cleared.
  *   - EBITDA = PBEIT + finance costs + D&A − other income (ex-other-income
  *     convention); EBIT = PBEIT + finance costs − other income; "operating margin"
  *     is settled only when the EBITDA and EBIT readings agree
@@ -170,7 +172,7 @@ const SCOPE_RE =
  * revision chain (that would re-open a superseded row and score it).
  */
 const SLICE_RE =
-  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere|sidwal|racs?|room\s+acs?|railways?|fluoropolymers?|copper|offshore|PPM|growth in solutions? and products)\b/i;
+  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere|sidwal|racs?|room\s+acs?|railways?|fluoropolymers?|copper|offshore|PPM|P\s*&\s*M|Projects,?\s+Products\s+and\s+Manufacturing|sports(?:\s+business)?|inox\s+green|growth in solutions? and products)\b/i;
 
 /**
  * Named products a neighbouring question can scope, when the quote omits them.
@@ -179,7 +181,7 @@ const SLICE_RE =
  * "digital" alone is the same — only a digital brand, or "question on digital".
  */
 const CONTEXT_SCOPE_RE =
-  /\b(racs?|room\s+acs?|candere|sidwal|power[- ]one|electronics|consumer\s+durables?|generics?|digital(?:\s*[- ]first)(?:\s+\w+){0,6}\s+brands?|digital\s+brands?|question on digital|asset\s+services|PPM)\b/i;
+  /\b(racs?|room\s+acs?|candere|sidwal|power[- ]one|electronics|consumer\s+durables?|generics?|digital(?:\s*[- ]first)(?:\s+\w+){0,6}\s+brands?|digital\s+brands?|question on digital|asset\s+services|PPM|P\s*&\s*M|Projects,?\s+Products\s+and\s+Manufacturing|sports(?:\s+business)?)\b/i;
 
 /** The speaker named the consolidated / company total, not a slice of it. */
 const COMPANY_TOTAL_RE =
@@ -279,7 +281,7 @@ function metricMismatch(
   if (basisPointPromise(quote, unit)) return true;
   if (/\b(AUMs?|assets under management)\b/i.test(quote)) return true;
   if (
-    /\b(volumes?|order[- ]books?|order inflows?|disbursements?|market shares?)\s+growth\b/i.test(
+    /\b(volumes?|order[- ]books?|order inflows?|disbursements?|market shares?|loans?|advances?)\s+growth\b/i.test(
       quote,
     )
   )
@@ -298,7 +300,75 @@ function metricMismatch(
   const beside = context?.trim() ?? "";
   if (beside && !quoteNamesCompanyLine(quote) && NAMED_RATIO_RE.test(beside))
     return true;
+  // A later turn that repeats this percent band as loan (or AUM) growth.
+  if (beside && restatedGrowthMismatch(quote, beside)) return true;
   return false;
+}
+
+/** Percent figures in `quote`, so a later turn can be tied to this band. */
+function quotedPercents(quote: string): string[] {
+  return [...quote.matchAll(/(\d+(?:\.\d+)?)\s*%/g)].map((m) => m[1] as string);
+}
+
+const RESTATED_GROWTH_RE =
+  /\b(?:loans?|advances?|disbursements?|AUMs?|assets under management)\s+growth\b/gi;
+
+/** The same percent band, restated beside loan / AUM / disbursement growth. */
+function restatedGrowthMismatch(quote: string, context: string): boolean {
+  const nums = quotedPercents(quote);
+  if (nums.length < 2) return false;
+  for (const m of context.matchAll(
+    new RegExp(RESTATED_GROWTH_RE.source, "gi"),
+  )) {
+    const at = m.index ?? 0;
+    const slice = context.slice(Math.max(0, at - 80), at + m[0].length);
+    if (
+      nums.every((n) =>
+        new RegExp(`(?<![\\d.])${n.replace(".", "\\.")}\\s*%`).test(slice),
+      )
+    )
+      return true;
+  }
+  return false;
+}
+
+/**
+ * A later turn that labels this quote's percent band as a different growth
+ * metric. Kept only when that turn calls it guidance and management agrees,
+ * so an unrelated loan-growth sentence cannot retarget the row.
+ */
+function sameGuidanceFollowUp(
+  turns: ReadonlyArray<{ role: string; text: string }>,
+  quote: string,
+  from: number,
+): string {
+  const nums = quotedPercents(quote);
+  if (nums.length < 2) return "";
+  const noun =
+    /\b(?:loans?|advances?|disbursements?|AUMs?|assets under management)\s+growth\b/i;
+  for (let k = from + 1; k < turns.length; k++) {
+    const t = turns[k];
+    if (!t || t.role === "moderator" || !noun.test(t.text)) continue;
+    const at = t.text.search(noun);
+    const around = t.text.slice(
+      Math.max(0, at - 80),
+      Math.min(t.text.length, at + 48),
+    );
+    const hasBand = nums.every((n) =>
+      new RegExp(`(?<![\\d.])${n.replace(".", "\\.")}\\s*%`).test(around),
+    );
+    if (!hasBand || !/\bguidance\b/i.test(around)) continue;
+    const agrees =
+      t.role === "management" ||
+      turns
+        .slice(k + 1, k + 4)
+        .some(
+          (n) =>
+            n.role === "management" && /^\s*(yes|yeah|correct)\b/i.test(n.text),
+        );
+    if (agrees) return t.text.trim();
+  }
+  return "";
 }
 
 /**
@@ -447,7 +517,10 @@ function clearCompanyFigure(row: AdjudicatedRow): void {
  * The question this line answers, plus the same answer's lead-in.
  * A short clarification between the question and the answer is skipped, and
  * one management hand-off still counts. When the quote says "here", the
- * lead-in reaches the segment named earlier in the same remark.
+ * lead-in reaches the segment named earlier in the same remark. A named
+ * division in that remark (within the previous 1,000 characters) does too.
+ * A later turn that calls this percent band loan growth, and that management
+ * agrees with, is included.
  * Empty when the quote is not in `turns` — callers must not invent a scope.
  */
 export function quoteContext(
@@ -476,12 +549,21 @@ export function quoteContext(
   const cur = turns[i];
   if (!cur) return bits.join("\n").trim();
   const off = verifyQuote(quote, cur.text);
-  const window = /\bhere\b/i.test(quote) ? 1000 : 400;
+  let window = /\bhere\b/i.test(quote) ? 1000 : 400;
+  // "sports business" can sit further back in the same monologue than "here".
+  if (off !== null && off > 0 && window < 1000) {
+    const wider = normalizeForMatch(cur.text).slice(
+      Math.max(0, off - 1000),
+      off,
+    );
+    if (/\bsports(?:\s+business)?\b/i.test(wider)) window = 1000;
+  }
   const lead =
     off !== null && off > 0
       ? normalizeForMatch(cur.text).slice(Math.max(0, off - window), off)
       : "";
-  return `${bits.join("\n")}\n${lead}`.trim();
+  const follow = sameGuidanceFollowUp(turns, quote, i);
+  return `${bits.join("\n")}\n${lead}\n${follow}`.trim();
 }
 
 /** grouping key for revision chains: margins of any flavour chain together; segment-level statements chain separately */
@@ -1170,7 +1252,9 @@ export function adjudicateAll(
         // row is unverifiable with the reason on the evidence note.
         clearCompanyFigure(row);
         if (issue === QUANTITY_NOTE.segment && scope === "company") {
-          const named = CONTEXT_SCOPE_RE.exec(`${s.quote}\n${s.context ?? ""}`);
+          const named =
+            CONTEXT_SCOPE_RE.exec(`${s.quote}\n${s.context ?? ""}`) ??
+            SLICE_RE.exec(s.quote);
           if (named?.[1]) row.evidence.scope = named[1].toLowerCase();
         }
         if (!due) {

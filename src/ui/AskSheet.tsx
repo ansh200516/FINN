@@ -9,10 +9,46 @@ export interface AskBudget {
   cap: number;
 }
 
+interface AskCitation {
+  kind: "results" | "guidance" | "page";
+  ref: string;
+  quote?: string;
+}
+
+interface AskOk {
+  ok: true;
+  answer: string;
+  citations: AskCitation[];
+  notInFilings: boolean;
+  model: string;
+  cached: boolean;
+  asksRemaining: number;
+  budget: Array<AskBudget & { tier?: string }>;
+}
+
+interface AskErr {
+  ok: false;
+  error: string;
+  asksRemaining?: number;
+  budget?: Array<AskBudget & { tier?: string }>;
+}
+
+function pickReason(
+  rows: Array<AskBudget & { tier?: string }> | undefined,
+): AskBudget | null {
+  if (!rows?.length) return null;
+  const reason = rows.some((b) => b.tier)
+    ? rows.filter((b) => b.tier === "reason")
+    : rows;
+  const pick = reason.find((b) => b.remaining > 0) ?? reason[0];
+  return pick
+    ? { model: pick.model, remaining: pick.remaining, cap: pick.cap }
+    : null;
+}
+
 /**
- * The Ask field pinned above the bar on a company page. Opens a sheet; until
- * the Ask backend lands the field is disabled and the sheet explains the
- * budget and the grounding rules instead of pretending.
+ * The Ask field pinned above the bar on a company page. Posts to /api/ask;
+ * the answer is grounded in that company's filings only.
  */
 export function AskSheet({
   symbol,
@@ -24,6 +60,41 @@ export function AskSheet({
   docCount: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [liveBudget, setLiveBudget] = useState<AskBudget | null>(budget);
+  const [result, setResult] = useState<AskOk | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const shown = liveBudget ?? budget;
+  const canSubmit = question.trim().length > 0 && !busy;
+
+  async function onAsk() {
+    const q = question.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ symbol, question: q }),
+      });
+      const body = (await r.json()) as AskOk | AskErr;
+      const next = pickReason(body.budget);
+      if (next) setLiveBudget(next);
+      if (!body.ok) {
+        setResult(null);
+        setError(body.error);
+        return;
+      }
+      setResult(body);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <div
@@ -42,7 +113,7 @@ export function AskSheet({
             Ask {symbol} · from its filings only
           </span>
           <span className="receipt shrink-0 whitespace-nowrap">
-            {budget ? `${budget.remaining}/${budget.cap} today` : "budgeted"}
+            {shown ? `${shown.remaining}/${shown.cap} today` : "budgeted"}
           </span>
         </button>
       </div>
@@ -55,16 +126,47 @@ export function AskSheet({
         <label className="block mt-3">
           <span className="eyebrow">Question</span>
           <textarea
-            disabled
             rows={3}
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
             placeholder={`e.g. What did management promise on margins, and what did Q2 deliver?`}
             className="mt-1 block w-full resize-none rounded-[var(--r-chip)] border border-rule bg-bg px-3 py-2 text-[16px] text-ink placeholder:text-ink-3 disabled:opacity-70"
           />
         </label>
+        {result ? (
+          <div className="mt-3 card px-3 py-3">
+            <p className="small text-ink">{result.answer}</p>
+            {result.notInFilings ? (
+              <p className="small text-ink-2 mt-2">Not in the filings.</p>
+            ) : null}
+            {result.citations.length ? (
+              <ul className="m-0 mt-2 p-0 list-none small text-ink-2">
+                {result.citations.map((c) => (
+                  <li
+                    key={`${c.kind}:${c.ref}`}
+                    className="py-1 border-b border-rule"
+                  >
+                    <span className="receipt">
+                      {c.kind} · {c.ref}
+                    </span>
+                    {c.quote ? (
+                      <span className="block text-ink">“{c.quote}”</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="receipt mt-2">
+              {result.model}
+              {result.cached ? " · cached" : ""} · {result.asksRemaining} asks
+              left today
+            </p>
+          </div>
+        ) : null}
+        {error ? <p className="small text-ink-2 mt-2">{error}</p> : null}
         <div className="mt-3 card px-3 py-3">
           <p className="small text-ink">
-            Not connected yet — answers will come only from this company's
-            documents.
+            Answers come only from this company's documents.
           </p>
           <ul className="m-0 mt-2 p-0 list-none small text-ink-2">
             <li className="py-1 border-b border-rule">
@@ -77,11 +179,10 @@ export function AskSheet({
             </li>
             <li className="py-1">
               Budget:{" "}
-              {budget ? (
+              {shown ? (
                 <>
-                  <span className="mono">{budget.model}</span> ·{" "}
-                  {budget.remaining} of {budget.cap} reason-tier calls left
-                  today
+                  <span className="mono">{shown.model}</span> ·{" "}
+                  {shown.remaining} of {shown.cap} reason-tier calls left today
                 </>
               ) : (
                 "reason-tier Flash, about 16 calls a day shared across the app"
@@ -92,10 +193,11 @@ export function AskSheet({
         </div>
         <button
           type="button"
-          disabled
-          className="hit mt-3 w-full rounded-[var(--r-chip)] bg-ink text-bg font-medium opacity-50"
+          disabled={!canSubmit}
+          onClick={() => void onAsk()}
+          className={`hit mt-3 w-full rounded-[var(--r-chip)] bg-ink text-bg font-medium${canSubmit ? "" : " opacity-50"}`}
         >
-          Ask (engine pending)
+          {busy ? "Asking…" : "Ask"}
         </button>
       </Sheet>
     </>

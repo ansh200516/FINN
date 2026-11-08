@@ -1255,4 +1255,270 @@ describe("same quantity", () => {
     expect(ebitda.status).toBe("open");
     expect((ebitda.evidence.interim as { value: number }).value).toBe(566 * CR);
   });
+
+  it("does not keep a company margin on a basis-point or other-metric promise, including one already saved", () => {
+    const bajaj =
+      "We remain pretty comfortable place to deliver a 25 to 40 basis point improvement in FY27 on opex-to-NTI.";
+    // EBITDA = PBEIT + finance + D&A − other income = 708 on revenue 1,000 → 70.8%.
+    const marginQ = (end: string) => q(end, 1000, 0, 0, 0, 708, 0, 708);
+    const quarters = [
+      marginQ("2025-06-30"),
+      marginQ("2025-09-30"),
+      marginQ("2025-12-31"),
+      marginQ("2026-03-31"),
+      marginQ("2026-06-30"),
+      marginQ("2026-09-30"),
+    ];
+    const openFy27 = {
+      horizon: "FY27",
+      horizonEnd: "2027-03-31",
+      docId: "doc_q2fy27",
+      statedAt: T_Q2FY27,
+      statedPeriod: "Q2FY27",
+      isExplicit: true,
+      comparison: "absolute" as const,
+    };
+    const repaired = {
+      isExplicit: true,
+      derived: false,
+      typeIssue: false,
+      typeNote: null,
+    };
+    const savedMargin = {
+      interim: {
+        value: 70.8,
+        unit: "%",
+        note: "2 of 4 quarters of FY27 (YTD): EBITDA margin",
+      },
+    };
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "bajaj",
+          metric: "operating_margin",
+          unit: "bp",
+          low: 25,
+          high: 40,
+          quote: bajaj,
+          ...openFy27,
+        }),
+        input({
+          id: "bajajDue",
+          metric: "operating_margin",
+          unit: "bp",
+          low: 25,
+          high: 40,
+          quote: bajaj,
+          horizon: "FY26",
+          horizonEnd: "2026-03-31",
+          isExplicit: true,
+          comparison: "absolute",
+        }),
+        input({
+          id: "expand",
+          metric: "ebitda_margin",
+          unit: "bp",
+          low: 120,
+          high: 150,
+          quote:
+            "So, this year, percentage margin could expand by about 120 to 150 basis points.",
+          ...openFy27,
+        }),
+        input({
+          id: "bpsImpact",
+          metric: "ebit_margin",
+          unit: "bp",
+          low: 50,
+          high: 50,
+          quote:
+            "acquisition that we have made will have 50 bps impact on our margins overall",
+          ...openFy27,
+        }),
+        input({
+          id: "railway",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 16,
+          high: 17,
+          quote:
+            "But the margins in the railway side, we expect in the range of 16% to 17%.",
+          ...openFy27,
+        }),
+        input({
+          id: "copper",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 5,
+          high: null,
+          quote:
+            "we do foresee the margin in the Copper business going from roughly 1% right now, going to at least 5% in FY '27.",
+          ...openFy27,
+        }),
+        input({
+          id: "fluoro",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 17,
+          high: 20,
+          quote:
+            "we had guided for an annual growth of 17% to 20% in our fluoropolymers business.",
+          ...openFy27,
+          comparison: "yoy",
+        }),
+        input({
+          id: "offshore",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 5,
+          high: 7,
+          quote:
+            "Overall, revenue contribution from offshore will remain between 5% to 7% at least in this year.",
+          ...openFy27,
+          comparison: "yoy",
+        }),
+        input({
+          id: "higher",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 12,
+          high: 15,
+          quote:
+            "So we expect that the revenue growth should be at least 12% to 15% higher, if not more.",
+          ...openFy27,
+          comparison: "yoy",
+        }),
+        input({
+          id: "costIncome",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 36,
+          high: 40,
+          quote:
+            "But I think overall full year basis, anywhere between 36% to 40% range is what will remain here.",
+          context:
+            "And what should we think about full year cost to income in that segment?",
+          ...openFy27,
+        }),
+        input({
+          id: "ppm",
+          metric: "operating_margin",
+          unit: "%",
+          low: 7.8,
+          high: 7.8,
+          quote:
+            "we continue to target the margin of around 7.8% for FY '27 with respect to the PPM portfolio.",
+          ...openFy27,
+          isExplicit: false,
+          derived: true,
+        }),
+        input({
+          id: "margin",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 20,
+          high: 22,
+          quote:
+            "we maintain our FY27 EBITDA margin guidance of 20% to 22% on a consol basis",
+          ...openFy27,
+        }),
+        input({
+          id: "ebitdaLevel",
+          metric: "ebitda",
+          unit: "INR",
+          low: 3_000 * CR,
+          high: null,
+          quote:
+            "we maintain our FY27 EBITDA guidance to be upwards of INR3,000 crores",
+          ...openFy27,
+        }),
+        input({
+          id: "derivedCo",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: null,
+          high: null,
+          quote:
+            "We expect EBITDA margin to remain around the current guided range.",
+          ...openFy27,
+          isExplicit: false,
+          derived: true,
+        }),
+      ],
+      quarters,
+      TRANSCRIPTS,
+      NOW,
+    );
+
+    for (const id of [
+      "bajaj",
+      "expand",
+      "bpsImpact",
+      "railway",
+      "copper",
+      "fluoro",
+      "offshore",
+      "higher",
+      "costIncome",
+    ] as const) {
+      const row = byId(rows, id);
+      expect(row.status, id).toBe("open");
+      expect(row.verdict, id).toBeNull();
+      expect(row.delivered?.value ?? null, id).toBeNull();
+      expect(row.evidence.interim ?? null, id).toBeNull();
+      expect(JSON.stringify(row.evidence), id).not.toMatch(/70\.8/);
+      const stored = mergeLedgerEvidence(savedMargin, row, repaired);
+      expect(stored.interim ?? null, id).toBeNull();
+      expect(JSON.stringify(stored), id).not.toContain("70.8");
+    }
+
+    const bajajRow = byId(rows, "bajaj");
+    expect(bajajRow.quote).toBe(bajaj);
+    expect(String(bajajRow.evidence.note)).toMatch(/^due after /);
+
+    const due = byId(rows, "bajajDue");
+    expect(due.status).toBe("settled");
+    expect(due.verdict).toBe("unverifiable");
+    expect(due.evidence.note).toBe("metric mismatch");
+    expect(due.delivered?.value ?? null).toBeNull();
+    expect(
+      mergeLedgerEvidence(savedMargin, due, repaired).interim ?? null,
+    ).toBeNull();
+
+    const ppm = byId(rows, "ppm");
+    expect(ppm.status).toBe("settled");
+    expect(ppm.verdict).toBe("unverifiable");
+    expect(ppm.evidence.note).toBe("derived figure");
+    expect(ppm.evidence.interim ?? null).toBeNull();
+    expect(
+      mergeLedgerEvidence(savedMargin, ppm, {
+        ...repaired,
+        isExplicit: false,
+        derived: true,
+      }).interim ?? null,
+    ).toBeNull();
+
+    const margin = byId(rows, "margin");
+    expect(margin.status).toBe("open");
+    expect((margin.evidence.interim as { value: number }).value).toBeCloseTo(
+      70.8,
+      1,
+    );
+    const level = byId(rows, "ebitdaLevel");
+    expect(level.status).toBe("open");
+    expect((level.evidence.interim as { value: number }).value).toBe(1416 * CR);
+
+    // A derived company-margin sentence is not recomputed here. A figure
+    // already saved for that same line must survive re-settle.
+    const derivedCo = byId(rows, "derivedCo");
+    expect(derivedCo.evidence.note).toBe("derived figure");
+    expect(
+      (
+        mergeLedgerEvidence(savedMargin, derivedCo, {
+          ...repaired,
+          isExplicit: false,
+          derived: true,
+        }).interim as { value: number }
+      ).value,
+    ).toBe(70.8);
+  });
 });

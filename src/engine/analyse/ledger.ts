@@ -19,8 +19,9 @@
  *     A named product in the question the line answers counts, even when
  *     the stored quote omits it. Beat / Miss is written only when metric,
  *     unit, and scope match. An open row does not carry the company
- *     revenue, EBITDA, or PAT figure as "so far" when the promise is a
- *     different quantity, and a figure saved on the previous row is cleared.
+ *     revenue, EBITDA, PAT, or margin figure as "so far" when the promise
+ *     is a different quantity (a basis-point change, a named ratio, AUM,
+ *     volume, a mix), and a figure saved on the previous row is cleared.
  *   - EBITDA = PBEIT + finance costs + D&A − other income (ex-other-income
  *     convention); EBIT = PBEIT + finance costs − other income; "operating margin"
  *     is settled only when the EBITDA and EBIT readings agree
@@ -168,7 +169,7 @@ const SCOPE_RE =
  * revision chain (that would re-open a superseded row and score it).
  */
 const SLICE_RE =
-  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere|sidwal|racs?|room\s+acs?)\b/i;
+  /\b(piping|pipes?|division|segment|exports?|international|overseas|domestic|india business|us business|europe|cdmo|generics?|api|formulations?|retail|wholesale|subsidiar(?:y|ies)|vertical|category|brand|plant|facility|gas|wavin|parachute|saffola|foods|digital|bfsi|hi-?tech|manufacturing|energy|utilities|communications?|automotive|passenger vehicles?|commercial vehicles?|hardware|consumer durables?|telecom|transactional(?:\s+income)?|power[- ]one|candere|sidwal|racs?|room\s+acs?|railways?|fluoropolymers?|copper|offshore|PPM)\b/i;
 
 /**
  * Named products a neighbouring question can scope, when the quote omits them.
@@ -227,8 +228,44 @@ function promisedFx(unit: string | null, quote: string): boolean {
   return fx && !inr;
 }
 
-function metricMismatch(quote: string, family: MetricFamily): boolean {
+/**
+ * Ratios the exchange P&L does not print. A margin level, revenue growth,
+ * or rupee total is a different quantity from any of these.
+ */
+const NAMED_RATIO_RE =
+  /\b(?:opex[- ]to[- ](?:NTI|AUM|assets|income)|cost[- ]to[- ]income|cost[- ]income(?:\s+ratio)?|net interest margins?|NIMs?|GNPA|NNPA|ROE|ROA|ROCE|credit costs?|CASA)\b/i;
+
+/**
+ * A basis-point change is not the margin level, the growth rate, or a rupee
+ * total. Unit `bp` is that change even when the sentence also says "margin".
+ * A quote that states both a percent level and a bps bridge keeps the level.
+ */
+function basisPointPromise(quote: string, unit: string | null): boolean {
+  if (unit === "bp") return true;
+  if (
+    !/\b\d[\d,.]*(?:\s*(?:to|–|-)\s*\d[\d,.]*)?\s*(?:basis points?|bps)\b/i.test(
+      quote,
+    )
+  )
+    return false;
+  return !/\d(?:\.\d+)?\s*%/.test(quote);
+}
+
+/** The quote itself names the company P&L line, so a neighbouring question does not reassign it. */
+function quoteNamesCompanyLine(quote: string): boolean {
+  return /\b(?:revenues?|turnover|topline|top[- ]line|EBITDAs?|EBIT|PAT|PBT|profits?|margins?|growth|tax(?:\s+rate)?|ETR)\b/i.test(
+    quote,
+  );
+}
+
+function metricMismatch(
+  quote: string,
+  family: MetricFamily,
+  unit: string | null,
+  context?: string | null,
+): boolean {
   if (family === "other") return false;
+  if (basisPointPromise(quote, unit)) return true;
   if (/\b(AUMs?|assets under management)\b/i.test(quote)) return true;
   if (
     /\b(volumes?|order[- ]books?|order inflows?|disbursements?|market shares?)\s+growth\b/i.test(
@@ -242,11 +279,13 @@ function metricMismatch(quote: string, family: MetricFamily): boolean {
     )
   )
     return true;
-  if (
-    /\b(NIM|NIMs|net interest margin|GNPA|NNPA|ROE|ROA|ROCE|credit cost|cost[- ]to[- ]income)\b/i.test(
-      quote,
-    )
-  )
+  if (NAMED_RATIO_RE.test(quote)) return true;
+  // A share of revenue ("contribution … 5% to 7%"), not the growth rate.
+  if (/\brevenue contribution\b/i.test(quote)) return true;
+  // "12% to 15% higher" is a gap versus another series, not the growth rate.
+  if (/\b\d[\d.]*\s*%\s*to\s*\d[\d.]*\s*%\s*higher\b/i.test(quote)) return true;
+  const beside = context?.trim() ?? "";
+  if (beside && !quoteNamesCompanyLine(quote) && NAMED_RATIO_RE.test(beside))
     return true;
   return false;
 }
@@ -278,7 +317,8 @@ export function quantityIssue(args: {
     if (!(unit && FX_UNITS.has(unit) && delivered === unit))
       return QUANTITY_NOTE.currency;
   }
-  if (metricMismatch(args.quote, args.family)) return QUANTITY_NOTE.metric;
+  if (metricMismatch(args.quote, args.family, args.unit, args.context))
+    return QUANTITY_NOTE.metric;
   if (SLICE_RE.test(args.quote)) return QUANTITY_NOTE.segment;
   const beside = args.context?.trim() ?? "";
   if (
@@ -383,6 +423,7 @@ function quoteLeavesCompanyLine(
 
 function clearCompanyFigure(row: AdjudicatedRow): void {
   row.evidence.interim = null;
+  row.evidence.alt = null;
   row.evidence.rule = null;
   row.evidence.priorYear = null;
   row.delivered = { value: null, unit: null, source: null };

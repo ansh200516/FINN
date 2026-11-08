@@ -24,7 +24,11 @@
  *     match. An open row does not carry the company revenue, EBITDA, PAT,
  *     or margin figure as "so far" when the promise is a different quantity
  *     (a basis-point change, a named ratio, AUM, loan growth, volume, a
- *     mix), and a figure saved on the previous row is cleared.
+ *     mix). A growth promise that keeps one named business out of the total
+ *     ("without the Vivo also") is not the company growth rate: that figure
+ *     is cleared, the row is not Beat or Miss, and the note says the figure
+ *     includes a business the promise excluded. A figure saved on the
+ *     previous row is cleared.
  *   - EBITDA = PBEIT + finance costs + D&A − other income (ex-other-income
  *     convention); EBIT = PBEIT + finance costs − other income; "operating margin"
  *     is settled only when the EBITDA and EBIT readings agree
@@ -215,7 +219,82 @@ export const QUANTITY_NOTE = {
   currency: "currency mismatch",
   segment: "segment, not the company total",
   metric: "metric mismatch",
+  carved:
+    "segment, not the company total: the company figure includes a business the promise excluded",
 } as const;
+
+/**
+ * A business the quote takes out of the company total
+ * ("without the Vivo also", "excluding Vivo", "ex-Vivo", "ex of Vivo").
+ * One-off gains, provisions, and trainees are not that business.
+ * Null when the sentence does not carve a business out.
+ */
+function carvedBusiness(quote: string): string | null {
+  const stop = new Set([
+    "a",
+    "an",
+    "the",
+    "our",
+    "any",
+    "much",
+    "further",
+    "which",
+    "that",
+    "this",
+    "it",
+    "us",
+    "them",
+    "one",
+    "off",
+    "company",
+    "growth",
+    "revenue",
+    "revenues",
+    "margin",
+    "margins",
+    "ebitda",
+    "ebit",
+    "pat",
+    "pbt",
+    "year",
+    "years",
+    "current",
+    "next",
+    "full",
+    "overall",
+    "consolidated",
+    "consol",
+    "india",
+    "inr",
+    "numbers",
+    "number",
+    "also",
+    "business",
+    "operations",
+    "contribution",
+    "volumes",
+    "volume",
+    "other",
+  ]);
+  const patterns = [
+    /\bwithout\s+(?:the\s+)?([A-Za-z][\w.&-]*)/gi,
+    /\bexcluding\s+(?:the\s+)?([A-Za-z][\w.&-]*)/gi,
+    /\bnot including\s+(?:the\s+)?([A-Za-z][\w.&-]*)/gi,
+    /\bex-\s*([A-Za-z][\w.&-]*)/gi,
+    /\bex of\s+(?:the\s+)?([A-Za-z][\w.&-]*)/gi,
+  ];
+  for (const re of patterns) {
+    for (const m of quote.matchAll(re)) {
+      const name = m[1] ?? "";
+      const key = name.toLowerCase();
+      if (!name || stop.has(key)) continue;
+      if (/^(?:one-?off|exceptionals?|provisions?|trainees?)$/i.test(key))
+        continue;
+      return name;
+    }
+  }
+  return null;
+}
 
 /** a sub-business / segment word in the quote; "company" when the statement is company-wide */
 export function scopeOf(quote: string): string {
@@ -379,7 +458,9 @@ function sameGuidanceFollowUp(
  * otherwise the scope is not in the quote and the row is not Beat/Miss.
  * `context` is the question and the same-answer lead-in. A named product
  * there scopes the line. A quote that already names the company total is
- * left alone.
+ * left alone. A growth quote that keeps a named business out of the total
+ * is not the company growth rate. A rupee total is not rejected here: the
+ * reported line can be the same perimeter the speaker already named.
  */
 export function quantityIssue(args: {
   quote: string;
@@ -400,6 +481,10 @@ export function quantityIssue(args: {
   }
   if (metricMismatch(args.quote, args.family, args.unit, args.context))
     return QUANTITY_NOTE.metric;
+  // "without the Vivo also … 15% to 17%" is a smaller perimeter than the
+  // consolidated growth rate. Do not attach that rate, and do not score it.
+  if (args.family.endsWith("_growth") && carvedBusiness(args.quote))
+    return QUANTITY_NOTE.carved;
   if (SLICE_RE.test(args.quote)) return QUANTITY_NOTE.segment;
   const beside = args.context?.trim() ?? "";
   // The question, or the earlier part of the same remark, names the slice.
@@ -1257,8 +1342,17 @@ export function adjudicateAll(
             SLICE_RE.exec(s.quote);
           if (named?.[1]) row.evidence.scope = named[1].toLowerCase();
         }
+        if (issue === QUANTITY_NOTE.carved) {
+          const name = carvedBusiness(s.quote);
+          if (name) row.evidence.scope = `ex-${name.toLowerCase()}`;
+        }
         if (!due) {
-          row.evidence.note = `due after ${s.horizonEnd}`;
+          // The carve-out reason has to stay on the row. "due after" alone
+          // would hide why the company growth rate was taken off.
+          row.evidence.note =
+            issue === QUANTITY_NOTE.carved
+              ? issue
+              : `due after ${s.horizonEnd}`;
           continue;
         }
         row.status = "settled";

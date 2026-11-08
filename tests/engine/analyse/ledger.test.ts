@@ -9,6 +9,7 @@ import {
   type LedgerInput,
   mergeLedgerEvidence,
   metricFamily,
+  QUANTITY_NOTE,
   quartersFor,
   quoteContext,
   summarise,
@@ -2016,5 +2017,230 @@ describe("a named business is not the company line", () => {
       NOW,
     );
     expect(byId(kept, "bare").evidence.interim ?? null).not.toBeNull();
+  });
+
+  it("does not carry the company growth rate on Dixon's ex-Vivo 15% to 17%", () => {
+    const quote =
+      "We feel that without the Vivo also, the company will keep growing at almost 15% to 17%.";
+    // Stored Dixon consolidated revenue, rupees. H1 FY27 / H1 FY26 = 34.9%.
+    const fy26 = [
+      ["2025-06-30", 128_356_600_000],
+      ["2025-09-30", 148_550_400_000],
+      ["2025-12-31", 106_715_900_000],
+      ["2026-03-31", 105_105_100_000],
+    ] as const;
+    const fy27h1 = [
+      ["2026-06-30", 155_476_600_000],
+      ["2026-09-30", 217_936_400_000],
+    ] as const;
+    const quarters = [
+      ...fy26.map(([end, revenue]) => ({
+        ...q(end, 1, 1, 1, 1, 1, 1, 1),
+        revenue,
+      })),
+      ...fy27h1.map(([end, revenue]) => ({
+        ...q(end, 1, 1, 1, 1, 1, 1, 1),
+        revenue,
+      })),
+      // A smaller prior year, so a due ex-Vivo growth line would have been a beat.
+      ...[
+        ["2024-06-30", 100_000_000_000],
+        ["2024-09-30", 100_000_000_000],
+        ["2024-12-31", 100_000_000_000],
+        ["2025-03-31", 100_000_000_000],
+      ].map(([end, revenue]) => ({
+        ...q(end as string, 1, 1, 1, 1, 1, 1, 1),
+        revenue: revenue as number,
+      })),
+    ];
+    const ytd = fy27h1[0][1] + fy27h1[1][1];
+    const h1Prior = fy26[0][1] + fy26[1][1];
+    const companyGrowth = (ytd / h1Prior - 1) * 100;
+    expect(companyGrowth).toBeCloseTo(34.9, 1);
+    expect(fy26.reduce((s, [, r]) => s + r, 0) / CR).toBeCloseTo(48872.8, 1);
+    expect(ytd / CR).toBeCloseTo(37341.3, 1);
+
+    const openFy27 = {
+      horizon: "FY27",
+      horizonEnd: "2027-03-31",
+      docId: "doc_q4fy26",
+      statedAt: Date.UTC(2026, 4, 12),
+      statedPeriod: "Q4FY26",
+      isExplicit: true,
+      comparison: "yoy" as const,
+    };
+    const repaired = {
+      isExplicit: true,
+      derived: false,
+      typeIssue: false,
+      typeNote: null,
+    };
+
+    const rows = adjudicateAll(
+      [
+        input({
+          id: "vivo",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 15,
+          high: 17,
+          quote,
+          ...openFy27,
+        }),
+      ],
+      quarters,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const row = byId(rows, "vivo");
+    expect(row.status).toBe("open");
+    expect(row.verdict).toBeNull();
+    expect(row.verdict).not.toBe("beat");
+    expect(row.verdict).not.toBe("missed");
+    expect(row.evidence.interim ?? null).toBeNull();
+    expect(row.delivered?.value ?? null).toBeNull();
+    expect(row.evidence.note).toBe(QUANTITY_NOTE.carved);
+    expect(String(row.evidence.scope)).toBe("ex-vivo");
+    expect(JSON.stringify(row)).not.toMatch(/34\.9/);
+    expect(JSON.stringify(row)).not.toContain(companyGrowth.toFixed(1));
+    const stored = mergeLedgerEvidence(
+      {
+        interim: {
+          value: companyGrowth,
+          unit: "%",
+          note: "2 of 4 quarters of FY27 (YTD): year-on-year, reported INR",
+        },
+      },
+      row,
+      repaired,
+    );
+    expect(stored.interim ?? null).toBeNull();
+    expect(JSON.stringify(stored)).not.toMatch(/34\.9/);
+    expect(JSON.stringify(stored)).not.toContain("year-on-year, reported INR");
+
+    // The same band, with Vivo not carved out, is the company growth rate.
+    const company = adjudicateAll(
+      [
+        input({
+          id: "company",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 15,
+          high: 17,
+          quote:
+            "We feel that the company will keep growing at almost 15% to 17%.",
+          ...openFy27,
+        }),
+      ],
+      quarters,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(
+      (byId(company, "company").evidence.interim as { value: number }).value,
+    ).toBeCloseTo(companyGrowth, 5);
+
+    // One-off gains are not a business carved out of the total.
+    const oneOff = adjudicateAll(
+      [
+        input({
+          id: "oneoff",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 15,
+          high: 17,
+          quote:
+            "Excluding the one-off gains, we expect revenue growth of 15% to 17%.",
+          ...openFy27,
+        }),
+      ],
+      quarters,
+      TRANSCRIPTS,
+      NOW,
+    );
+    expect(
+      (byId(oneOff, "oneoff").evidence.interim as { value: number }).value,
+    ).toBeCloseTo(companyGrowth, 5);
+
+    // Due year: the company rate would be a beat. The carved promise is not.
+    const due = adjudicateAll(
+      [
+        input({
+          id: "due",
+          metric: "revenue_growth",
+          unit: "%",
+          low: 15,
+          high: 17,
+          quote,
+          horizon: "FY26",
+          horizonEnd: "2026-03-31",
+          isExplicit: true,
+          comparison: "yoy",
+        }),
+      ],
+      quarters,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const dueRow = byId(due, "due");
+    expect(dueRow.verdict).toBe("unverifiable");
+    expect(dueRow.verdict).not.toBe("beat");
+    expect(dueRow.verdict).not.toBe("missed");
+    expect(dueRow.delivered?.value ?? null).toBeNull();
+    expect(dueRow.evidence.interim ?? null).toBeNull();
+    expect(dueRow.evidence.note).toBe(QUANTITY_NOTE.carved);
+    expect(JSON.stringify(dueRow)).not.toMatch(/34\.9/);
+
+    // ₹56,000 cr without Vivo stays. FY26 reported ₹48,872.8 cr is the
+    // ex-Vivo close management called ₹48,800-odd cr, and ₹37,341.3 cr is
+    // that series' FY27 year-to-date.
+    const level = adjudicateAll(
+      [
+        input({
+          id: "level",
+          metric: "revenue",
+          unit: "INR",
+          low: 56_000 * CR,
+          high: 56_000 * CR,
+          quote:
+            "Next year, we are targeting almost INR56,000 crores without the Vivo numbers, and mobile volume being flat.",
+          ...openFy27,
+          comparison: "absolute",
+        }),
+      ],
+      quarters,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const levelRow = byId(level, "level");
+    expect(levelRow.status).toBe("open");
+    expect(levelRow.verdict).toBeNull();
+    expect((levelRow.evidence.interim as { value: number }).value).toBe(ytd);
+
+    // KPIT's company margin is the company margin. Do not clear it.
+    const kpit = adjudicateAll(
+      [
+        input({
+          id: "kpit",
+          metric: "ebitda_margin",
+          unit: "%",
+          low: 20.5,
+          high: 21.2,
+          quote:
+            "EBITDA 20.5 to 21.2 post increasing investment in AI solutions and products competency development and new markets.",
+          ...openFy27,
+          comparison: "absolute",
+        }),
+      ],
+      QUARTERS,
+      TRANSCRIPTS,
+      NOW,
+    );
+    const kpitRow = byId(kpit, "kpit");
+    expect(kpitRow.status).toBe("open");
+    expect(kpitRow.verdict).toBeNull();
+    expect((kpitRow.evidence.interim as { value: number }).value).toEqual(
+      expect.any(Number),
+    );
   });
 });

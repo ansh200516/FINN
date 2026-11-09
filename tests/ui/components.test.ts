@@ -164,25 +164,19 @@ describe("ResultsGrid", () => {
 });
 
 describe("Loading", () => {
-  it("shows the ring loader and lists the read as plain text", () => {
+  it("shows only the centered ring loader", () => {
     const html = renderToStaticMarkup(createElement(Loading));
     expect(html).toContain("load-spin");
-    expect(html).toContain("Animation by Bilal Naseer");
-    let at = -1;
-    for (const line of [
-      "Open the database",
-      "Read filings in the window",
-      "Collapse re-posts into events",
-      "Score closes against your rules",
-      "Check open promises",
-    ]) {
-      const i = html.indexOf(line);
-      expect(i).toBeGreaterThan(at);
-      at = i;
-    }
-    expect(html).toContain(
-      "no model is called to render a page — this is a database read",
-    );
+    expect(html).toContain("load-screen");
+    expect(html).not.toContain("Bilal");
+    expect(html).not.toContain("Animation by");
+    expect(html).not.toContain("FINN");
+    expect(html).not.toContain("Open the database");
+    expect(html).not.toContain("Read filings");
+    expect(html).not.toContain("Collapse re-posts");
+    expect(html).not.toContain("Score closes");
+    expect(html).not.toContain("Check open promises");
+    expect(html).not.toContain("no model is called");
     expect(html).not.toContain("checkbox");
     expect(html).not.toContain("<input");
     expect(html).not.toContain("working");

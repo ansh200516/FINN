@@ -1,7 +1,5 @@
 /**
- * Concentric-ring loader, redrawn in SVG from Bilal Naseer's free "loading"
- * animation (https://lottiefiles.com/free-animation/loading-6qYNAffZi3).
- * No Lottie runtime: the rings rise, draw on, draw off, and drop in CSS.
+ * Concentric-ring loader. No Lottie runtime: the rings draw on and off in CSS.
  * `prefers-reduced-motion` keeps the seated arcs and does not spin.
  *
  * Lottie Simple License (FL 9.13.21)
@@ -41,7 +39,7 @@ const RINGS = [
   { id: "pink", r: 93.84, stroke: "#F203D0" },
 ] as const;
 
-/** Hero mark for the route loading screen. Decorative: the lines carry the status. */
+/** Ring mark for the route loading screen. Decorative. */
 export function LoadSpinner() {
   return (
     <svg

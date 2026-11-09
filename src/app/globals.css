@@ -630,15 +630,22 @@
   .rule {
     border-top: var(--hairline) solid var(--rule);
   }
-  /* Loading hero. Geometry follows Bilal Naseer's rings; see LoadSpinner. */
-  .load-spin-hero {
-    width: min(200px, 62vw);
-    margin: 28px auto 8px;
+  /* Route loading: rings only, centered on the viewport. The bar stays above. */
+  .load-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1;
+    display: grid;
+    height: 100dvh;
+    place-items: center;
+    pointer-events: none;
   }
   .load-spin {
     display: block;
-    width: 100%;
-    height: auto;
+    width: 128px;
+    height: 128px;
     overflow: hidden;
   }
   .load-spin-ring {
@@ -662,15 +669,6 @@
   .load-spin-ring-pink {
     stroke-dasharray: 589.6141;
     stroke-dashoffset: 58.9614;
-  }
-  .ledger-lines {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-family: var(--font-sans);
-    font-size: var(--fs-small);
-    line-height: var(--lh-small);
-    color: var(--ink);
   }
   .rule-stitched {
     border-top: var(--hairline) dotted var(--ink-3);
@@ -800,104 +798,57 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .load-spin-ring-blue {
-    animation:
-      load-spin-rise-blue 2.2s cubic-bezier(0.333, 0, 0.667, 1) infinite,
-      load-spin-draw-blue 2.2s linear infinite;
+    animation: load-spin-draw-blue 2.2s linear infinite;
   }
   .load-spin-ring-orange {
-    animation:
-      load-spin-rise-orange 2.2s cubic-bezier(0.333, 0, 0.667, 1) infinite,
-      load-spin-draw-orange 2.2s linear infinite;
+    animation: load-spin-draw-orange 2.2s linear infinite;
   }
   .load-spin-ring-pink {
-    animation:
-      load-spin-rise-pink 2.2s cubic-bezier(0.333, 0, 0.667, 1) infinite,
-      load-spin-draw-pink 2.2s linear infinite;
+    animation: load-spin-draw-pink 2.2s linear infinite;
   }
 }
 
-/* 66 frames at 30 fps. Rings rise, draw on, draw off, and drop. */
-@keyframes load-spin-rise-blue {
-  0%,
-  100% {
-    cy: 437.678px;
-  }
-  15.15%,
-  63.64% {
-    cy: 250px;
-  }
-  78.79% {
-    cy: 437.678px;
-  }
-}
+/* Seated arcs draw closed, then return. They never collapse to a cap. */
 @keyframes load-spin-draw-blue {
   0%,
   22.73%,
   100% {
-    stroke-dashoffset: 1178.0364;
+    stroke-dashoffset: 353.7647;
   }
   37.88%,
   40.91% {
     stroke-dashoffset: 0;
   }
   56.06% {
-    stroke-dashoffset: 1178.0364;
-  }
-}
-@keyframes load-spin-rise-orange {
-  0%,
-  4.55%,
-  100% {
-    cy: 390.759px;
-  }
-  19.7%,
-  68.18% {
-    cy: 250px;
-  }
-  83.33% {
-    cy: 390.759px;
+    stroke-dashoffset: 353.7647;
   }
 }
 @keyframes load-spin-draw-orange {
   0%,
   27.27%,
   100% {
-    stroke-dashoffset: 883.5305;
+    stroke-dashoffset: 176.883;
   }
   42.42%,
   45.45% {
     stroke-dashoffset: 0;
   }
   60.61% {
-    stroke-dashoffset: 883.5305;
-  }
-}
-@keyframes load-spin-rise-pink {
-  0%,
-  9.09%,
-  100% {
-    cy: 343.84px;
-  }
-  24.24%,
-  72.73% {
-    cy: 250px;
-  }
-  87.88% {
-    cy: 343.84px;
+    stroke-dashoffset: 176.883;
   }
 }
 @keyframes load-spin-draw-pink {
   0%,
   31.82%,
   100% {
-    stroke-dashoffset: 589.0245;
+    stroke-dashoffset: 58.9614;
   }
   46.97%,
   50% {
     stroke-dashoffset: 0;
   }
   65.15% {
-    stroke-dashoffset: 589.0245;
+    stroke-dashoffset: 58.9614;
   }
 }
 

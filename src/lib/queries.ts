@@ -284,15 +284,30 @@ export async function attachResultsCards(cards: EventCard[]): Promise<void> {
   } catch {
     return;
   }
+  // one read for every company, not one round trip per card — the brief
+  // otherwise waits on a serial query per results filing
+  const isins = [...new Set(todo.map((c) => c.isin))];
+  let rows: (typeof t.resultsQuarters.$inferSelect)[];
+  try {
+    rows = await db
+      .select()
+      .from(t.resultsQuarters)
+      .where(inArray(t.resultsQuarters.isin, isins))
+      .orderBy(asc(t.resultsQuarters.periodEnd));
+  } catch {
+    return;
+  }
+  const byIsin = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const list = byIsin.get(r.isin) ?? [];
+    list.push(r);
+    byIsin.set(r.isin, list);
+  }
   for (const c of todo) {
     try {
-      const rows = await db
-        .select()
-        .from(t.resultsQuarters)
-        .where(eq(t.resultsQuarters.isin, c.isin))
-        .orderBy(asc(t.resultsQuarters.periodEnd));
-      if (!rows.length) continue;
-      const quarters = rows.map(rowToResultsQuarter);
+      const list = byIsin.get(c.isin);
+      if (!list?.length) continue;
+      const quarters = list.map(rowToResultsQuarter);
       const card =
         analyse.computeResultsCard(quarters, "consolidated") ??
         analyse.computeResultsCard(quarters, "standalone");

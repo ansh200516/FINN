@@ -1,3 +1,5 @@
+import { LoadSpinner } from "@/ui/LoadSpinner";
+
 const LINES = [
   "Open the database",
   "Read filings in the window",
@@ -6,18 +8,16 @@ const LINES = [
   "Check open promises",
 ] as const;
 
-/** Route-level loading: a ruled line, then the read, never a checklist. */
+/** Route-level loading: the rings are the hero, then the read as plain lines. */
 export default function Loading() {
   return (
     <main className="flex-1 pb-8" aria-busy="true">
       <header className="gutter pt-5">
         <p className="eyebrow">FINN</p>
-        <h1 className="dateline text-ink mt-1">Reading the ledger.</h1>
       </header>
-      <div className="gutter mt-6">
-        <div className="ledger-folio" aria-hidden="true">
-          <span className="ledger-folio-tick" />
-          <span className="ledger-folio-rule" />
+      <div className="gutter">
+        <div className="load-spin-hero">
+          <LoadSpinner />
         </div>
         <ol className="ledger-lines m-0 mt-4 p-0 list-none">
           {LINES.map((line) => (
@@ -27,6 +27,7 @@ export default function Loading() {
         <p className="receipt mt-4">
           no model is called to render a page — this is a database read
         </p>
+        <p className="receipt mt-2">Animation by Bilal Naseer</p>
       </div>
     </main>
   );

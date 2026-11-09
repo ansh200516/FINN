@@ -630,25 +630,38 @@
   .rule {
     border-top: var(--hairline) solid var(--rule);
   }
-  /* Loading folio: one ruled line, drawn once. Reduced motion keeps the drawn frame. */
-  .ledger-folio {
-    display: flex;
-    align-items: flex-end;
-    gap: 7px;
-    height: 16px;
+  /* Loading hero. Geometry follows Bilal Naseer's rings; see LoadSpinner. */
+  .load-spin-hero {
+    width: min(200px, 62vw);
+    margin: 28px auto 8px;
   }
-  .ledger-folio-tick {
-    width: 1px;
-    height: 12px;
-    background: var(--ink);
-    flex: none;
+  .load-spin {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: hidden;
   }
-  .ledger-folio-rule {
-    height: 1px;
-    flex: 1;
-    background: var(--ink);
-    transform-origin: left center;
-    transform: scaleX(1);
+  .load-spin-ring {
+    fill: none;
+    stroke-width: 24.398;
+    stroke-linecap: round;
+    /* Held frame: rings seated, each arc open the way the draw passes through. */
+    cy: 250px;
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: rotate(-90deg);
+  }
+  .load-spin-ring-blue {
+    stroke-dasharray: 1179.2157;
+    stroke-dashoffset: 353.7647;
+  }
+  .load-spin-ring-orange {
+    stroke-dasharray: 884.4149;
+    stroke-dashoffset: 176.883;
+  }
+  .load-spin-ring-pink {
+    stroke-dasharray: 589.6141;
+    stroke-dashoffset: 58.9614;
   }
   .ledger-lines {
     display: flex;
@@ -786,17 +799,105 @@
    navigation. The snapshot stays up and clicks never reach the links. */
 
 @media (prefers-reduced-motion: no-preference) {
-  .ledger-folio-rule {
-    animation: ledger-draw 1.8s var(--ease-out) both;
+  .load-spin-ring-blue {
+    animation:
+      load-spin-rise-blue 2.2s cubic-bezier(0.333, 0, 0.667, 1) infinite,
+      load-spin-draw-blue 2.2s linear infinite;
+  }
+  .load-spin-ring-orange {
+    animation:
+      load-spin-rise-orange 2.2s cubic-bezier(0.333, 0, 0.667, 1) infinite,
+      load-spin-draw-orange 2.2s linear infinite;
+  }
+  .load-spin-ring-pink {
+    animation:
+      load-spin-rise-pink 2.2s cubic-bezier(0.333, 0, 0.667, 1) infinite,
+      load-spin-draw-pink 2.2s linear infinite;
   }
 }
 
-@keyframes ledger-draw {
-  from {
-    transform: scaleX(0);
+/* 66 frames at 30 fps. Rings rise, draw on, draw off, and drop. */
+@keyframes load-spin-rise-blue {
+  0%,
+  100% {
+    cy: 437.678px;
   }
-  to {
-    transform: scaleX(1);
+  15.15%,
+  63.64% {
+    cy: 250px;
+  }
+  78.79% {
+    cy: 437.678px;
+  }
+}
+@keyframes load-spin-draw-blue {
+  0%,
+  22.73%,
+  100% {
+    stroke-dashoffset: 1178.0364;
+  }
+  37.88%,
+  40.91% {
+    stroke-dashoffset: 0;
+  }
+  56.06% {
+    stroke-dashoffset: 1178.0364;
+  }
+}
+@keyframes load-spin-rise-orange {
+  0%,
+  4.55%,
+  100% {
+    cy: 390.759px;
+  }
+  19.7%,
+  68.18% {
+    cy: 250px;
+  }
+  83.33% {
+    cy: 390.759px;
+  }
+}
+@keyframes load-spin-draw-orange {
+  0%,
+  27.27%,
+  100% {
+    stroke-dashoffset: 883.5305;
+  }
+  42.42%,
+  45.45% {
+    stroke-dashoffset: 0;
+  }
+  60.61% {
+    stroke-dashoffset: 883.5305;
+  }
+}
+@keyframes load-spin-rise-pink {
+  0%,
+  9.09%,
+  100% {
+    cy: 343.84px;
+  }
+  24.24%,
+  72.73% {
+    cy: 250px;
+  }
+  87.88% {
+    cy: 343.84px;
+  }
+}
+@keyframes load-spin-draw-pink {
+  0%,
+  31.82%,
+  100% {
+    stroke-dashoffset: 589.0245;
+  }
+  46.97%,
+  50% {
+    stroke-dashoffset: 0;
+  }
+  65.15% {
+    stroke-dashoffset: 589.0245;
   }
 }
 
@@ -807,8 +908,8 @@
     /* biome-ignore lint/complexity/noImportantStyles: same */
     transition-duration: 1ms !important;
   }
-  .ledger-folio-rule {
-    animation: none;
-    transform: scaleX(1);
+  .load-spin-ring {
+    /* biome-ignore lint/complexity/noImportantStyles: hold one frame; a 1ms loop would still spin */
+    animation: none !important;
   }
 }

@@ -164,18 +164,27 @@ describe("ResultsGrid", () => {
 });
 
 describe("Loading", () => {
-  it("draws a ruled line and lists the read as plain text", () => {
+  it("shows the ring loader and lists the read as plain text", () => {
     const html = renderToStaticMarkup(createElement(Loading));
-    expect(html).toContain("Reading the ledger.");
-    expect(html).toContain("ledger-folio-rule");
-    expect(html).toContain("Open the database");
-    expect(html).toContain("Read filings in the window");
-    expect(html).toContain("Collapse re-posts into events");
-    expect(html).toContain("Score closes against your rules");
-    expect(html).toContain("Check open promises");
+    expect(html).toContain("load-spin");
+    expect(html).toContain("Animation by Bilal Naseer");
+    let at = -1;
+    for (const line of [
+      "Open the database",
+      "Read filings in the window",
+      "Collapse re-posts into events",
+      "Score closes against your rules",
+      "Check open promises",
+    ]) {
+      const i = html.indexOf(line);
+      expect(i).toBeGreaterThan(at);
+      at = i;
+    }
     expect(html).toContain(
       "no model is called to render a page — this is a database read",
     );
+    expect(html).not.toContain("checkbox");
+    expect(html).not.toContain("<input");
     expect(html).not.toContain("working");
     expect(html).not.toMatch(/[✓●○✕]/);
   });

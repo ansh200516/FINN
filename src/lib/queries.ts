@@ -37,12 +37,13 @@ import {
 } from "@/db/json";
 import * as t from "@/db/schema";
 import { jsonExtract, jsonTextArrayHasUpper } from "@/db/sql";
-import { computeResultsCard } from "@/engine/analyse/results";
+import { buildResultsCard, computeResultsCard } from "@/engine/analyse/results";
 import type {
   Anomaly,
   Category,
   GuidanceDirection,
   GuidanceStatus,
+  ResultsCard,
   ResultsQuarter,
   ResultsVerification,
   Verdict,
@@ -979,6 +980,14 @@ async function loadCompanyQuarters(isin: string): Promise<{
 
 export async function getQuarters(isin: string): Promise<QuarterRow[]> {
   return (await loadCompanyQuarters(isin)).quarters;
+}
+
+/** Latest results card from exchange quarters. Null when none are on file. */
+export async function getCompanyResultsCard(
+  isin: string,
+): Promise<ResultsCard | null> {
+  const { engine } = await loadCompanyQuarters(isin);
+  return buildResultsCard(engine);
 }
 
 /**

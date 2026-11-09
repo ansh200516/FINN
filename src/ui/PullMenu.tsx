@@ -43,6 +43,21 @@ function proseQuote(q: string): boolean {
   return words.length >= 8;
 }
 
+/** One reading, open: the same body the filings menu shows after a tap. */
+export function PullReading({ block }: { block: PullBlock }) {
+  return (
+    <div>
+      <p className="eyebrow">{block.title}</p>
+      {block.verdict ? (
+        <p className="small text-ink mt-1">{block.verdict}</p>
+      ) : null}
+      <div className="mt-2">
+        <PullBody block={block} />
+      </div>
+    </div>
+  );
+}
+
 function PullBody({ block }: { block: PullBlock }) {
   const silent = block.lines.length === 1 && block.lines[0] === NOT_IN_FILINGS;
   return (

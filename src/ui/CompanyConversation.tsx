@@ -270,6 +270,13 @@ export function ReplyBody({
       return <p className="quote text-ink">{reply.sentence}</p>;
     case "error":
       return <p className="small text-ink">{reply.message}</p>;
+    case "nse":
+      return (
+        <div className="border border-rule px-3 py-2" data-source="NSE">
+          <p className="small text-ink">{reply.headline}</p>
+          <p className="receipt mt-1">{reply.note}</p>
+        </div>
+      );
     case "ask":
       return null;
     default:

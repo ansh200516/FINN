@@ -9,6 +9,7 @@ import {
   type Tripwire,
 } from "@/engine/types";
 import { categoryLabel, groupIndian } from "@/lib/format";
+import { isLiveTurn } from "@/lib/nseLive";
 import type { PullBlock, PullTitle } from "@/lib/pull";
 import type { LedgerRowView } from "@/ui/model";
 
@@ -149,6 +150,7 @@ export type CompanyReply =
   | { kind: "rule"; sentence: string }
   | { kind: "rejected"; sentence: string }
   | { kind: "error"; message: string }
+  | { kind: "nse"; headline: string; note: string }
   | { kind: "ask" };
 
 export type CompanyIntent =
@@ -157,6 +159,7 @@ export type CompanyIntent =
   | { kind: "reading"; title: PullTitle }
   | { kind: "rule"; scope: "symbol" | "book"; rule: Tripwire }
   | { kind: "rejected"; sentence: string }
+  | { kind: "live" }
   | { kind: "ask" };
 
 export interface AskChip {
@@ -254,6 +257,7 @@ export function parseCompanyTurn(raw: string): CompanyIntent {
   if (PROMISES.has(core)) return { kind: "promises" };
   const title = READING_BY_COMMAND[core];
   if (title) return { kind: "reading", title };
+  if (isLiveTurn(text)) return { kind: "live" };
   return { kind: "ask" };
 }
 

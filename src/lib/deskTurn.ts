@@ -3,6 +3,7 @@
  * changes a tripwire. Rules run before any model call.
  */
 import { parseCompanyTurn } from "@/lib/companyTurn";
+import { classifyLiveAsk } from "@/lib/nseLive";
 
 export interface DeskCompany {
   symbol: string;
@@ -29,6 +30,7 @@ export type DeskParse =
       text: string;
     }
   | { kind: "card"; symbol: string; text: string }
+  | { kind: "live"; text: string; symbol: string | null }
   | { kind: "ask"; symbol: string; question: string };
 
 export const NAME_THE_COMPANY = "Name the company.";
@@ -224,6 +226,15 @@ export function parseDeskTurn(
       scope,
       text: rest,
     };
+  }
+  if (intent.kind === "live") {
+    const focus = hit?.symbol ?? (active ? active.trim().toUpperCase() : null);
+    const live = classifyLiveAsk(rest, focus);
+    if (live?.kind === "quote")
+      return { kind: "live", text: rest, symbol: live.symbol };
+    if (live?.kind === "index" || live?.kind === "status")
+      return { kind: "live", text: rest, symbol: null };
+    return { kind: "need-company" };
   }
   if (!symbol) return { kind: "need-company" };
   if (intent.kind === "ask") return { kind: "ask", symbol, question: text };

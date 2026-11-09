@@ -148,6 +148,10 @@ describe("parseCompanyTurn", () => {
     expect(parseCompanyTurn("results for the plastics business")).toEqual({
       kind: "ask",
     });
+    expect(parseCompanyTurn("price")).toEqual({ kind: "live" });
+    expect(parseCompanyTurn("nifty")).toEqual({ kind: "live" });
+    expect(parseCompanyTurn("is the market open")).toEqual({ kind: "live" });
+    expect(parseCompanyTurn("reliance price")).toEqual({ kind: "live" });
   });
 });
 
@@ -258,6 +262,22 @@ describe("company thread markup", () => {
     expect(html).toContain("ITC Limited");
     expect(html).not.toContain("From the filings");
     expect(html).not.toContain("Promise ledger");
+  });
+
+  it("names NSE on a live card and does not quote the feed", () => {
+    const html = renderToStaticMarkup(
+      createElement(ReplyBody, {
+        symbol: "RELIANCE",
+        reply: {
+          kind: "nse",
+          headline: "RELIANCE ₹ 1,324.40, up 0.03%.",
+          note: "NSE · 09 Nov 2026 16:00",
+        },
+      }),
+    );
+    expect(html).toContain('data-source="NSE"');
+    expect(html).toContain("RELIANCE ₹ 1,324.40, up 0.03%.");
+    expect(html).not.toContain("filing");
   });
 
   it("shows no results as one line", () => {

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { TripwireRule } from "@/db/json";
 import { tripwires, users } from "@/db/schema";
+import { answerNse, NSE_FEED_FAILED } from "@/engine/sources/nse-mcp";
 import type { Tripwire } from "@/engine/types";
 import { invalidateBrief } from "@/lib/brief";
 import {
@@ -16,6 +17,7 @@ import {
   tripwireId,
 } from "@/lib/companyTurn";
 import { NAME_THE_COMPANY } from "@/lib/deskTurn";
+import { classifyLiveAsk } from "@/lib/nseLive";
 import { loadPullMenu } from "@/lib/pullRead";
 import {
   DEMO_USER_ID,
@@ -43,6 +45,9 @@ export async function companyTurn(
   const company = await getCompanyBySymbol(symbol);
   if (!company)
     return { kind: "error", message: "That symbol is not on file." };
+
+  if (intent.kind === "live")
+    return nseReply(raw.trim().slice(0, 500), company.nseSymbol);
 
   switch (intent.kind) {
     case "results":
@@ -82,6 +87,21 @@ export async function companyTurn(
         sentence: confirmRule(company.nseSymbol, intent.scope, intent.rule),
       };
     }
+  }
+}
+
+async function nseReply(
+  text: string,
+  symbol: string | null,
+): Promise<CompanyReply> {
+  const live = classifyLiveAsk(text, symbol);
+  if (!live || live.kind === "needs-symbol")
+    return { kind: "error", message: NAME_THE_COMPANY };
+  try {
+    const card = await answerNse(live);
+    return { kind: "nse", headline: card.headline, note: card.note };
+  } catch {
+    return { kind: "error", message: NSE_FEED_FAILED };
   }
 }
 
@@ -176,6 +196,7 @@ export async function deskTurn(
   const intent = parseCompanyTurn(text);
   if (intent.kind === "rejected")
     return { kind: "rejected", sentence: intent.sentence };
+  if (intent.kind === "live") return nseReply(text, safe);
   if (intent.kind === "ask") return { kind: "ask" };
   if (intent.kind === "rule") {
     const book = scope === "book" || intent.scope === "book" || !safe;

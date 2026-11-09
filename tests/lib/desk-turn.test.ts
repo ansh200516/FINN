@@ -143,6 +143,32 @@ describe("parseDeskTurn", () => {
       kind: "watch",
     });
   });
+
+  it("sends a live price, the index, and market status to NSE", () => {
+    expect(parseDeskTurn("reliance price", book, null)).toEqual({
+      kind: "live",
+      text: "price",
+      symbol: "RELIANCE",
+    });
+    expect(parseDeskTurn("price", book, "ITC")).toEqual({
+      kind: "live",
+      text: "price",
+      symbol: "ITC",
+    });
+    expect(parseDeskTurn("nifty", book, "ITC")).toEqual({
+      kind: "live",
+      text: "nifty",
+      symbol: null,
+    });
+    expect(parseDeskTurn("is the market open", book, null)).toEqual({
+      kind: "live",
+      text: "is the market open",
+      symbol: null,
+    });
+    expect(parseDeskTurn("price", book, null)).toEqual({
+      kind: "need-company",
+    });
+  });
 });
 
 describe("desk copy", () => {

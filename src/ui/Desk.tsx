@@ -318,6 +318,7 @@ function nextSymbol(
   parsed: DeskParse,
   current: string | null,
 ): string | null | undefined {
+  if (parsed.kind === "live") return parsed.symbol ?? current;
   if (
     parsed.kind === "context" ||
     parsed.kind === "card" ||

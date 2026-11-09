@@ -630,6 +630,35 @@
   .rule {
     border-top: var(--hairline) solid var(--rule);
   }
+  /* Loading folio: one ruled line, drawn once. Reduced motion keeps the drawn frame. */
+  .ledger-folio {
+    display: flex;
+    align-items: flex-end;
+    gap: 7px;
+    height: 16px;
+  }
+  .ledger-folio-tick {
+    width: 1px;
+    height: 12px;
+    background: var(--ink);
+    flex: none;
+  }
+  .ledger-folio-rule {
+    height: 1px;
+    flex: 1;
+    background: var(--ink);
+    transform-origin: left center;
+    transform: scaleX(1);
+  }
+  .ledger-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--ink);
+  }
   .rule-stitched {
     border-top: var(--hairline) dotted var(--ink-3);
   }
@@ -756,11 +785,30 @@
    root snapshot for that, and Next's client router cancels the document
    navigation. The snapshot stays up and clicks never reach the links. */
 
+@media (prefers-reduced-motion: no-preference) {
+  .ledger-folio-rule {
+    animation: ledger-draw 1.8s var(--ease-out) both;
+  }
+}
+
+@keyframes ledger-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion override must beat every component rule */
     animation-duration: 1ms !important;
     /* biome-ignore lint/complexity/noImportantStyles: same */
     transition-duration: 1ms !important;
+  }
+  .ledger-folio-rule {
+    animation: none;
+    transform: scaleX(1);
   }
 }

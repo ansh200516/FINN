@@ -6,6 +6,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import Loading from "@/app/loading";
 import type { ResultsCard } from "@/engine/types";
 import { CategoryGlyph } from "@/ui/CategoryGlyph";
 import { DeltaChip } from "@/ui/DeltaChip";
@@ -159,6 +160,24 @@ describe("ResultsGrid", () => {
     expect(html).toContain("Q2 FY27");
     expect(html).toContain("Exchange XBRL verified");
     expect(html).toContain("+28.6%");
+  });
+});
+
+describe("Loading", () => {
+  it("draws a ruled line and lists the read as plain text", () => {
+    const html = renderToStaticMarkup(createElement(Loading));
+    expect(html).toContain("Reading the ledger.");
+    expect(html).toContain("ledger-folio-rule");
+    expect(html).toContain("Open the database");
+    expect(html).toContain("Read filings in the window");
+    expect(html).toContain("Collapse re-posts into events");
+    expect(html).toContain("Score closes against your rules");
+    expect(html).toContain("Check open promises");
+    expect(html).toContain(
+      "no model is called to render a page — this is a database read",
+    );
+    expect(html).not.toContain("working");
+    expect(html).not.toMatch(/[✓●○✕]/);
   });
 });
 

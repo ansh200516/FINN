@@ -3,7 +3,12 @@
  *
  *   DATABASE_URL=file:./data/finn.db            local libSQL
  *   DATABASE_URL=libsql://<db>.turso.io         Turso + DATABASE_AUTH_TOKEN
- *   DATABASE_URL=postgres:// or postgresql://   Postgres (Supabase pooler)
+ *   DATABASE_URL=postgres:// or postgresql://   Postgres (Supabase)
+ *
+ * A transaction-pooler URL (port 6543) is opened on the session pooler
+ * (port 5432, same host and credentials). Supavisor in transaction mode
+ * drops the reply to a pipelined postgres.js query; `max_pipeline: 1` still
+ * pipelines that one extra query, so the page promise never settles.
  *
  * One client per process (cached on globalThis so Next dev HMR doesn't leak
  * connections). Import `db` for Drizzle queries. `getRawClient()` is libSQL only.
@@ -18,7 +23,7 @@ import {
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
 import { env } from "@/lib/env";
-import { isPostgresUrl } from "./dialect";
+import { isPostgresUrl, sessionPoolerUrl } from "./dialect";
 import * as schema from "./schema";
 
 export type Db = LibSQLDatabase<typeof schema>;
@@ -43,17 +48,17 @@ export function getPg(): Sql {
     );
   }
   if (!holder.pg) {
-    // Supavisor transaction mode (port 6543): no prepared statements, and
-    // pipelined queries on the one connection never get a ReadyForQuery, so
-    // Promise.all page reads (Companies, Alerts) stay on the loading shell.
-    holder.pg = postgres(url, {
+    // Session pooler: one backend for this connection, so a Describe reply
+    // cannot be discarded between transactions. prepare stays off. Pipeline
+    // stays off — max_pipeline 1 still writes one extra query before
+    // ReadyForQuery, which is the hang.
+    holder.pg = postgres(sessionPoolerUrl(url), {
       prepare: false,
       fetch_types: false,
       max: 1,
-      // one query in flight — Supavisor drops pipelined batches
-      max_pipeline: 1,
+      max_pipeline: 0,
       idle_timeout: 20,
-      connect_timeout: 15,
+      connect_timeout: 10,
       ssl: "require",
     } as Parameters<typeof postgres>[1]);
   }

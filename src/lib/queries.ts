@@ -758,6 +758,38 @@ export async function getCheckedAt(isins: string[]): Promise<number | null> {
   return r[0]?.m ?? null;
 }
 
+/**
+ * Ledger verdicts for the companies on the brief, grouped so the page can
+ * turn them into Act / Watch without a model call. Superseded rows stay in
+ * the payload; the tally drops them.
+ */
+export async function guidanceVerdictGroups(isins: string[]): Promise<
+  Array<{
+    isin: string;
+    verdict: string | null;
+    status: string;
+    n: number;
+  }>
+> {
+  if (!isins.length) return [];
+  const rows = await db
+    .select({
+      isin: t.guidance.isin,
+      verdict: t.guidance.verdict,
+      status: t.guidance.status,
+      n: count(),
+    })
+    .from(t.guidance)
+    .where(inArray(t.guidance.isin, isins))
+    .groupBy(t.guidance.isin, t.guidance.verdict, t.guidance.status);
+  return rows.map((r) => ({
+    isin: r.isin,
+    verdict: r.verdict,
+    status: r.status,
+    n: Number(r.n),
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Event detail
 // ---------------------------------------------------------------------------

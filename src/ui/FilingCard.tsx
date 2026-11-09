@@ -21,9 +21,9 @@ export function filedStamp(
 }
 
 /**
- * Tier-1 card: left ink rule, header (symbol · category · time), ≤10-word
- * title, one-liner, category body, receipts. The whole header is a link to
- * the detail page; sources open their documents directly.
+ * Full filing card. The edition list does not render this — it renders
+ * DecisionCard, one sentence and a chip. The detail page still uses CardBody.
+ * `filedStamp` stays here because the fold and the company page share it.
  */
 export function FilingCard({
   event,

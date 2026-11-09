@@ -13,12 +13,13 @@ export function EndOfEdition({
   shown: number;
   filedAway: number;
   checkedAtMs: number | null;
-  readTime: string;
+  /** omitted on the decision edition — the job is to decide, not to time a read */
+  readTime?: string;
 }) {
   const parts = [
-    shown ? `${shown} shown` : "nothing shown",
-    filedAway ? `${filedAway} filed away` : shown ? "nothing filed away" : null,
-    shown ? `${readTime} read` : null,
+    shown ? `${shown} shown` : null,
+    filedAway ? `${filedAway} filed away` : null,
+    shown && readTime ? `${readTime} read` : null,
   ].filter(Boolean);
   return (
     <footer className="gutter mt-8 mb-2">

@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { after } from "next/server";
 import { getBriefView } from "@/lib/brief";
-import { editionLabel, readTime } from "@/lib/format";
+import { dayLabel, editionLabel } from "@/lib/format";
 import { scheduleRefreshOnVisit } from "@/lib/jobs";
-import { DEFAULT_THRESHOLDS, getDemoUser, getTripwires } from "@/lib/queries";
+import {
+  DEFAULT_THRESHOLDS,
+  getDemoUser,
+  getTripwires,
+  guidanceVerdictGroups,
+} from "@/lib/queries";
 import {
   addDaysKey,
   formatIst,
@@ -12,11 +16,24 @@ import {
   NSE_HOLIDAYS_2026,
   sessionType,
 } from "@/lib/time";
-import { AnomalyStrip } from "@/ui/AnomalyStrip";
+import { excludedSpecialSessions } from "@/ui/AnomalyStrip";
+import { CardBody } from "@/ui/CardBody";
+import { ComingUp } from "@/ui/ComingUp";
 import { Dateline } from "@/ui/Dateline";
+import { DecisionCard } from "@/ui/DecisionCard";
+import {
+  decisionRank,
+  editionHeadline,
+  hasFigures,
+  judgeEvent,
+  judgeMove,
+  showAsMoveCard,
+  tallyByIsin,
+} from "@/ui/decision";
 import { EndOfEdition } from "@/ui/EndOfEdition";
-import { FilingCard, OneLinerRow } from "@/ui/FilingCard";
+import { filedStamp } from "@/ui/FilingCard";
 import { Fold } from "@/ui/Fold";
+import type { AnomalyWithSymbol, BriefWindow, EventCard } from "@/ui/model";
 import { QuietState } from "@/ui/QuietState";
 import { TierHeader } from "@/ui/TierHeader";
 import { WindowScrubber } from "@/ui/WindowScrubber";
@@ -24,23 +41,6 @@ import { WindowScrubber } from "@/ui/WindowScrubber";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Brief" };
-
-const WORDS = [
-  "Nothing",
-  "One thing",
-  "Two things",
-  "Three things",
-  "Four things",
-  "Five things",
-  "Six things",
-];
-
-function verdict(needsYou: number, worthKnowing: number): string {
-  if (needsYou === 0)
-    return worthKnowing ? "Nothing needs you." : "Nothing needs you.";
-  const w = WORDS[needsYou] ?? `${needsYou} things`;
-  return `${w} ${needsYou === 1 ? "needs" : "need"} you.`;
-}
 
 function holidayLine(now: number): string | null {
   const today = istDateKey(now);
@@ -53,6 +53,35 @@ function holidayLine(now: number): string | null {
   if (kind === "weekend") return "weekend · market closed";
   if (kind === "special") return "Muhurat session only today";
   return null;
+}
+
+/** One calendar line: today's holiday or Muhurat, else a special session in the window. */
+function calendarLine(
+  now: number,
+  anomalies: AnomalyWithSymbol[],
+  win: Pick<BriefWindow, "fromMs" | "toMs">,
+): string | null {
+  const today = holidayLine(now);
+  if (today) return today;
+  const excluded = excludedSpecialSessions(anomalies, win, now);
+  const hit =
+    excluded.find((s) => /muhurat/i.test(s.name)) ?? excluded[0] ?? null;
+  if (!hit) return null;
+  const name = /muhurat/i.test(hit.name) ? "Muhurat" : "Special session";
+  return `${name} ${dayLabel(hit.dateKey)} · not scored`;
+}
+
+interface Item {
+  key: string;
+  symbol: string;
+  time: string;
+  decision: ReturnType<typeof judgeEvent>["decision"];
+  sentence: string;
+  href: string;
+  action: string;
+  priority: number;
+  at: number;
+  event?: EventCard;
 }
 
 export default async function BriefPage({
@@ -87,8 +116,6 @@ export default async function BriefPage({
         : DEFAULT_THRESHOLDS.pricePct,
   };
 
-  // one source of truth: the engine's buildBrief (cached 60 s, tag "brief");
-  // an empty auto window widens to 7 d / 30 d inside the engine and says why
   const { view: brief, window: win } = await getBriefView({
     now,
     query: q,
@@ -96,138 +123,144 @@ export default async function BriefPage({
     thresholds,
   });
 
-  // FINN_REFRESH_ON_VISIT=true: a stale feed (> 6 h) schedules a rules-only
-  // announcements job after the response is sent (Vercel `waitUntil`)
   const refresh = await scheduleRefreshOnVisit(now);
   if (refresh) after(refresh);
 
-  const shown = brief.tier1.length + brief.tier2.length;
-  const minutes = readTime(brief.tier1.length, brief.tier2.length);
-  const quiet = brief.counts.events === 0;
-  const holiday = holidayLine(now);
+  const filingIsins = [
+    ...new Set([...brief.tier1, ...brief.tier2].map((e) => e.isin)),
+  ];
+  const ledgers = tallyByIsin(await guidanceVerdictGroups(filingIsins));
+
+  const items: Item[] = [];
+  for (const ev of [...brief.tier1, ...brief.tier2]) {
+    const j = judgeEvent(ev, ledgers.get(ev.isin) ?? null);
+    items.push({
+      key: ev.eventKey,
+      symbol: ev.symbol,
+      time: filedStamp(ev, now).short,
+      decision: j.decision,
+      sentence: j.sentence,
+      href: `/e/${encodeURIComponent(ev.eventKey)}`,
+      action: "Filing",
+      priority: ev.priority,
+      at: ev.filedAtMs,
+      event: ev,
+    });
+  }
+  let quietMoves = 0;
+  for (const a of brief.anomalies) {
+    const move = {
+      pct: a.pctMove,
+      volumeRatio: a.volumeRatio,
+      ruleHit: true,
+    };
+    if (!showAsMoveCard(move, thresholds.pricePct)) {
+      quietMoves += 1;
+      continue;
+    }
+    const j = judgeMove(move);
+    items.push({
+      key: `${a.isin}-${a.date}`,
+      symbol: a.symbol,
+      time: dayLabel(a.date),
+      decision: j.decision,
+      sentence: j.sentence,
+      href: `/c/${encodeURIComponent(a.symbol)}`,
+      action: "The close",
+      priority: Math.round(Math.abs(a.pctMove ?? a.volumeRatio ?? 0) * 5),
+      at: Date.parse(`${a.date}T00:00:00Z`),
+    });
+  }
+  items.sort(
+    (a, b) =>
+      decisionRank(a.decision) - decisionRank(b.decision) ||
+      b.priority - a.priority ||
+      b.at - a.at,
+  );
+
+  const decisions = items.filter((i) => i.decision !== "nothing").length;
+  const quiet = brief.counts.events === 0 && items.length === 0;
+  const calendar = calendarLine(now, brief.anomalies, win);
+  const upcoming = brief.upcoming ?? [];
 
   return (
     <main className="flex-1 pb-6">
       <Dateline
         eyebrow={editionLabel(now)}
-        deck={
-          quiet
-            ? `${brief.companiesChecked} companies · ${win.label.toLowerCase()} · 0 filings`
-            : `${brief.counts.filings} filings · ${brief.counts.needsYou} need you · ${minutes}`
-        }
         note={
           win.widened ??
           (win.preset === "custom" ? `Showing ${win.label}.` : undefined)
         }
       >
-        {verdict(brief.counts.needsYou, brief.tier2.length)}
+        {editionHeadline(decisions)}
       </Dateline>
 
       <WindowScrubber window={win} now={now} />
 
-      {quiet ? (
+      {calendar ? (
+        <p className="gutter mt-3 receipt text-ink-2">{calendar}</p>
+      ) : null}
+
+      {items.length ? (
+        <section className="mt-5 flex flex-col gap-3" aria-label="Decisions">
+          {items.map((item, i) => (
+            <DecisionCard
+              key={item.key}
+              symbol={item.symbol}
+              time={item.time}
+              decision={item.decision}
+              sentence={item.sentence}
+              href={item.href}
+              action={item.action}
+              index={i}
+              figures={
+                item.event && hasFigures(item.event) ? (
+                  <CardBody event={item.event} compact />
+                ) : null
+              }
+            />
+          ))}
+        </section>
+      ) : quiet ? (
         <QuietState
-          reason={brief.quiet?.reason ?? "Nothing needs you"}
+          reason={
+            brief.quiet?.reason === "Nothing needs you"
+              ? "No filings in this window."
+              : (brief.quiet?.reason ?? "No filings in this window.")
+          }
           companiesChecked={brief.companiesChecked}
           checkedAtMs={brief.checkedAtMs}
-          upcoming={brief.upcoming ?? []}
-          holidayLine={holiday}
+          upcoming={upcoming}
         />
-      ) : (
-        <>
-          {brief.tier1.length ? (
-            <section className="mt-6" aria-labelledby="needs-you">
-              <TierHeader id="needs-you" count={brief.tier1.length}>
-                Needs you
-              </TierHeader>
-              <div className="mt-3 flex flex-col gap-3">
-                {brief.tier1.map((ev, i) => (
-                  <FilingCard
-                    key={ev.eventKey}
-                    event={ev}
-                    now={now}
-                    index={i}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
+      ) : null}
 
-          {brief.tier2.length ? (
-            <section className="mt-6" aria-labelledby="worth-knowing">
-              <TierHeader id="worth-knowing" count={brief.tier2.length}>
-                Worth knowing
-              </TierHeader>
-              <ul className="m-0 mt-2 p-0 list-none border-t border-rule">
-                {brief.tier2.map((ev) => (
-                  <OneLinerRow key={ev.eventKey} event={ev} now={now} />
-                ))}
-              </ul>
-            </section>
-          ) : null}
+      {quietMoves > 0 ? (
+        <p className="gutter mt-3 receipt text-ink-3">
+          {quietMoves} volume {quietMoves === 1 ? "hit" : "hits"} under{" "}
+          {thresholds.pricePct}%. Not a decision.
+        </p>
+      ) : null}
 
-          {brief.anomalies.length ? (
-            <section className="mt-6" aria-labelledby="eod">
-              <TierHeader id="eod" count={brief.anomalies.length}>
-                End of day · outside your rules
-              </TierHeader>
-              <div className="mt-2">
-                <AnomalyStrip anomalies={brief.anomalies} />
-              </div>
-              <p className="gutter receipt mt-1">
-                rules: |move| ≥ {thresholds.pricePct}% · volume ≥{" "}
-                {thresholds.volumeRatio}× the {thresholds.lookbackDays}-day
-                average ·{" "}
-                <Link href="/alerts" className="text-accent">
-                  edit
-                </Link>
-              </p>
-            </section>
-          ) : null}
+      {brief.tier3.length ? (
+        <section className="mt-6" aria-label="Filed away">
+          <Fold groups={brief.tier3} now={now} />
+        </section>
+      ) : null}
 
-          {brief.tier3.length ? (
-            <section className="mt-6" aria-label="Filed away">
-              <Fold groups={brief.tier3} now={now} />
-            </section>
-          ) : null}
+      {!quiet && upcoming.length ? (
+        <section className="mt-6" aria-labelledby="coming-up">
+          <TierHeader id="coming-up">Coming up</TierHeader>
+          <div className="mt-1">
+            <ComingUp items={upcoming} />
+          </div>
+        </section>
+      ) : null}
 
-          {brief.upcoming?.length ? (
-            <section className="mt-6" aria-labelledby="coming-up">
-              <TierHeader id="coming-up">Coming up</TierHeader>
-              <ul className="m-0 mt-1 p-0 list-none">
-                {brief.upcoming.slice(0, 5).map((u) => (
-                  <li
-                    key={`${u.isin}-${u.dateKey}`}
-                    className="border-b border-rule last:border-b-0"
-                  >
-                    <Link
-                      href={`/c/${encodeURIComponent(u.symbol)}`}
-                      className="row flex items-center gap-3 gutter py-1.5 no-callout"
-                    >
-                      <span className="receipt w-[84px] shrink-0">
-                        {u.dateIst}
-                      </span>
-                      <span className="symbol small w-[96px] shrink-0 text-ink truncate">
-                        {u.symbol}
-                      </span>
-                      <span className="small text-ink-2 flex-1 min-w-0 truncate">
-                        {u.what}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          <EndOfEdition
-            shown={shown}
-            filedAway={brief.counts.filedAway}
-            checkedAtMs={brief.checkedAtMs}
-            readTime={minutes}
-          />
-        </>
-      )}
+      <EndOfEdition
+        shown={items.length}
+        filedAway={brief.counts.filedAway}
+        checkedAtMs={brief.checkedAtMs}
+      />
     </main>
   );
 }

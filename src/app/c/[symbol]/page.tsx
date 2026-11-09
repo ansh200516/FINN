@@ -12,6 +12,7 @@ import {
   quarterLabel,
   quarterMonths,
 } from "@/lib/format";
+import { loadPullMenu } from "@/lib/pullRead";
 import { getAskBudget, getCompanyPage } from "@/lib/queries";
 import { formatIst } from "@/lib/time";
 import { loadTranscriptPendingBy } from "@/lib/transcriptPending";
@@ -22,6 +23,7 @@ import { Empty } from "@/ui/Empty";
 import { filedStamp } from "@/ui/FilingCard";
 import { LedgerList, VerdictLegend } from "@/ui/LedgerList";
 import type { QuarterRow } from "@/ui/model";
+import { PullMenu } from "@/ui/PullMenu";
 import { priceHeadline, volumeWord } from "@/ui/prices";
 import { snapshotChip } from "@/ui/ResultsGrid";
 import { SectionAccordion } from "@/ui/SectionAccordion";
@@ -244,6 +246,14 @@ export default async function CompanyPage({
   const trajectory = pool.slice(-12);
   const latestQ = pool.at(-1);
   const transcripts = documents.filter((d) => d.kind === "transcript");
+  const hasCall = storedDocuments.some(
+    (d) => d.kind === "transcript" && d.textStatus === "ok",
+  );
+  const pull = await loadPullMenu({
+    isin: company.isin,
+    isBank: snapshot.isBank,
+    hasTranscript: hasCall,
+  });
   const openPromises = ledger.filter((r) => r.status === "open").length;
   const settled = ledger.filter((r) => r.status === "settled").length;
   const px = priceHeadline(prices);
@@ -476,6 +486,8 @@ export default async function CompanyPage({
           )}
         </div>
       </section>
+
+      <PullMenu blocks={pull} />
 
       {/* Research accordions */}
       <section className="mt-6 border-t border-rule" aria-label="Research">

@@ -1,17 +1,23 @@
 "use client";
 
 import {
+  type ReactNode,
   startTransition,
   useActionState,
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from "react";
-import type { SaveTripwiresState } from "@/app/alerts/actions";
+import type {
+  BacktestResponse,
+  SaveTripwiresState,
+} from "@/app/alerts/actions";
+import { markAlertsSeen } from "@/app/alerts/actions";
 import { CATEGORIES, type Category } from "@/engine/types";
 import { categoryLabel, groupIndian } from "@/lib/format";
+import { noteAlertsVisit } from "@/ui/navCount";
+import { RuleFrequency } from "./alerts/BacktestLive";
 import { CategoryGlyph } from "./CategoryGlyph";
-import type { BacktestGrid } from "./model";
 
 export interface ThresholdValues {
   volumeRatio: number;
@@ -26,23 +32,14 @@ const VOL_MIN = 1.5;
 const VOL_MAX = 5;
 const PX_MIN = 2;
 const PX_MAX = 10;
+const CATEGORY_CHOICES = CATEGORIES.filter((c) => c !== "unclassified");
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
-function nearestKey(keys: string[], v: number): string | null {
-  if (!keys.length) return null;
-  let best = keys[0] as string;
-  let bestD = Number.POSITIVE_INFINITY;
-  for (const k of keys) {
-    const d = Math.abs(Number.parseFloat(k) - v);
-    if (d < bestD) {
-      best = k;
-      bestD = d;
-    }
-  }
-  return best;
+function snap(v: ThresholdValues): string {
+  return JSON.stringify({ ...v, categories: [...v.categories].sort() });
 }
 
 function Stepper({
@@ -53,6 +50,7 @@ function Stepper({
   step,
   format,
   label,
+  muted,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -61,29 +59,35 @@ function Stepper({
   step: number;
   format: (v: number) => string;
   label: string;
+  muted: boolean;
 }) {
+  const nudge = (dir: -1 | 1) =>
+    onChange(clamp(Math.round((value + dir * step) * 100) / 100, min, max));
   return (
-    <span className="stepper" title={label}>
+    <span
+      className="stepper shrink-0"
+      title={label}
+      style={{ gridTemplateColumns: "var(--hit-min) 5.25rem var(--hit-min)" }}
+    >
       <button
         type="button"
         aria-label={`decrease ${label}`}
-        onClick={() =>
-          onChange(clamp(Math.round((value - step) * 100) / 100, min, max))
-        }
+        onClick={() => nudge(-1)}
         disabled={value <= min}
         className="disabled:opacity-30"
       >
         −
       </button>
-      <output aria-live="polite" className="num text-ink">
+      <output
+        aria-live="polite"
+        className={`num text-[17px] font-medium ${muted ? "text-ink-3" : "text-ink"}`}
+      >
         {format(value)}
       </output>
       <button
         type="button"
         aria-label={`increase ${label}`}
-        onClick={() =>
-          onChange(clamp(Math.round((value + step) * 100) / 100, min, max))
-        }
+        onClick={() => nudge(1)}
         disabled={value >= max}
         className="disabled:opacity-30"
       >
@@ -93,47 +97,120 @@ function Stepper({
   );
 }
 
-const CATEGORY_CHOICES = CATEGORIES.filter((c) => c !== "unclassified");
+function RuleSwitch({
+  on,
+  onToggle,
+  label,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="toggle shrink-0 min-w-[4.75rem] justify-center"
+      aria-pressed={on}
+      onClick={onToggle}
+    >
+      <span className="sr-only">{label} </span>
+      {on ? "On" : "Off"}
+    </button>
+  );
+}
 
 /**
- * Rules as sentences with embedded steppers, category toggle chips, and a
- * backtest sentence that updates instantly from a precomputed grid.
+ * The answer sits on its own line with the words that finish it, so a wrap
+ * cannot leave "its" on one line and "20-day average" on the next.
  */
-export function ThresholdEditor({
+function RuleSentence({
+  lead,
+  tail,
+  muted,
+  control,
+}: {
+  lead: string;
+  tail: string;
+  muted: boolean;
+  control: ReactNode;
+}) {
+  return (
+    <div className={`mt-4 ${muted ? "text-ink-3" : "text-ink"}`}>
+      <span className="block">{lead}</span>
+      <span className="mt-2 flex w-full flex-wrap items-center gap-x-2.5 gap-y-2">
+        {control}
+        <span className="shrink-0 whitespace-nowrap">{tail}</span>
+      </span>
+    </div>
+  );
+}
+
+function Mark({ on }: { on: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`grid size-4 shrink-0 place-items-center rounded-[2px] border ${
+        on ? "border-ink bg-ink" : "border-ink-3"
+      }`}
+    >
+      {on ? (
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M1.6 5.2 3.9 7.4 8.4 2.6"
+            stroke="var(--bg)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : null}
+    </span>
+  );
+}
+
+function VisitMarker() {
+  useEffect(() => {
+    markAlertsSeen()
+      .then((r) => {
+        if (r.ok) noteAlertsVisit();
+      })
+      .catch(() => undefined);
+  }, []);
+  return null;
+}
+
+/**
+ * Onboarding questions for the three tripwires. One save writes the same
+ * price, volume, and category rules the evaluator already reads.
+ */
+export function AlertsSurvey({
   initial,
-  grid,
   action,
-  onChange,
+  backtest,
+  initialBacktest,
 }: {
   initial: ThresholdValues;
-  grid: BacktestGrid | null;
   action: (
     prev: SaveTripwiresState,
     formData: FormData,
   ) => Promise<SaveTripwiresState>;
-  /** additive: called with the current (unsaved) values whenever they change — drives the live backtest sentence */
-  onChange?: (v: ThresholdValues) => void;
+  backtest: (values: ThresholdValues) => Promise<BacktestResponse>;
+  initialBacktest: BacktestResponse | null;
 }) {
   const [v, setV] = useState<ThresholdValues>(initial);
   const [state, formAction, pending] = useActionState(action, null);
-  const dirty = JSON.stringify(v) !== JSON.stringify(initial);
-  useEffect(() => {
-    onChange?.(v);
-  }, [v, onChange]);
-
-  const backtest = useMemo(() => {
-    if (!grid) return null;
-    const vk = nearestKey(Object.keys(grid.volume), v.volumeRatio);
-    const pk = nearestKey(Object.keys(grid.price), v.pricePct);
-    const volFires = v.volumeEnabled && vk ? (grid.volume[vk] ?? 0) : 0;
-    const pxFires = v.priceEnabled && pk ? (grid.price[pk] ?? 0) : 0;
-    let fires: number;
-    if (v.volumeEnabled && v.priceEnabled && vk && pk)
-      fires = grid.either[`${vk}|${pk}`] ?? volFires + pxFires;
-    else fires = volFires + pxFires;
-    const weeks = Math.max(1, grid.sessions / 5);
-    return { fires, volFires, pxFires, perWeek: fires / weeks };
-  }, [grid, v]);
+  const [frequencyOpen, setFrequencyOpen] = useState(false);
+  const submitted = useRef<string | null>(null);
+  const current = snap(v);
+  const matchesSubmit = submitted.current === current;
+  const showSaved = Boolean(state?.ok && matchesSubmit);
+  const showError = Boolean(!pending && state && !state.ok && matchesSubmit);
 
   const toggleCat = (c: Category) =>
     setV((s) => ({
@@ -144,174 +221,174 @@ export function ThresholdEditor({
     }));
 
   const submit = () => {
+    submitted.current = snap(v);
     const fd = new FormData();
     fd.set("payload", JSON.stringify(v));
     startTransition(() => formAction(fd));
   };
 
+  const watching = v.categories.length;
+
   return (
     <div>
-      {/* PRICE */}
-      <section className="gutter py-4 border-b border-rule">
-        <div className="flex items-center justify-between">
-          <p className="eyebrow">Price</p>
-          <button
-            type="button"
-            className="toggle"
-            aria-pressed={v.priceEnabled}
-            onClick={() =>
+      <VisitMarker />
+
+      <section
+        className="gutter border-t border-rule py-8"
+        aria-labelledby="q-price"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="q-price" className="eyebrow">
+            01 · Price
+          </h2>
+          <RuleSwitch
+            on={v.priceEnabled}
+            label="Price rule"
+            onToggle={() =>
               setV((s) => ({ ...s, priceEnabled: !s.priceEnabled }))
             }
-          >
-            {v.priceEnabled ? "on" : "off"}
-          </button>
+          />
         </div>
-        <p
-          className={`mt-2 text-ink leading-[2.4] ${v.priceEnabled ? "" : "opacity-50"}`}
-        >
-          Tell me when a stock moves more than{" "}
-          <Stepper
-            value={v.pricePct}
-            onChange={(x) => setV((s) => ({ ...s, pricePct: x }))}
-            min={PX_MIN}
-            max={PX_MAX}
-            step={0.5}
-            format={(x) => `±${groupIndian(x, 1)}%`}
-            label="price move threshold"
-          />{" "}
-          in a day.
-        </p>
+        <RuleSentence
+          lead="Tell me when a stock moves more than"
+          tail="in a day."
+          muted={!v.priceEnabled}
+          control={
+            <Stepper
+              value={v.pricePct}
+              onChange={(x) => setV((s) => ({ ...s, pricePct: x }))}
+              min={PX_MIN}
+              max={PX_MAX}
+              step={0.5}
+              format={(x) => `±${groupIndian(x, 1)}%`}
+              label="price move threshold"
+              muted={!v.priceEnabled}
+            />
+          }
+        />
       </section>
 
-      {/* VOLUME */}
-      <section className="gutter py-4 border-b border-rule">
-        <div className="flex items-center justify-between">
-          <p className="eyebrow">Volume</p>
-          <button
-            type="button"
-            className="toggle"
-            aria-pressed={v.volumeEnabled}
-            onClick={() =>
+      <section
+        className="gutter border-t border-rule py-8"
+        aria-labelledby="q-volume"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="q-volume" className="eyebrow">
+            02 · Volume
+          </h2>
+          <RuleSwitch
+            on={v.volumeEnabled}
+            label="Volume rule"
+            onToggle={() =>
               setV((s) => ({ ...s, volumeEnabled: !s.volumeEnabled }))
             }
-          >
-            {v.volumeEnabled ? "on" : "off"}
-          </button>
+          />
         </div>
-        <p
-          className={`mt-2 text-ink leading-[2.4] ${v.volumeEnabled ? "" : "opacity-50"}`}
-        >
-          Tell me when volume is over{" "}
-          <Stepper
-            value={v.volumeRatio}
-            onChange={(x) => setV((s) => ({ ...s, volumeRatio: x }))}
-            min={VOL_MIN}
-            max={VOL_MAX}
-            step={0.25}
-            format={(x) => `${groupIndian(x, 2)}×`}
-            label="volume ratio threshold"
-          />{" "}
-          its {v.lookbackDays}-day average.
-        </p>
-        <p className="receipt">
-          special sessions (Muhurat) are excluded from the average
+        <RuleSentence
+          lead="Tell me when volume is over"
+          tail={`its ${v.lookbackDays}-day average.`}
+          muted={!v.volumeEnabled}
+          control={
+            <Stepper
+              value={v.volumeRatio}
+              onChange={(x) => setV((s) => ({ ...s, volumeRatio: x }))}
+              min={VOL_MIN}
+              max={VOL_MAX}
+              step={0.25}
+              format={(x) => `${groupIndian(x, 2)}×`}
+              label="volume ratio threshold"
+              muted={!v.volumeEnabled}
+            />
+          }
+        />
+        <p className="receipt mt-3">
+          Special sessions, including Muhurat, are left out of the average.
         </p>
       </section>
 
-      {/* CATEGORIES */}
-      <section className="gutter py-4 border-b border-rule">
-        <p className="eyebrow">Announcements — always surface</p>
-        <div className="mt-2 flex flex-wrap gap-2">
+      <section
+        className="gutter border-t border-rule py-8"
+        aria-labelledby="q-filings"
+      >
+        <h2 id="q-filings" className="eyebrow">
+          03 · Filings
+        </h2>
+        <p className="mt-4 text-ink">Which filings should always surface.</p>
+        <p className="receipt mt-1">Everything else folds into routine.</p>
+        <ul
+          aria-label="Filing categories"
+          className="m-0 mt-4 list-none border-t border-rule p-0"
+        >
           {CATEGORY_CHOICES.map((c) => {
             const on = v.categories.includes(c);
             return (
-              <button
-                key={c}
-                type="button"
-                className="toggle gap-1.5"
-                aria-pressed={on}
-                onClick={() => toggleCat(c)}
-              >
-                <CategoryGlyph category={c} />
-                {categoryLabel(c)}
-              </button>
+              <li key={c} className="border-b border-rule">
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleCat(c)}
+                  className="flex min-h-11 w-full items-center gap-3 text-left no-callout"
+                >
+                  <Mark on={on} />
+                  <CategoryGlyph
+                    category={c}
+                    size={14}
+                    className="text-ink-3"
+                  />
+                  <span className={on ? "font-medium text-ink" : "text-ink-2"}>
+                    {categoryLabel(c)}
+                  </span>
+                </button>
+              </li>
             );
           })}
-        </div>
-        <p className="receipt mt-2">everything else folds into routine</p>
+        </ul>
+        <p className="receipt mt-3" aria-live="polite">
+          {watching === 0
+            ? "None selected."
+            : `${watching} of ${CATEGORY_CHOICES.length} always surface.`}
+        </p>
       </section>
 
-      {/* BACKTEST */}
-      <section className="gutter py-4 border-b border-rule">
-        <p className="eyebrow">
-          If these rules had run for{" "}
-          {grid ? `${grid.sessions} sessions` : "60 days"}
-        </p>
-        {backtest && grid ? (
-          <>
-            <p className="mt-2 text-ink" aria-live="polite">
-              <span className="num font-semibold">{backtest.fires}</span>{" "}
-              {backtest.fires === 1 ? "alert" : "alerts"} · about{" "}
-              <span className="num">{groupIndian(backtest.perWeek, 1)}</span> a
-              week
-              <span className="text-ink-2">
-                {" "}
-                ({backtest.volFires} volume · {backtest.pxFires} price)
-              </span>
-            </p>
-            <div
-              className="mt-3 flex items-end gap-[2px] h-[28px]"
-              aria-hidden="true"
-            >
-              {grid.strip.map((d) => {
-                const h = Math.max(2, Math.min(28, d.fires * 9));
-                return (
-                  <span
-                    key={d.date}
-                    className="flex-1 rounded-[1px]"
-                    style={{
-                      height: h,
-                      background: d.fires ? "var(--warn)" : "var(--rule)",
-                    }}
-                    title={`${d.date}: ${d.fires}`}
-                  />
-                );
-              })}
-            </div>
-            <p className="receipt mt-1">
-              last {grid.strip.length} sessions at the saved thresholds
-              {grid.topOffenders.length
-                ? ` · ${grid.topOffenders.map((o) => `${o.symbol} ×${o.fires}`).join(" · ")}`
-                : ""}
-            </p>
-          </>
-        ) : (
-          <p className="small text-ink-2 mt-2">
-            The backtest sentence appears once 20+ sessions of prices are in the
-            database — it is one pass over the cached bars, no model involved.
-          </p>
-        )}
-      </section>
+      <div className="gutter rule-stitched pb-8 pt-6">
+        <details onToggle={(e) => setFrequencyOpen(e.currentTarget.open)}>
+          <summary className="flex min-h-11 items-center gap-2 no-callout">
+            <span className="chev text-ink-3" aria-hidden="true">
+              ▸
+            </span>
+            <span className="text-accent">
+              See how often this would have fired
+            </span>
+          </summary>
+          <RuleFrequency
+            values={v}
+            initial={initial}
+            backtest={backtest}
+            initialBacktest={initialBacktest}
+            open={frequencyOpen}
+          />
+        </details>
 
-      {/* SAVE */}
-      <div className="gutter py-4 flex items-center justify-between gap-3">
-        <p className="receipt">
-          {state?.ok
-            ? "saved · applies from the next EOD run"
-            : state && !state.ok
-              ? state.error
-              : dirty
-                ? "unsaved changes"
-                : "rules are stored on the server for the demo user"}
-        </p>
         <button
           type="button"
           onClick={submit}
-          disabled={pending || !dirty}
-          className="hit rounded-[var(--r-chip)] bg-ink px-5 text-bg font-medium disabled:opacity-40"
+          disabled={pending}
+          aria-busy={pending}
+          className="mt-6 flex h-12 w-full items-center justify-center rounded-[var(--r-chip)] bg-ink font-medium text-bg disabled:opacity-40"
         >
-          {pending ? "Saving" : "Save rules"}
+          {pending ? "Saving" : "Save alerts"}
         </button>
+        {showSaved || showError ? (
+          <output
+            className={`small mt-3 block ${showError ? "text-down" : "text-ink-2"}`}
+          >
+            {showSaved
+              ? "Saved. Applies from the next close."
+              : state && !state.ok
+                ? state.error
+                : null}
+          </output>
+        ) : null}
       </div>
     </div>
   );

@@ -18,6 +18,8 @@ export const UserPrefs = z
     windowHours: z.number().int().positive().default(24),
     theme: z.enum(["paper", "ink", "auto"]).default("auto"),
     quietCategories: z.array(z.string()).default([]),
+    /** ms when /alerts was last opened; the bell counts firings after this */
+    alertsSeenAt: z.number().nonnegative().optional(),
   })
   .partial();
 

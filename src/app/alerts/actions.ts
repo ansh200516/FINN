@@ -176,3 +176,30 @@ export async function saveTripwires(
   await invalidateBrief();
   return { ok: true, savedAt: now };
 }
+
+/** Record that the demo user opened /alerts. The bell counts firings after this. */
+export async function markAlertsSeen(): Promise<{ ok: boolean }> {
+  const userId = DEMO_USER_ID;
+  const rows = await db
+    .select({ prefsJson: users.prefsJson })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return { ok: false };
+  let prefs: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(row.prefsJson) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return { ok: false };
+    prefs = { ...(parsed as Record<string, unknown>) };
+  } catch {
+    return { ok: false };
+  }
+  prefs.alertsSeenAt = Date.now();
+  await db
+    .update(users)
+    .set({ prefsJson: JSON.stringify(prefs) })
+    .where(eq(users.id, userId));
+  return { ok: true };
+}

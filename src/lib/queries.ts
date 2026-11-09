@@ -17,8 +17,10 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
+  isNull,
   lte,
   max,
   sql,
@@ -1352,6 +1354,64 @@ export async function getInbox(
       because: p.because ?? p.rule ?? null,
     };
   });
+}
+
+export interface NavCounts {
+  /** rows with read_at null — the inbox list */
+  inbox: number;
+  /** firings of currently enabled tripwires since /alerts was last opened */
+  alerts: number;
+}
+
+function alertsSeenAt(prefsJson: string | null | undefined): number {
+  if (!prefsJson) return 0;
+  try {
+    const v = JSON.parse(prefsJson) as unknown;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return 0;
+    const n = (v as { alertsSeenAt?: unknown }).alertsSeenAt;
+    return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function countOf(row: { n: number } | undefined): number {
+  const n = Number(row?.n ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Two badges off one table. Inbox is unread rows. Alerts is enabled
+ * tripwire firings newer than the last visit to /alerts — not the same
+ * filter, so the numbers match only when the two sets happen to be the
+ * same size.
+ */
+export async function getNavCounts(userId = DEMO_USER_ID): Promise<NavCounts> {
+  const [user] = await db
+    .select({ prefsJson: t.users.prefsJson })
+    .from(t.users)
+    .where(eq(t.users.id, userId))
+    .limit(1);
+  const seenAt = alertsSeenAt(user?.prefsJson);
+  const [unread, fires] = await Promise.all([
+    db
+      .select({ n: count() })
+      .from(t.alerts)
+      .where(and(eq(t.alerts.userId, userId), isNull(t.alerts.readAt))),
+    db
+      .select({ n: count() })
+      .from(t.alerts)
+      .innerJoin(t.tripwires, eq(t.alerts.tripwireId, t.tripwires.id))
+      .where(
+        and(
+          eq(t.alerts.userId, userId),
+          eq(t.tripwires.userId, userId),
+          eq(t.tripwires.enabled, true),
+          gt(t.alerts.firedAt, seenAt),
+        ),
+      ),
+  ]);
+  return { inbox: countOf(unread[0]), alerts: countOf(fires[0]) };
 }
 
 // ---------------------------------------------------------------------------

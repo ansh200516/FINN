@@ -1,120 +1,113 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  BacktestResponse,
-  SaveTripwiresState,
-} from "@/app/alerts/actions";
-import type { BacktestGrid } from "@/ui/model";
-import { ThresholdEditor, type ThresholdValues } from "@/ui/ThresholdEditor";
+import { useEffect, useRef, useState } from "react";
+import type { BacktestResponse } from "@/app/alerts/actions";
+import type { ThresholdValues } from "@/ui/ThresholdEditor";
 
 const DEBOUNCE_MS = 350;
 
+function valueKey(v: ThresholdValues): string {
+  return JSON.stringify({ ...v, categories: [...v.categories].sort() });
+}
+
+function firedPhrase(sentence: string): string {
+  return sentence.replace(/^Would have fired\s+/i, "");
+}
+
 /**
- * ThresholdEditor plus the engine-backed backtest sentence, recomputed
- * (debounced) whenever a threshold or category changes. The editor's own
- * grid-based estimate stays; this block is the exact rule evaluation
- * (`backtest(rule, isins, 60)`) with the last firing named.
+ * The optional count under the survey. Hidden until the disclosure opens;
+ * the saved thresholds render from the server so the first open is instant.
  */
-export function BacktestLive({
+export function RuleFrequency({
+  values,
   initial,
-  grid,
-  action,
   backtest,
   initialBacktest,
+  open,
 }: {
+  values: ThresholdValues;
   initial: ThresholdValues;
-  grid: BacktestGrid | null;
-  action: (
-    prev: SaveTripwiresState,
-    formData: FormData,
-  ) => Promise<SaveTripwiresState>;
   backtest: (values: ThresholdValues) => Promise<BacktestResponse>;
   initialBacktest: BacktestResponse | null;
+  open: boolean;
 }) {
-  const [result, setResult] = useState<BacktestResponse | null>(
-    initialBacktest,
-  );
+  const initialKey = valueKey(initial);
+  const currentKey = valueKey(values);
+  const [result, setResult] = useState<{
+    key: string;
+    data: BacktestResponse | null;
+  }>({ key: initialKey, data: initialBacktest });
   const [pending, setPending] = useState(false);
-  const [values, setValues] = useState<ThresholdValues>(initial);
-  const first = useRef(true);
+  const [failed, setFailed] = useState(false);
   const seq = useRef(0);
 
-  const onChange = useCallback((v: ThresholdValues) => setValues(v), []);
-
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      if (initialBacktest) return;
+    if (!open) return;
+    if (currentKey === initialKey) {
+      setResult({ key: initialKey, data: initialBacktest });
+      setPending(false);
+      setFailed(false);
+      return;
     }
     const mine = ++seq.current;
     setPending(true);
+    setFailed(false);
     const t = setTimeout(() => {
       backtest(values)
         .then((r) => {
-          if (seq.current === mine) setResult(r);
+          if (seq.current === mine) setResult({ key: currentKey, data: r });
         })
-        .catch(() => undefined)
+        .catch(() => {
+          if (seq.current === mine) setFailed(true);
+        })
         .finally(() => {
           if (seq.current === mine) setPending(false);
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [values, backtest, initialBacktest]);
+  }, [open, currentKey, initialKey, initialBacktest, backtest, values]);
 
-  const lines = result
+  const ready = result.key === currentKey ? result.data : null;
+  const lines = ready
     ? (
         [
-          ["Price", result.price],
-          ["Volume", result.volume],
-          ["Announcements", result.category],
+          ["Price", ready.price],
+          ["Volume", ready.volume],
+          ["Filings", ready.category],
         ] as const
-      ).filter((x) => x[1])
+      ).flatMap(([label, line]) => (line ? [{ label, line }] : []))
     : [];
 
   return (
-    <div>
-      <ThresholdEditor
-        initial={initial}
-        grid={grid}
-        action={action}
-        onChange={onChange}
-      />
-      <section className="gutter py-4 border-b border-rule" aria-live="polite">
-        <p className="eyebrow">
-          Exact backtest · last {result?.days ?? 60} days ·{" "}
-          {result ? `${result.companies} companies` : "portfolio"}
-          {pending ? " · recomputing" : ""}
+    <div className="pb-1" aria-live="polite">
+      {lines.length ? (
+        <ul className="m-0 p-0 list-none">
+          {lines.map(({ label, line }) => (
+            <li
+              key={label}
+              className="flex items-baseline gap-3 border-b border-rule py-2 last:border-b-0"
+            >
+              <span className="meta w-[4.5rem] shrink-0 text-ink-3">
+                {label}
+              </span>
+              <span className="small text-ink">
+                {firedPhrase(line.sentence)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="small text-ink-2 py-2">
+          {failed
+            ? "The count is unavailable right now."
+            : ready
+              ? "Nothing is switched on."
+              : "Checking the last 60 days."}
         </p>
-        {lines.length ? (
-          <ul className="m-0 mt-2 p-0 list-none">
-            {lines.map(([label, line]) => (
-              <li
-                key={label}
-                className="py-1.5 border-b border-rule last:border-b-0 flex items-baseline gap-3"
-              >
-                <span className="meta text-ink-3 w-[104px] shrink-0">
-                  {label}
-                </span>
-                <span className="small text-ink">
-                  <span className="num font-medium">{line?.fires}×</span>{" "}
-                  {line?.sentence.replace(/^Would have fired \d+× /, "")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="small text-ink-2 mt-2">
-            {result
-              ? "No rule is switched on."
-              : "Change a threshold to run the rules over the stored sessions and filings."}
-          </p>
-        )}
-        <p className="receipt mt-2">
-          one pass over stored bars and filings, no model involved · the strip
-          above is the quick estimate from the precomputed grid
-        </p>
-      </section>
+      )}
+      {pending && lines.length ? (
+        <p className="receipt pt-2">Updating.</p>
+      ) : null}
     </div>
   );
 }

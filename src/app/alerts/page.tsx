@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
 import type { Category } from "@/engine/types";
 import { CATEGORIES } from "@/engine/types";
-import {
-  DEFAULT_THRESHOLDS,
-  getBacktestGrid,
-  getDemoUser,
-  getTripwires,
-} from "@/lib/queries";
-import { BacktestLive } from "@/ui/alerts/BacktestLive";
+import { DEFAULT_THRESHOLDS, getDemoUser, getTripwires } from "@/lib/queries";
 import type { ThresholdValues } from "@/ui/ThresholdEditor";
+import { AlertsSurvey } from "@/ui/ThresholdEditor";
 import { backtestForValues, saveTripwires } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +20,7 @@ const DEFAULT_CATEGORIES: Category[] = [
 
 export default async function AlertsPage() {
   const user = await getDemoUser();
-  const [rules, grid] = await Promise.all([
-    getTripwires(user.id),
-    getBacktestGrid(user.portfolioIsins),
-  ]);
+  const rules = await getTripwires(user.id);
   const vol = rules.find((r) => r.kind === "volume_ratio");
   const px = rules.find((r) => r.kind === "price_move");
   const cat = rules.find((r) => r.kind === "category");
@@ -53,40 +45,31 @@ export default async function AlertsPage() {
         )
       : DEFAULT_CATEGORIES,
   };
-  // the exact engine backtest for the saved rules, server-rendered; the client recomputes on change
   const initialBacktest = await backtestForValues(initial).catch(() => null);
 
   return (
-    <main className="flex-1 pb-8">
-      <header className="gutter pt-5">
-        <p className="eyebrow reveal">Tripwires</p>
+    <main className="flex-1">
+      <header className="gutter pb-8 pt-6">
+        <p className="eyebrow reveal">Alerts</p>
         <h1
-          className="dateline text-ink mt-1 reveal"
+          className="dateline text-ink mt-2 reveal"
           style={{ animationDelay: "60ms" }}
         >
-          What counts as unusual. You decide.
+          What counts as unusual.
         </h1>
-        <p className="receipt mt-2 reveal" style={{ animationDelay: "120ms" }}>
-          {rules.length
-            ? `${rules.filter((r) => r.enabled).length} rules on`
-            : "defaults shown · not saved yet"}{" "}
-          · evaluated after each close · nothing here calls a model
+        <p
+          className="mt-3 max-w-[28ch] text-ink-2 reveal"
+          style={{ animationDelay: "120ms" }}
+        >
+          You decide. Answer three questions, then save.
         </p>
       </header>
-      <div className="mt-4 border-t border-rule">
-        <BacktestLive
-          initial={initial}
-          grid={grid}
-          action={saveTripwires}
-          backtest={backtestForValues}
-          initialBacktest={initialBacktest}
-        />
-      </div>
-      <p className="gutter receipt mt-4">
-        Calendar flags: ex-dates and special sessions (Muhurat 8 Nov) are
-        excluded from averages; a results-day move is labelled as such in the
-        alert.
-      </p>
+      <AlertsSurvey
+        initial={initial}
+        action={saveTripwires}
+        backtest={backtestForValues}
+        initialBacktest={initialBacktest}
+      />
     </main>
   );
 }

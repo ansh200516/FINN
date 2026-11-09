@@ -10,6 +10,7 @@ import Loading from "@/app/loading";
 import type { ResultsCard } from "@/engine/types";
 import { CategoryGlyph } from "@/ui/CategoryGlyph";
 import { DeltaChip } from "@/ui/DeltaChip";
+import { formatNavCount } from "@/ui/navCount";
 import { Receipt } from "@/ui/Receipt";
 import { gridRows, ResultsGrid } from "@/ui/ResultsGrid";
 import { Sparkline } from "@/ui/Sparkline";
@@ -226,5 +227,19 @@ describe("window resolution", () => {
   it("offers since-close first on a plain weekend", () => {
     const sunday = Date.UTC(2026, 10, 15, 13, 10); // Sun 15 Nov 18:40 IST, last close Fri 13 Nov
     expect(widenSequence(sunday)).toEqual(["close", "7d", "30d"]);
+  });
+});
+
+describe("formatNavCount", () => {
+  it("hides zero and caps the display at 9+", () => {
+    expect(formatNavCount(0)).toBeNull();
+    expect(formatNavCount(-3)).toBeNull();
+    expect(formatNavCount(Number.NaN)).toBeNull();
+    expect(formatNavCount(0.4)).toBeNull();
+    expect(formatNavCount(1)).toBe("1");
+    expect(formatNavCount(9)).toBe("9");
+    expect(formatNavCount(9.8)).toBe("9");
+    expect(formatNavCount(10)).toBe("9+");
+    expect(formatNavCount(42)).toBe("9+");
   });
 });

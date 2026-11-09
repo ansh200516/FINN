@@ -1,3 +1,21 @@
+## For the grader
+
+Live app: [https://finn-gray.vercel.app](https://finn-gray.vercel.app)
+
+Send the covering note to assessment@enam.com. The subject line is exactly:
+
+`IIT Delhi – AI Engineer - 2027`
+
+The note is [`docs/submission/covering-note.md`](docs/submission/covering-note.md). How the app was built is [`docs/submission/build-history.md`](docs/submission/build-history.md).
+
+Ten minutes on a phone:
+
+1. Open the brief and read it through to "You're done". The window is the last 24 hours and widens when that day is empty. Use **7 d** for a longer book.
+2. Open a results card, under Needs you or inside the filed-away fold, and read the basis chip.
+3. Open Supreme's promise ledger: [https://finn-gray.vercel.app/c/SUPREMEIND](https://finn-gray.vercel.app/c/SUPREMEIND).
+4. Open **Alerts**, move the price or volume threshold, and press **Save alerts**.
+5. Open **Companies**, then **+ Add** ([https://finn-gray.vercel.app/add](https://finn-gray.vercel.app/add)), and enter an NSE symbol that is not already on the book.
+
 # FINN
 
 **A brief that remembers what management promised.**

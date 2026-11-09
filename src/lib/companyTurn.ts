@@ -212,7 +212,7 @@ export function confirmRule(
   rule: Tripwire,
 ): string {
   if (rule.kind === "price_move") {
-    const who = scope === "book" ? "a portfolio name" : symbol;
+    const who = scope === "book" ? "any name in the portfolio" : symbol;
     return `I’ll tell you when ${who} moves more than ${plainNum(rule.params.pct)}% in a day.`;
   }
   if (rule.kind === "volume_ratio") {

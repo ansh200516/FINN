@@ -1,0 +1,201 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import {
+  contextLine,
+  type DeskCompany,
+  formatLines,
+  NAME_THE_COMPANY,
+  parseDeskTurn,
+} from "@/lib/deskTurn";
+import { Desk, PUSH_SHOWN } from "@/ui/Desk";
+
+const book: DeskCompany[] = [
+  { symbol: "ITC", name: "ITC Limited", aliases: [] },
+  { symbol: "HDFCBANK", name: "HDFC Bank Limited", aliases: ["HDFC Bank"] },
+  { symbol: "RELIANCE", name: "Reliance Industries Limited", aliases: ["RIL"] },
+  { symbol: "IT", name: "IT Limited", aliases: [] },
+  { symbol: "FOR", name: "FOR Limited", aliases: [] },
+];
+
+describe("parseDeskTurn", () => {
+  it("asks for one card on the company in the sentence", () => {
+    expect(parseDeskTurn("itc results", book, null)).toEqual({
+      kind: "card",
+      symbol: "ITC",
+      text: "results",
+    });
+    expect(parseDeskTurn("show me the itc numbers", book, null)).toMatchObject({
+      kind: "card",
+      symbol: "ITC",
+    });
+    expect(parseDeskTurn("hdfc bank promises", book, null)).toEqual({
+      kind: "card",
+      symbol: "HDFCBANK",
+      text: "promises",
+    });
+    expect(parseDeskTurn("reliance guidance", book, null)).toMatchObject({
+      kind: "card",
+      symbol: "RELIANCE",
+      text: "guidance",
+    });
+  });
+
+  it("keeps the active company when the sentence does not name one", () => {
+    expect(parseDeskTurn("results", book, "ITC")).toEqual({
+      kind: "card",
+      symbol: "ITC",
+      text: "results",
+    });
+    expect(parseDeskTurn("results", book, null)).toEqual({
+      kind: "need-company",
+    });
+  });
+
+  it("switches context without opening a card", () => {
+    expect(parseDeskTurn("show me itc", book, null)).toEqual({
+      kind: "context",
+      symbol: "ITC",
+    });
+    expect(parseDeskTurn("ITC", book, null)).toEqual({
+      kind: "context",
+      symbol: "ITC",
+    });
+  });
+
+  it("saves a price rule on the company, or on the book when none is named", () => {
+    expect(parseDeskTurn("set price alert to 4%", book, null)).toMatchObject({
+      kind: "rule",
+      scope: "book",
+      symbol: null,
+    });
+    expect(parseDeskTurn("set price alert to 4%", book, "ITC")).toMatchObject({
+      kind: "rule",
+      scope: "symbol",
+      symbol: "ITC",
+    });
+    expect(parseDeskTurn("set price alert to 4% on itc", book, null)).toEqual({
+      kind: "rule",
+      scope: "symbol",
+      symbol: "ITC",
+      text: "set price alert to 4%",
+    });
+    expect(
+      parseDeskTurn("set price alert to 4% for my portfolio", book, "ITC"),
+    ).toMatchObject({ kind: "rule", scope: "book", symbol: null });
+    expect(
+      parseDeskTurn("always tell me about itc results", book, null),
+    ).toMatchObject({
+      kind: "rule",
+      scope: "symbol",
+      symbol: "ITC",
+    });
+  });
+
+  it("does not treat English words as tickers", () => {
+    const moved = parseDeskTurn("tell me if it moves more than 4%", book, null);
+    expect(moved.kind).toBe("rule");
+    if (moved.kind === "rule") expect(moved.symbol).toBeNull();
+    expect(parseDeskTurn("IT results", book, null)).toMatchObject({
+      kind: "card",
+      symbol: "IT",
+    });
+    const bookRule = parseDeskTurn(
+      "set price alert to 4% for my portfolio",
+      book,
+      null,
+    );
+    expect(bookRule.kind).toBe("rule");
+    if (bookRule.kind === "rule") expect(bookRule.symbol).toBeNull();
+  });
+
+  it("refuses a bad threshold without a company and without Ask", () => {
+    const turned = parseDeskTurn("set price alert to 80%", book, "ITC");
+    expect(turned.kind).toBe("rejected");
+  });
+
+  it("leaves a real question for Ask, and the brief for a rule", () => {
+    expect(
+      parseDeskTurn("what did they say about the plant", book, "ITC"),
+    ).toMatchObject({
+      kind: "ask",
+      symbol: "ITC",
+      question: "what did they say about the plant",
+    });
+    expect(
+      parseDeskTurn("what did they say about the itc plant", book, null),
+    ).toMatchObject({ kind: "ask", symbol: "ITC" });
+    expect(
+      parseDeskTurn("results for the plastics business", book, "ITC"),
+    ).toMatchObject({
+      kind: "ask",
+      symbol: "ITC",
+    });
+    expect(
+      parseDeskTurn("what did they say about the plant", book, null),
+    ).toEqual({
+      kind: "need-company",
+    });
+    expect(parseDeskTurn("what needs a decision?", book, null)).toEqual({
+      kind: "brief",
+    });
+    expect(parseDeskTurn("what should I watch", book, "ITC")).toEqual({
+      kind: "watch",
+    });
+  });
+});
+
+describe("desk copy", () => {
+  it("answers the brief in one block, not a stack of cards", () => {
+    expect(contextLine("ITC")).toBe("On ITC.");
+    expect(NAME_THE_COMPANY).toBe("Name the company.");
+    const text = formatLines((n) => `${n} to act on.`, "Nothing to act on.", [
+      { symbol: "ITC", sentence: "Margin held." },
+      { symbol: "TCS", sentence: "A management change." },
+    ]);
+    expect(text).toBe(
+      "2 to act on. ITC. Margin held. TCS. A management change.",
+    );
+    expect(
+      formatLines((n) => `${n} to act on.`, "Nothing to act on.", []),
+    ).toBe("Nothing to act on.");
+  });
+});
+
+describe("desk markup", () => {
+  it("opens on a short tape and a composer, not the filings", () => {
+    const act = ["One.", "Two.", "Three.", "Fourth stays off the tape."].map(
+      (sentence, i) => ({
+        key: String(i),
+        symbol: `N${i}`,
+        time: "09:00",
+        sentence,
+        href: `/e/${i}`,
+        action: "Filing",
+      }),
+    );
+    const html = renderToStaticMarkup(
+      createElement(Desk, {
+        act,
+        watch: [{ symbol: "ITC", sentence: "Results filed." }],
+        filedAway: 14,
+        quiet: null,
+        checked: "checked NSE 15:04 IST",
+        companies: book,
+        onTurn: () => Promise.reject(new Error("no turn")),
+      }),
+    );
+    expect(PUSH_SHOWN).toBe(3);
+    expect(html).toContain("One.");
+    expect(html).toContain("Three.");
+    expect(html).not.toContain("Fourth stays off the tape.");
+    expect(html).toContain("1 more. Ask.");
+    expect(html).toContain("1 to watch");
+    expect(html).toContain("14 filed away");
+    expect(html).toContain("height:44px");
+    expect(html).toContain('placeholder="Ask"');
+    expect(html).not.toContain("The figures");
+    expect(html).not.toContain("From the filings");
+    expect(html).not.toContain("Promise ledger");
+  });
+});

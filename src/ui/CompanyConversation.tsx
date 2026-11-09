@@ -243,7 +243,7 @@ function TurnBody({ turn, symbol }: { turn: Turn; symbol: string }) {
   if (shown.kind === "error")
     return <p className="small text-ink">{shown.message}</p>;
   if (shown.kind === "ask")
-    return <AskCard text={shown.text} chips={shown.chips} />;
+    return <AskAnswer text={shown.text} chips={shown.chips} />;
   return <ReplyBody reply={shown.reply} symbol={symbol} />;
 }
 
@@ -277,7 +277,7 @@ export function ReplyBody({
   }
 }
 
-function AskCard({ text, chips }: { text: string; chips: AskChip[] }) {
+export function AskAnswer({ text, chips }: { text: string; chips: AskChip[] }) {
   return (
     <div>
       {text ? <p className="small text-ink">{text}</p> : null}

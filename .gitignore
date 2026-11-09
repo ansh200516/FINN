@@ -32,6 +32,9 @@ data/*.db-shm
 data/raw/
 data/cache/
 
+# nested clone of another product — not part of FINN
+rfp-backend/
+
 # misc
 .DS_Store
 *.log

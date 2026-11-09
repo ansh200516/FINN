@@ -15,6 +15,7 @@ import {
   scoredPromises,
   tripwireId,
 } from "@/lib/companyTurn";
+import { NAME_THE_COMPANY } from "@/lib/deskTurn";
 import { loadPullMenu } from "@/lib/pullRead";
 import {
   DEMO_USER_ID,
@@ -155,4 +156,38 @@ async function saveRule(
     // The row is saved. The brief cache expires on its own.
   }
   return true;
+}
+
+/**
+ * One desk turn. A book-wide sentence saves without a company.
+ * An ask is handed back so the client can call the grounded route.
+ */
+export async function deskTurn(
+  symbol: string | null,
+  raw: string,
+  scope: "symbol" | "book" | null,
+): Promise<CompanyReply> {
+  const text = raw.trim().slice(0, 500);
+  if (!text) return { kind: "error", message: NAME_THE_COMPANY };
+  const safe =
+    symbol && /^[A-Za-z0-9&.-]{1,20}$/.test(symbol)
+      ? symbol.toUpperCase()
+      : null;
+  const intent = parseCompanyTurn(text);
+  if (intent.kind === "rejected")
+    return { kind: "rejected", sentence: intent.sentence };
+  if (intent.kind === "ask") return { kind: "ask" };
+  if (intent.kind === "rule") {
+    const book = scope === "book" || intent.scope === "book" || !safe;
+    if (book) {
+      const saved = await saveRule(null, intent.rule, "book", safe ?? "book");
+      if (!saved) return { kind: "error", message: "The rule did not save." };
+      return {
+        kind: "rule",
+        sentence: confirmRule(safe ?? "the book", "book", intent.rule),
+      };
+    }
+  }
+  if (!safe) return { kind: "error", message: NAME_THE_COMPANY };
+  return companyTurn(safe, text);
 }

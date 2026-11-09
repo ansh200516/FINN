@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { after } from "next/server";
+import { deskTurn } from "@/app/c/[symbol]/actions";
 import { getBriefView } from "@/lib/brief";
 import { dayLabel, editionLabel } from "@/lib/format";
 import { scheduleRefreshOnVisit } from "@/lib/jobs";
@@ -8,6 +9,7 @@ import {
   getDemoUser,
   getTripwires,
   guidanceVerdictGroups,
+  listCompanyNames,
 } from "@/lib/queries";
 import {
   addDaysKey,
@@ -17,26 +19,18 @@ import {
   sessionType,
 } from "@/lib/time";
 import { excludedSpecialSessions } from "@/ui/AnomalyStrip";
-import { CardBody } from "@/ui/CardBody";
-import { ComingUp } from "@/ui/ComingUp";
 import { Dateline } from "@/ui/Dateline";
-import { DecisionCard } from "@/ui/DecisionCard";
+import { Desk, type PushLine } from "@/ui/Desk";
 import {
   decisionRank,
   editionHeadline,
-  hasFigures,
   judgeEvent,
   judgeMove,
   showAsMoveCard,
   tallyByIsin,
 } from "@/ui/decision";
-import { EndOfEdition } from "@/ui/EndOfEdition";
 import { filedStamp } from "@/ui/FilingCard";
-import { Fold } from "@/ui/Fold";
-import type { AnomalyWithSymbol, BriefWindow, EventCard } from "@/ui/model";
-import { QuietState } from "@/ui/QuietState";
-import { TierHeader } from "@/ui/TierHeader";
-import { WatchLine } from "@/ui/WatchLine";
+import type { AnomalyWithSymbol, BriefWindow } from "@/ui/model";
 import { WindowScrubber } from "@/ui/WindowScrubber";
 
 export const dynamic = "force-dynamic";
@@ -72,37 +66,16 @@ function calendarLine(
   return `${name} ${dayLabel(hit.dateKey)} · not scored`;
 }
 
-interface Item {
+interface Row {
   key: string;
   symbol: string;
   time: string;
-  decision: ReturnType<typeof judgeEvent>["decision"];
+  decision: "act" | "watch" | "nothing";
   sentence: string;
   href: string;
   action: string;
   priority: number;
   at: number;
-  event?: EventCard;
-}
-
-function decisionCards(list: Item[]) {
-  return list.map((item, i) => (
-    <DecisionCard
-      key={item.key}
-      symbol={item.symbol}
-      time={item.time}
-      decision={item.decision}
-      sentence={item.sentence}
-      href={item.href}
-      action={item.action}
-      index={i}
-      figures={
-        item.event && hasFigures(item.event) ? (
-          <CardBody event={item.event} compact />
-        ) : null
-      }
-    />
-  ));
 }
 
 export default async function BriefPage({
@@ -117,6 +90,7 @@ export default async function BriefPage({
     to: typeof sp.to === "string" ? sp.to : undefined,
   };
   const now = Date.now();
+  const namesPromise = listCompanyNames();
   const user = await getDemoUser();
   const isins = user.portfolioIsins;
   const rules = await getTripwires(user.id);
@@ -151,11 +125,12 @@ export default async function BriefPage({
     ...new Set([...brief.tier1, ...brief.tier2].map((e) => e.isin)),
   ];
   const ledgers = tallyByIsin(await guidanceVerdictGroups(filingIsins));
+  const companies = await namesPromise;
 
-  const items: Item[] = [];
+  const rows: Row[] = [];
   for (const ev of [...brief.tier1, ...brief.tier2]) {
     const j = judgeEvent(ev, ledgers.get(ev.isin) ?? null);
-    items.push({
+    rows.push({
       key: ev.eventKey,
       symbol: ev.symbol,
       time: filedStamp(ev, now).short,
@@ -165,7 +140,6 @@ export default async function BriefPage({
       action: "Filing",
       priority: ev.priority,
       at: ev.filedAtMs,
-      event: ev,
     });
   }
   let quietMoves = 0;
@@ -180,7 +154,7 @@ export default async function BriefPage({
       continue;
     }
     const j = judgeMove(move);
-    items.push({
+    rows.push({
       key: `${a.isin}-${a.date}`,
       symbol: a.symbol,
       time: dayLabel(a.date),
@@ -192,18 +166,34 @@ export default async function BriefPage({
       at: Date.parse(`${a.date}T00:00:00Z`),
     });
   }
-  items.sort(
+  rows.sort(
     (a, b) =>
       decisionRank(a.decision) - decisionRank(b.decision) ||
       b.priority - a.priority ||
       b.at - a.at,
   );
 
-  const act = items.filter((i) => i.decision === "act");
-  const watch = items.filter((i) => i.decision === "watch");
-  const quiet = brief.counts.events === 0 && items.length === 0;
+  const actRows = rows.filter((r) => r.decision === "act");
+  const watchRows = rows.filter((r) => r.decision === "watch");
+  const act: PushLine[] = actRows.map((r) => ({
+    key: r.key,
+    symbol: r.symbol,
+    time: r.time,
+    sentence: r.sentence,
+    href: r.href,
+    action: r.action,
+  }));
+  const watch = watchRows.map((r) => ({
+    symbol: r.symbol,
+    sentence: r.sentence,
+  }));
+  const quiet = !act.length && !watch.length;
   const calendar = calendarLine(now, brief.anomalies, win);
-  const upcoming = brief.upcoming ?? [];
+  const quietReason = quiet
+    ? brief.quiet?.reason === "Nothing needs you"
+      ? "No filings in this window."
+      : (brief.quiet?.reason ?? "No filings in this window.")
+    : null;
 
   return (
     <main className="flex-1 pb-6">
@@ -223,34 +213,6 @@ export default async function BriefPage({
         <p className="gutter mt-3 receipt text-ink-2">{calendar}</p>
       ) : null}
 
-      {act.length ? (
-        <section className="mt-5 flex flex-col gap-3" aria-label="Decisions">
-          {decisionCards(act)}
-        </section>
-      ) : null}
-
-      {watch.length ? (
-        <WatchLine
-          count={watch.length}
-          className={act.length ? "mt-4" : "mt-5"}
-        >
-          {decisionCards(watch)}
-        </WatchLine>
-      ) : null}
-
-      {!act.length && !watch.length && quiet ? (
-        <QuietState
-          reason={
-            brief.quiet?.reason === "Nothing needs you"
-              ? "No filings in this window."
-              : (brief.quiet?.reason ?? "No filings in this window.")
-          }
-          companiesChecked={brief.companiesChecked}
-          checkedAtMs={brief.checkedAtMs}
-          upcoming={upcoming}
-        />
-      ) : null}
-
       {quietMoves > 0 ? (
         <p className="gutter mt-3 receipt text-ink-3">
           {quietMoves} volume {quietMoves === 1 ? "hit" : "hits"} under{" "}
@@ -258,25 +220,18 @@ export default async function BriefPage({
         </p>
       ) : null}
 
-      {brief.tier3.length ? (
-        <section className="mt-6" aria-label="Filed away">
-          <Fold groups={brief.tier3} now={now} />
-        </section>
-      ) : null}
-
-      {!quiet && upcoming.length ? (
-        <section className="mt-6" aria-labelledby="coming-up">
-          <TierHeader id="coming-up">Coming up</TierHeader>
-          <div className="mt-1">
-            <ComingUp items={upcoming} />
-          </div>
-        </section>
-      ) : null}
-
-      <EndOfEdition
-        shown={act.length}
+      <Desk
+        act={act}
+        watch={watch}
         filedAway={brief.counts.filedAway}
-        checkedAtMs={brief.checkedAtMs}
+        quiet={quietReason}
+        checked={
+          brief.checkedAtMs
+            ? `checked NSE ${formatIst(brief.checkedAtMs, "HH:mm")} IST`
+            : null
+        }
+        companies={companies}
+        onTurn={deskTurn}
       />
     </main>
   );

@@ -912,6 +912,32 @@ export async function getCompanyBySymbol(
   return viaAlias[0] ?? null;
 }
 
+/** Symbols the desk can name. No prices, no filings. */
+export async function listCompanyNames(): Promise<
+  Array<{ symbol: string; name: string; aliases: string[] }>
+> {
+  const rows = await db
+    .select({
+      symbol: t.companies.nseSymbol,
+      name: t.companies.name,
+      aliasesJson: t.companies.aliasesJson,
+    })
+    .from(t.companies);
+  const out: Array<{ symbol: string; name: string; aliases: string[] }> = [];
+  for (const r of rows) {
+    const symbol = r.symbol.trim().toUpperCase();
+    if (!symbol) continue;
+    out.push({
+      symbol,
+      name: r.name.trim(),
+      aliases: parseJsonColumn(StringArray, r.aliasesJson, [])
+        .map((a) => a.trim())
+        .filter(Boolean),
+    });
+  }
+  return out;
+}
+
 function ebitdaOf(r: typeof t.resultsQuarters.$inferSelect): number | null {
   const base = r.pbeit ?? r.pbt;
   if (base == null || r.financeCosts == null || r.dna == null) return null;

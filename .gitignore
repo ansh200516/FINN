@@ -34,6 +34,8 @@ data/cache/
 
 # nested clone of another product — not part of FINN
 rfp-backend/
+dashboard/
+dashboard.zip
 
 # misc
 .DS_Store

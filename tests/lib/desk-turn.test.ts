@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { COMPANY_EMPTY } from "@/lib/companyTurn";
 import {
   contextLine,
   type DeskCompany,
@@ -8,7 +9,7 @@ import {
   NAME_THE_COMPANY,
   parseDeskTurn,
 } from "@/lib/deskTurn";
-import { Desk, PUSH_SHOWN } from "@/ui/Desk";
+import { Desk } from "@/ui/Desk";
 
 const book: DeskCompany[] = [
   { symbol: "ITC", name: "ITC Limited", aliases: [] },
@@ -212,15 +213,11 @@ describe("desk copy", () => {
 });
 
 describe("desk markup", () => {
-  it("opens on a short tape and a composer, not the filings", () => {
+  it("opens on the empty line and a composer, not the filings", () => {
     const act = ["One.", "Two.", "Three.", "Fourth stays off the tape."].map(
       (sentence, i) => ({
-        key: String(i),
         symbol: `N${i}`,
-        time: "09:00",
         sentence,
-        href: `/e/${i}`,
-        action: "Filing",
       }),
     );
     const html = renderToStaticMarkup(
@@ -228,21 +225,19 @@ describe("desk markup", () => {
         act,
         watch: [{ symbol: "ITC", sentence: "Results filed." }],
         filedAway: 14,
-        quiet: null,
         checked: "checked NSE 15:04 IST",
         companies: book,
         onTurn: () => Promise.reject(new Error("no turn")),
       }),
     );
-    expect(PUSH_SHOWN).toBe(3);
-    expect(html).toContain("One.");
-    expect(html).toContain("Three.");
+    expect(html).toContain(COMPANY_EMPTY);
+    expect(html).toContain('data-composer=""');
+    expect(html).toContain('data-card=""');
+    expect(html).not.toContain("One.");
     expect(html).not.toContain("Fourth stays off the tape.");
-    expect(html).toContain("1 more. Ask.");
-    expect(html).toContain("1 to watch");
-    expect(html).toContain("14 filed away");
-    expect(html).toContain("height:44px");
-    expect(html).toContain('placeholder="Ask"');
+    expect(html).not.toContain("1 more. Ask.");
+    expect(html).not.toContain("14 filed away");
+    expect(html).not.toContain("Results filed.");
     expect(html).not.toContain("The figures");
     expect(html).not.toContain("From the filings");
     expect(html).not.toContain("Promise ledger");

@@ -14,7 +14,8 @@ import {
   scoredPromises,
   tripwireId,
 } from "@/lib/companyTurn";
-import { CompanyConversation, ReplyBody } from "@/ui/CompanyConversation";
+import { ReplyBody } from "@/ui/CompanyConversation";
+import { Desk } from "@/ui/Desk";
 import type { LedgerRowView } from "@/ui/model";
 import { ScoredPromises } from "@/ui/ScoredPromises";
 
@@ -257,17 +258,17 @@ describe("presentAsk", () => {
 });
 
 describe("company thread markup", () => {
-  it("opens on one line and a 44px composer, with no filings menu", () => {
+  it("opens on one line and the composer, with no filings menu", () => {
     const html = renderToStaticMarkup(
-      createElement(CompanyConversation, {
-        symbol: "ITC",
-        name: "ITC Limited",
-        onReply: () => Promise.reject(new Error("no reply")),
-        onAsk: () => Promise.reject(new Error("no ask")),
+      createElement(Desk, {
+        companies: [{ symbol: "ITC", name: "ITC Limited", aliases: [] }],
+        initialSymbol: "ITC",
+        initialName: "ITC Limited",
+        onTurn: () => Promise.reject(new Error("no turn")),
       }),
     );
     expect(html).toContain(COMPANY_EMPTY);
-    expect(html).toContain("height:44px");
+    expect(html).toContain('data-composer=""');
     expect(html).toContain("ITC Limited");
     expect(html).not.toContain("From the filings");
     expect(html).not.toContain("Promise ledger");

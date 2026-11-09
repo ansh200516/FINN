@@ -1,33 +1,28 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------------
-   FINN design tokens — "Ledger" (docs/research/07-design-ux.md §6)
-   Paper theme by default; Ink via [data-theme="ink"] or prefers-color-scheme.
+   FINN tokens, taken from the dashboard: near-black, cyan, Geist.
    ------------------------------------------------------------------------ */
 :root {
-  /* colour — paper */
-  --bg: #f6f2ea;
-  --surface: #fdfbf6;
-  --ink: #15130f;
-  --ink-2: #4b4740;
-  /* tertiary/meta — 5.95:1 on bg, 6.42:1 on surface (was #6f6a60 at 4.8:1, too faint for 11 px mono) */
-  --ink-3: #615c52;
-  --rule: #e2dcce;
-  --accent: #1f3fa8;
-  --up: #1a7a4c;
-  --down: #b3261e;
-  --warn: #8f6400;
-  --shadow-sheet: 0 -8px 24px rgba(21, 19, 15, 0.12);
+  --bg: #050505;
+  --surface: rgba(255, 255, 255, 0.03);
+  --ink: #ededed;
+  --ink-2: #d4d4d8;
+  --ink-3: #a1a1aa;
+  --rule: rgba(255, 255, 255, 0.08);
+  --accent: #67e8f9;
+  --up: #22d3ee;
+  --down: #f87171;
+  --warn: #fbbf24;
+  --shadow-sheet: 0 -8px 24px rgba(0, 0, 0, 0.5);
 
-  /* type (next/font exposes --font-plex-sans / --font-plex-mono) */
   --font-sans:
-    var(--font-plex-sans), "IBM Plex Sans", system-ui, -apple-system,
-    "Segoe UI", sans-serif;
+    var(--font-geist-sans), "Geist", system-ui, -apple-system, "Segoe UI",
+    sans-serif;
   --font-mono:
-    var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+    var(--font-geist-mono), "Geist Mono", ui-monospace, SFMono-Regular, Menlo,
     monospace;
-  --font-serif:
-    var(--font-newsreader), "Newsreader", "IBM Plex Serif", Georgia, serif;
+  --font-serif: var(--font-geist-sans), "Geist", system-ui, sans-serif;
   --fs-eyebrow: 11px;
   --lh-eyebrow: 14px;
   --ls-eyebrow: 0.08em;
@@ -94,35 +89,19 @@
   --spark-stroke: 1.25px;
 }
 
-[data-theme="ink"] {
-  --bg: #0f1013;
-  --surface: #17181c;
-  --ink: #ece8df;
-  --ink-2: #aca79c;
-  /* 5.84:1 on bg, 5.45:1 on surface */
-  --ink-3: #938e85;
-  --rule: #272a30;
-  --accent: #93a9ff;
-  --up: #4fc98c;
-  --down: #f2776d;
-  --warn: #e3b64a;
+[data-theme="ink"],
+[data-theme="paper"] {
+  --bg: #050505;
+  --surface: rgba(255, 255, 255, 0.03);
+  --ink: #ededed;
+  --ink-2: #d4d4d8;
+  --ink-3: #a1a1aa;
+  --rule: rgba(255, 255, 255, 0.08);
+  --accent: #67e8f9;
+  --up: #22d3ee;
+  --down: #f87171;
+  --warn: #fbbf24;
   --shadow-sheet: 0 -8px 24px rgba(0, 0, 0, 0.5);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="paper"]) {
-    --bg: #0f1013;
-    --surface: #17181c;
-    --ink: #ece8df;
-    --ink-2: #aca79c;
-    --ink-3: #938e85;
-    --rule: #272a30;
-    --accent: #93a9ff;
-    --up: #4fc98c;
-    --down: #f2776d;
-    --warn: #e3b64a;
-    --shadow-sheet: 0 -8px 24px rgba(0, 0, 0, 0.5);
-  }
 }
 
 /* Expose tokens to Tailwind utilities: bg-bg, text-ink-2, border-rule, text-up, font-mono … */
@@ -152,7 +131,7 @@
     font-variant-numeric: tabular-nums lining-nums;
     background: var(--bg);
     color: var(--ink);
-    color-scheme: light dark;
+    color-scheme: dark;
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: contain;
@@ -166,7 +145,19 @@
   body {
     font-size: var(--fs-body);
     line-height: var(--lh-body);
-    background: var(--bg);
+    background-color: #050505;
+    background-image:
+      radial-gradient(
+        circle at 50% 0%,
+        rgba(6, 182, 212, 0.15) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        circle at 50% -20%,
+        rgba(56, 189, 248, 0.2) 0%,
+        transparent 70%
+      );
+    background-attachment: fixed;
     color: var(--ink);
     min-height: 100dvh;
     overflow-x: clip;

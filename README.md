@@ -8,6 +8,8 @@ Send the covering note to assessment@enam.com. The subject line is exactly:
 
 The note is [`docs/submission/covering-note.md`](docs/submission/covering-note.md). How the app was built is [`docs/submission/build-history.md`](docs/submission/build-history.md).
 
+Ask answers a price, the index, and corporate actions from [NSE's official MCP](https://www.nseindia.com/nse-mcp); five of 36 tools are wired, and the inventory is [`docs/research/30-nse-mcp-tools.md`](docs/research/30-nse-mcp-tools.md) (`527f876`).
+
 Ten minutes on a phone:
 
 1. Open the brief and read it through to "You're done". The window is the last 24 hours and widens when that day is empty. Use **7 d** for a longer book.

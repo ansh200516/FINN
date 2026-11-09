@@ -1,14 +1,19 @@
 import type { ReactNode } from "react";
-import { TopBar } from "./TopBar";
+import { getNavCounts } from "@/lib/queries";
+import { BottomNav } from "./BottomNav";
 
-/** Dashboard frame: a top bar, then one column. The desk fills the rest. */
-export function AppShell({ children }: { children: ReactNode }) {
+/** 430 px column + bottom bar. The column is the phone; desktop gets hairline edges. */
+export async function AppShell({ children }: { children: ReactNode }) {
+  let counts = { inbox: 0, alerts: 0 };
+  try {
+    counts = await getNavCounts();
+  } catch {
+    // the shell still renders; badges are a hint, not the page
+  }
   return (
-    <div className="flex h-dvh flex-col overflow-hidden pt-[env(safe-area-inset-top)]">
-      <TopBar />
-      <div className="flex h-full min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-        {children}
-      </div>
-    </div>
+    <>
+      <div className="shell">{children}</div>
+      <BottomNav counts={counts} />
+    </>
   );
 }

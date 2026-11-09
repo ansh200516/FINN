@@ -36,25 +36,14 @@ export function ReplyBody({
       return <PullReading block={reply.block} />;
     case "rule":
     case "rejected":
-      return (
-        <p className="text-sm font-light leading-relaxed tracking-wide text-zinc-100">
-          {reply.sentence}
-        </p>
-      );
+      return <p className="small text-ink">{reply.sentence}</p>;
     case "error":
-      return <p className="text-sm font-light text-red-300">{reply.message}</p>;
+      return <p className="small text-down">{reply.message}</p>;
     case "nse":
       return (
-        <div
-          className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3"
-          data-source="NSE"
-        >
-          <p className="text-sm font-light leading-relaxed text-zinc-100">
-            {reply.headline}
-          </p>
-          <p className="mt-1 font-mono text-[11px] tracking-wide text-zinc-500">
-            {reply.note}
-          </p>
+        <div className="card px-3 py-3" data-source="NSE">
+          <p className="small text-ink">{reply.headline}</p>
+          <p className="receipt mt-1">{reply.note}</p>
         </div>
       );
     case "ask":
@@ -67,11 +56,7 @@ export function ReplyBody({
 export function AskAnswer({ text, chips }: { text: string; chips: AskChip[] }) {
   return (
     <div>
-      {text ? (
-        <p className="text-sm font-light leading-relaxed text-zinc-100">
-          {text}
-        </p>
-      ) : null}
+      {text ? <p className="small text-ink">{text}</p> : null}
       {chips.length ? (
         <ul className="m-0 mt-2 flex list-none flex-wrap gap-2 p-0">
           {chips.map((c, i) => (

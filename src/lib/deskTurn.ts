@@ -31,7 +31,8 @@ export type DeskParse =
     }
   | { kind: "card"; symbol: string; text: string }
   | { kind: "live"; text: string; symbol: string | null }
-  | { kind: "ask"; symbol: string; question: string };
+  | { kind: "ask"; symbol: string; question: string }
+  | { kind: "vague"; symbol: string | null; named: boolean };
 
 export const NAME_THE_COMPANY = "Name the company.";
 
@@ -180,6 +181,47 @@ export function contextLine(symbol: string): string {
   return `On ${symbol}.`;
 }
 
+export type AssumptionWhy = "named" | "open" | "brief";
+
+/** One line. Names the company and the single card the vague ask opened. */
+export function assumptionLine(
+  symbol: string,
+  why: AssumptionWhy,
+  card: "results" | "promises",
+): string {
+  if (card === "promises") {
+    if (why === "named")
+      return `No results on file. Assuming ${symbol}'s promise ledger.`;
+    if (why === "open")
+      return `No results on file. Assuming ${symbol}, already open, and its promise ledger.`;
+    return `No results on file. Assuming ${symbol}, the first name to act on, and its promise ledger.`;
+  }
+  if (why === "named") return `Assuming ${symbol}'s latest results.`;
+  if (why === "open")
+    return `Assuming ${symbol}, already open, and its latest results.`;
+  return `Assuming ${symbol}, the first name to act on, and its latest results.`;
+}
+
+export function nothingOnFile(symbol: string, why: AssumptionWhy): string {
+  if (why === "named")
+    return `Assuming ${symbol}'s latest results. Nothing is on file.`;
+  if (why === "open")
+    return `Assuming ${symbol}, already open. Nothing is on file.`;
+  return `Assuming ${symbol}, the first name to act on. Nothing is on file.`;
+}
+
+/**
+ * A status question with no topic: "how is Amber", "anything I should know".
+ * A named subject ("how is the plant") stays a research question.
+ */
+const VAGUE_RE =
+  /^(?:how(?:'s|s| is| are)(?: it| they| things| we)?(?: going| doing| looking)?|what about|update(?: me)?|status(?: update)?|anything (?:i should know|i need to know|new|to know)(?: about)?|what should i know(?: about)?|what(?:'s| is|s) (?:going on|new))$/;
+
+export function isVagueAsk(fragment: string): boolean {
+  const n = norm(fragment);
+  return n.length > 0 && VAGUE_RE.test(n);
+}
+
 export function formatLines(
   head: (n: number) => string,
   empty: string,
@@ -215,34 +257,60 @@ export function parseDeskTurn(
   if (hit && (rest === "" || CONTEXT_ONLY.test(rest)))
     return { kind: "context", symbol: hit.symbol };
 
+  if (isVagueAsk(hit ? rest : text)) {
+    return {
+      kind: "vague",
+      symbol: hit?.symbol ?? (active ? active.trim().toUpperCase() : null),
+      named: Boolean(hit),
+    };
+  }
+
+  const peeled = peelStatus(rest);
+  const spoken = peeled ?? rest;
+  const spokenIntent = peeled ? parseCompanyTurn(spoken) : intent;
   const symbol = hit?.symbol ?? (active ? active.trim().toUpperCase() : null);
 
-  if (intent.kind === "rule") {
+  if (spokenIntent.kind === "rule") {
     const scope: "symbol" | "book" =
-      intent.scope === "book" || !symbol ? "book" : "symbol";
+      spokenIntent.scope === "book" || !symbol ? "book" : "symbol";
     return {
       kind: "rule",
       symbol: scope === "symbol" ? symbol : null,
       scope,
-      text: rest,
+      text: spoken,
     };
   }
-  if (intent.kind === "live") {
+  if (spokenIntent.kind === "live") {
     const focus = hit?.symbol ?? (active ? active.trim().toUpperCase() : null);
-    const live = classifyLiveAsk(rest, focus);
+    const live = classifyLiveAsk(spoken, focus);
     if (live?.kind === "quote" || live?.kind === "actions")
-      return { kind: "live", text: rest, symbol: live.symbol };
+      return { kind: "live", text: spoken, symbol: live.symbol };
     if (
       live?.kind === "index" ||
       live?.kind === "index-close" ||
       live?.kind === "status"
     )
-      return { kind: "live", text: rest, symbol: null };
+      return { kind: "live", text: spoken, symbol: null };
     return { kind: "need-company" };
   }
   if (!symbol) return { kind: "need-company" };
-  if (intent.kind === "ask") return { kind: "ask", symbol, question: text };
-  return { kind: "card", symbol, text: rest };
+  if (spokenIntent.kind === "ask")
+    return { kind: "ask", symbol, question: text };
+  return { kind: "card", symbol, text: spoken };
+}
+
+/** "how is the guidance" → "guidance", when the remainder is a real card. */
+function peelStatus(fragment: string): string | null {
+  const n = norm(fragment);
+  const peeled = n
+    .replace(
+      /^(?:how(?:'s|s| is| are)(?: it| they| things)?|what about|update on|status of)\s+/,
+      "",
+    )
+    .trim();
+  if (!peeled || peeled === n) return null;
+  if (parseCompanyTurn(peeled).kind === "ask") return null;
+  return peeled;
 }
 
 function isPhrase(raw: string, set: Set<string>): boolean {

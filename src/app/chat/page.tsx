@@ -1,0 +1,31 @@
+import type { Metadata } from "next";
+import { deskTurn } from "@/app/c/[symbol]/actions";
+import { loadDeskFacts } from "@/lib/deskFacts";
+import { Desk } from "@/ui/Desk";
+
+export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { title: "Chat" };
+
+export default async function ChatPage() {
+  const facts = await loadDeskFacts();
+  return (
+    <main className="flex-1">
+      <header className="gutter pt-5">
+        <p className="eyebrow">Chat</p>
+        <h1 className="dateline text-ink mt-1">Ask when you want to.</h1>
+        <p className="receipt mt-2">
+          One card in the thread. The brief and the company page stay put.
+        </p>
+      </header>
+      <Desk
+        companies={facts.companies}
+        act={facts.act}
+        watch={facts.watch}
+        filedAway={facts.filedAway}
+        checked={facts.checked}
+        onTurn={deskTurn}
+      />
+    </main>
+  );
+}

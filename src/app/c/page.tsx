@@ -59,16 +59,20 @@ export default async function CompaniesPage() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-[480px] px-3 py-3 pb-8">
-      <header className="flex items-end justify-between gap-3 rounded-xl border border-white/5 bg-black/20 p-4 backdrop-blur-md">
-        <div className="min-w-0">
-          <p className="text-[10px] font-medium tracking-widest text-zinc-500 uppercase">
-            Companies
-          </p>
-          <h1 className="mt-1 text-lg font-light tracking-wide text-zinc-100">
+    <main className="flex-1 pb-8">
+      <header className="gutter pt-5 flex items-end justify-between gap-3">
+        <div>
+          <p className="eyebrow reveal">Companies</p>
+          <h1
+            className="dateline text-ink mt-1 reveal"
+            style={{ animationDelay: "60ms" }}
+          >
             {rows.length ? `${rows.length} on the book.` : "An empty book."}
           </h1>
-          <p className="mt-2 font-mono text-[11px] text-zinc-500">
+          <p
+            className="receipt mt-2 reveal"
+            style={{ animationDelay: "120ms" }}
+          >
             close · 1 d · last filing · open promises
           </p>
         </div>

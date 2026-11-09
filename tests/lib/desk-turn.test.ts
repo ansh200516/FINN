@@ -3,12 +3,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { COMPANY_EMPTY } from "@/lib/companyTurn";
 import {
+  assumptionLine,
   contextLine,
   type DeskCompany,
   formatLines,
   NAME_THE_COMPANY,
+  nothingOnFile,
   parseDeskTurn,
 } from "@/lib/deskTurn";
+import { cardHref, cardLinkLabel } from "@/ui/cardHref";
 import { Desk } from "@/ui/Desk";
 
 const book: DeskCompany[] = [
@@ -137,6 +140,30 @@ describe("parseDeskTurn", () => {
     ).toEqual({
       kind: "need-company",
     });
+    expect(parseDeskTurn("how is itc", book, null)).toEqual({
+      kind: "vague",
+      symbol: "ITC",
+      named: true,
+    });
+    expect(parseDeskTurn("how is Amber", amberBook(), null)).toEqual({
+      kind: "vague",
+      symbol: "AMBER",
+      named: true,
+    });
+    expect(parseDeskTurn("anything I should know", book, null)).toEqual({
+      kind: "vague",
+      symbol: null,
+      named: false,
+    });
+    expect(parseDeskTurn("anything I should know", book, "ITC")).toEqual({
+      kind: "vague",
+      symbol: "ITC",
+      named: false,
+    });
+    expect(parseDeskTurn("how is the itc plant", book, null)).toMatchObject({
+      kind: "ask",
+      symbol: "ITC",
+    });
     expect(parseDeskTurn("what needs a decision?", book, null)).toEqual({
       kind: "brief",
     });
@@ -209,8 +236,35 @@ describe("desk copy", () => {
     expect(
       formatLines((n) => `${n} to act on.`, "Nothing to act on.", []),
     ).toBe("Nothing to act on.");
+    expect(assumptionLine("AMBER", "named", "results")).toBe(
+      "Assuming AMBER's latest results.",
+    );
+    expect(assumptionLine("RELIANCE", "brief", "results")).toBe(
+      "Assuming RELIANCE, the first name to act on, and its latest results.",
+    );
+    expect(nothingOnFile("ITC", "open")).toBe(
+      "Assuming ITC, already open. Nothing is on file.",
+    );
+    expect(cardHref({ kind: "results", card: null }, "SUPREMEIND")).toBe(
+      "/c/SUPREMEIND#results",
+    );
+    expect(cardHref({ kind: "rule", sentence: "Saved." }, "ITC")).toBe(
+      "/alerts",
+    );
+    expect(cardLinkLabel("/c/RELIANCE", "RELIANCE")).toBe("Open RELIANCE");
   });
 });
+
+function amberBook(): DeskCompany[] {
+  return [
+    ...book,
+    {
+      symbol: "AMBER",
+      name: "Amber Enterprises India Limited",
+      aliases: [],
+    },
+  ];
+}
 
 describe("desk markup", () => {
   it("opens on the empty line and a composer, not the filings", () => {
@@ -232,7 +286,7 @@ describe("desk markup", () => {
     );
     expect(html).toContain(COMPANY_EMPTY);
     expect(html).toContain('data-composer=""');
-    expect(html).toContain('data-card=""');
+    expect(html).not.toContain('data-card=""');
     expect(html).not.toContain("One.");
     expect(html).not.toContain("Fourth stays off the tape.");
     expect(html).not.toContain("1 more. Ask.");

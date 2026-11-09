@@ -32,6 +32,12 @@ function Glyph({ name }: { name: string }) {
           <path d="M3 17V8l4-2.5V17M7 17V5l5 2.5V17M12 17V9l5-2v10M2.5 17h15" />
         </svg>
       );
+    case "Chat":
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M4 5.5h12v7.5H8.5L4 16.5z" />
+        </svg>
+      );
     case "Alerts":
       return (
         <svg {...common} aria-hidden="true">
@@ -57,6 +63,11 @@ const TABS = [
     href: "/c",
     label: "Companies",
     match: (p: string) => p === "/c" || p.startsWith("/c/") || p === "/add",
+  },
+  {
+    href: "/chat",
+    label: "Chat",
+    match: (p: string) => p === "/chat" || p.startsWith("/chat/"),
   },
   {
     href: "/alerts",
@@ -106,7 +117,7 @@ export function BottomNav({
 
   return (
     <nav className="bar-fixed bar" aria-label="Primary">
-      <ul className="m-0 grid h-[var(--bar-h)] list-none grid-cols-4 p-0">
+      <ul className="m-0 grid h-[var(--bar-h)] list-none grid-cols-5 p-0">
         {TABS.map((t) => {
           const active = t.match(pathname);
           const n = tabCount(t.label, counts, pathname, noted);
@@ -133,7 +144,9 @@ export function BottomNav({
                     </span>
                   ) : null}
                 </span>
-                <span className={`meta ${active ? "font-semibold" : ""}`}>
+                <span
+                  className={`meta whitespace-nowrap ${active ? "font-semibold" : ""}`}
+                >
                   {t.label}
                 </span>
                 <span

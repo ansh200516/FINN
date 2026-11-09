@@ -45,4 +45,57 @@ describe("classifyLiveAsk", () => {
       "needs-symbol",
     );
   });
+
+  it("routes corporate actions and one dated index close", () => {
+    expect(classifyLiveAsk("corporate actions", "RELIANCE")).toEqual({
+      kind: "actions",
+      symbol: "RELIANCE",
+      scope: "all",
+    });
+    expect(classifyLiveAsk("infy corporate actions", null)).toEqual({
+      kind: "actions",
+      symbol: "INFY",
+      scope: "all",
+    });
+    expect(classifyLiveAsk("corporate actions", null)).toEqual({
+      kind: "needs-symbol",
+      bare: true,
+    });
+    expect(classifyLiveAsk("check for splits or bonuses too", "ITC")).toEqual({
+      kind: "actions",
+      symbol: "ITC",
+      scope: "capital",
+    });
+    expect(classifyLiveAsk("splits, bonuses or dividends", "ITC")).toEqual({
+      kind: "actions",
+      symbol: "ITC",
+      scope: "all",
+    });
+    expect(classifyLiveAsk("nifty on 6 october 2026", "ITC")).toEqual({
+      kind: "index-close",
+      indexName: "NIFTY 50",
+      date: "2026-10-06",
+    });
+    expect(
+      classifyLiveAsk("what did nifty close at on 2026-11-09", null),
+    ).toEqual({
+      kind: "index-close",
+      indexName: "NIFTY 50",
+      date: "2026-11-09",
+    });
+    expect(classifyLiveAsk("bank nifty as of 6 oct 2026", null)).toEqual({
+      kind: "index-close",
+      indexName: "NIFTY BANK",
+      date: "2026-10-06",
+    });
+    expect(classifyLiveAsk("nifty", "ITC")).toEqual({
+      kind: "index",
+      indexName: "NIFTY 50",
+    });
+    expect(
+      classifyLiveAsk("compare nifty and bank nifty on 6 october 2026", null),
+    ).toBeNull();
+    expect(classifyLiveAsk("infy dividend", "ITC")).toBeNull();
+    expect(classifyLiveAsk("reliance price", null)?.kind).toBe("quote");
+  });
 });

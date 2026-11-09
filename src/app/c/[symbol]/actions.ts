@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { TripwireRule } from "@/db/json";
 import { tripwires, users } from "@/db/schema";
-import { answerNse, NSE_FEED_FAILED } from "@/engine/sources/nse-mcp";
+import {
+  answerNse,
+  NSE_FEED_FAILED,
+  NseFeedError,
+} from "@/engine/sources/nse-mcp";
 import type { Tripwire } from "@/engine/types";
 import { invalidateBrief } from "@/lib/brief";
 import {
@@ -100,8 +104,11 @@ async function nseReply(
   try {
     const card = await answerNse(live);
     return { kind: "nse", headline: card.headline, note: card.note };
-  } catch {
-    return { kind: "error", message: NSE_FEED_FAILED };
+  } catch (err) {
+    return {
+      kind: "error",
+      message: err instanceof NseFeedError ? err.message : NSE_FEED_FAILED,
+    };
   }
 }
 

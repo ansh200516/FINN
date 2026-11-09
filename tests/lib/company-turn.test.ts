@@ -152,6 +152,15 @@ describe("parseCompanyTurn", () => {
     expect(parseCompanyTurn("nifty")).toEqual({ kind: "live" });
     expect(parseCompanyTurn("is the market open")).toEqual({ kind: "live" });
     expect(parseCompanyTurn("reliance price")).toEqual({ kind: "live" });
+    expect(parseCompanyTurn("corporate actions")).toEqual({ kind: "live" });
+    expect(parseCompanyTurn("nifty on 6 october 2026")).toEqual({
+      kind: "live",
+    });
+    expect(parseCompanyTurn("always tell me about bonus or split")).toEqual({
+      kind: "rule",
+      scope: "symbol",
+      rule: { kind: "category", params: { categories: ["bonus_split"] } },
+    });
   });
 });
 

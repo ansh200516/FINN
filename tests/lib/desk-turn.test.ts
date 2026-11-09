@@ -168,6 +168,29 @@ describe("parseDeskTurn", () => {
     expect(parseDeskTurn("price", book, null)).toEqual({
       kind: "need-company",
     });
+    expect(parseDeskTurn("reliance corporate actions", book, null)).toEqual({
+      kind: "live",
+      text: "corporate actions",
+      symbol: "RELIANCE",
+    });
+    expect(parseDeskTurn("hdfc bank corporate actions", book, null)).toEqual({
+      kind: "live",
+      text: "corporate actions",
+      symbol: "HDFCBANK",
+    });
+    expect(parseDeskTurn("check for splits or bonuses", book, "ITC")).toEqual({
+      kind: "live",
+      text: "check for splits or bonuses",
+      symbol: "ITC",
+    });
+    expect(parseDeskTurn("corporate actions", book, null)).toEqual({
+      kind: "need-company",
+    });
+    expect(parseDeskTurn("nifty on 6 october 2026", book, "ITC")).toEqual({
+      kind: "live",
+      text: "nifty on 6 october 2026",
+      symbol: null,
+    });
   });
 });
 

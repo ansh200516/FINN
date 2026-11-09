@@ -230,9 +230,13 @@ export function parseDeskTurn(
   if (intent.kind === "live") {
     const focus = hit?.symbol ?? (active ? active.trim().toUpperCase() : null);
     const live = classifyLiveAsk(rest, focus);
-    if (live?.kind === "quote")
+    if (live?.kind === "quote" || live?.kind === "actions")
       return { kind: "live", text: rest, symbol: live.symbol };
-    if (live?.kind === "index" || live?.kind === "status")
+    if (
+      live?.kind === "index" ||
+      live?.kind === "index-close" ||
+      live?.kind === "status"
+    )
       return { kind: "live", text: rest, symbol: null };
     return { kind: "need-company" };
   }

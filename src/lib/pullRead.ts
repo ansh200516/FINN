@@ -123,9 +123,14 @@ export async function loadPullMenu(args: {
       .innerJoin(documents, eq(documentPages.docId, documents.id))
       .where(
         and(
-          eq(documents.isin, args.isin),
-          eq(documents.kind, "annual_report"),
-          eq(documents.textStatus, "ok"),
+          sql`${documentPages.docId} = (
+            select ${documents.id} from ${documents}
+            where ${documents.isin} = ${args.isin}
+              and ${documents.kind} = 'annual_report'
+              and ${documents.textStatus} = 'ok'
+            order by ${documents.period} desc, ${documents.pages} desc
+            limit 1
+          )`,
           needle,
         ),
       ),

@@ -1,11 +1,13 @@
 import type { PullBlock } from "@/lib/pull";
 import { NOT_IN_FILINGS } from "@/lib/pull";
+import { readingId } from "./readingId";
 import { SectionAccordion } from "./SectionAccordion";
 import { TierHeader } from "./TierHeader";
 
 /**
- * The brief's pull menu, under the promise ledger. One accordion per output.
- * Collapsed verdicts are the reading; the body is the page or the XBRL row.
+ * The eight readings, under the promise ledger. The index that jumps here
+ * sits under the price. One accordion per output: the collapsed verdict is
+ * the reading; the body is the page or the XBRL row.
  */
 export function PullMenu({ blocks }: { blocks: PullBlock[] }) {
   return (
@@ -24,6 +26,7 @@ export function PullMenu({ blocks }: { blocks: PullBlock[] }) {
       {blocks.map((block) => (
         <SectionAccordion
           key={block.title}
+          id={readingId(block.title)}
           title={block.title}
           verdict={block.verdict}
         >

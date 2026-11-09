@@ -21,11 +21,13 @@ import { CategoryGlyph } from "@/ui/CategoryGlyph";
 import { DeltaChip } from "@/ui/DeltaChip";
 import { Empty } from "@/ui/Empty";
 import { filedStamp } from "@/ui/FilingCard";
+import { FilingIndex } from "@/ui/FilingIndex";
 import { LedgerList, VerdictLegend } from "@/ui/LedgerList";
 import type { QuarterRow } from "@/ui/model";
 import { PullMenu } from "@/ui/PullMenu";
 import { priceHeadline, volumeWord } from "@/ui/prices";
 import { snapshotChip } from "@/ui/ResultsGrid";
+import { readingId } from "@/ui/readingId";
 import { SectionAccordion } from "@/ui/SectionAccordion";
 import { Sparkline } from "@/ui/Sparkline";
 import { TierHeader } from "@/ui/TierHeader";
@@ -356,6 +358,16 @@ export default async function CompanyPage({
         ) : null}
       </header>
 
+      <FilingIndex
+        items={[
+          { id: "ledger", label: "Promises" },
+          ...pull.map((block) => ({
+            id: readingId(block.title),
+            label: block.title,
+          })),
+        ]}
+      />
+
       {/* Snapshot */}
       <section
         className="gutter mt-5 reveal"
@@ -443,7 +455,11 @@ export default async function CompanyPage({
       </section>
 
       {/* Promise ledger */}
-      <section className="mt-6" aria-labelledby="ledger" id="ledger">
+      <section
+        className="mt-6 scroll-mt-3"
+        aria-labelledby="ledger"
+        id="ledger"
+      >
         <TierHeader
           id="ledger-h"
           count={

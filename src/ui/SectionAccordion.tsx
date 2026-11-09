@@ -10,15 +10,21 @@ export function SectionAccordion({
   children,
   defaultOpen = false,
   count,
+  id,
 }: {
   title: string;
   verdict?: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
   count?: number | string;
+  id?: string;
 }) {
   return (
-    <details className="border-b border-rule" open={defaultOpen}>
+    <details
+      className="scroll-mt-3 border-b border-rule"
+      id={id}
+      open={defaultOpen}
+    >
       <summary className="row-touch gutter flex items-center gap-3 py-2 no-callout">
         <span className="chev text-ink-3" aria-hidden="true">
           ▸

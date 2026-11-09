@@ -1,7 +1,7 @@
 /**
  * Read path for the company-page pull menu. Stored pages and XBRL rows only.
  */
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   documentPages,
@@ -93,9 +93,8 @@ function guideRank(g: {
 export async function loadPullMenu(args: {
   isin: string;
   isBank: boolean;
-  hasTranscript: boolean;
 }): Promise<PullBlock[]> {
-  const [docRows, quarterRows, guideRows] = await Promise.all([
+  const [docRows, quarterRows, guideRows, callRows] = await Promise.all([
     db
       .select()
       .from(documents)
@@ -134,6 +133,16 @@ export async function loadPullMenu(args: {
         and(
           eq(guidance.isin, args.isin),
           or(eq(guidance.status, "open"), eq(guidance.status, "settled")),
+        ),
+      ),
+    db
+      .select({ n: count() })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.isin, args.isin),
+          eq(documents.kind, "transcript"),
+          eq(documents.textStatus, "ok"),
         ),
       ),
   ]);
@@ -238,8 +247,9 @@ export async function loadPullMenu(args: {
   });
 
   return composePull({
-    isBank: args.isBank,
-    hasTranscript: args.hasTranscript,
+    isBank:
+      args.isBank || quarters.some((q) => q.nii != null && q.ppop != null),
+    hasTranscript: (callRows[0]?.n ?? 0) > 0,
     period: doc?.period ?? null,
     reportUrl: doc?.url ?? null,
     pages,

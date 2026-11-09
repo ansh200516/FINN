@@ -13,7 +13,11 @@ import {
   quarterMonths,
 } from "@/lib/format";
 import { loadPullMenu } from "@/lib/pullRead";
-import { getAskBudget, getCompanyPage } from "@/lib/queries";
+import {
+  getAskBudget,
+  getCompanyBySymbol,
+  getCompanyPage,
+} from "@/lib/queries";
 import { formatIst } from "@/lib/time";
 import { loadTranscriptPendingBy } from "@/lib/transcriptPending";
 import { AskSheet } from "@/ui/AskSheet";
@@ -220,9 +224,18 @@ export default async function CompanyPage({
   params: Promise<{ symbol: string }>;
 }) {
   const { symbol } = await params;
-  const [model, budget] = await Promise.all([
+  const companyRow = await getCompanyBySymbol(symbol);
+  if (!companyRow) notFound();
+  const [model, budget, transcriptPendingBy, pull] = await Promise.all([
     getCompanyPage(symbol),
     getAskBudget(),
+    loadTranscriptPendingBy(companyRow.isin),
+    loadPullMenu({
+      isin: companyRow.isin,
+      isBank:
+        /bank/i.test(companyRow.industry ?? "") ||
+        /bank/i.test(companyRow.sector ?? ""),
+    }),
   ]);
   if (!model) notFound();
   const {
@@ -238,7 +251,6 @@ export default async function CompanyPage({
     (d) => documentRowStatus(d.textStatus) !== null,
   );
   const chip = snapshotChip(snapshot);
-  const transcriptPendingBy = await loadTranscriptPendingBy(company.isin);
   const now = Date.now();
   const consolidated = quarters.filter((q) => q.basis === "consolidated");
   const standalone = quarters.filter((q) => q.basis === "standalone");
@@ -246,14 +258,6 @@ export default async function CompanyPage({
   const trajectory = pool.slice(-12);
   const latestQ = pool.at(-1);
   const transcripts = documents.filter((d) => d.kind === "transcript");
-  const hasCall = storedDocuments.some(
-    (d) => d.kind === "transcript" && d.textStatus === "ok",
-  );
-  const pull = await loadPullMenu({
-    isin: company.isin,
-    isBank: snapshot.isBank,
-    hasTranscript: hasCall,
-  });
   const openPromises = ledger.filter((r) => r.status === "open").length;
   const settled = ledger.filter((r) => r.status === "settled").length;
   const px = priceHeadline(prices);

@@ -47,7 +47,7 @@ export function ScoredPromises({
                 ▸
               </span>
             </summary>
-            <blockquote className="quote text-ink border-l-2 border-ink pl-3 mt-1 mb-2">
+            <blockquote className="quote text-ink-2 border-l-2 border-accent pl-3 mt-1 mb-2">
               “{r.quote}”
             </blockquote>
             <p className="receipt mb-2">

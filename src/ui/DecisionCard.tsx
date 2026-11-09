@@ -44,7 +44,7 @@ export function DecisionCard({
       data-decision={decision}
     >
       <div className="flex items-center gap-2">
-        <SymbolChip symbol={symbol} plain className="text-ink shrink-0" />
+        <SymbolChip symbol={symbol} plain className="shrink-0" />
         <span className="receipt ml-auto shrink-0 text-ink-3">{time}</span>
         <span className={`${CHIP[decision]} shrink-0`}>{word}</span>
       </div>

@@ -130,7 +130,7 @@ export function BottomNav({
                 aria-current={active ? "page" : undefined}
                 aria-label={aria}
                 className={`no-callout flex h-full flex-col items-center justify-center gap-0.5 ${
-                  active ? "text-ink" : "text-ink-3"
+                  active ? "text-accent" : "text-ink-3"
                 }`}
               >
                 <span className="relative inline-flex">
@@ -138,7 +138,7 @@ export function BottomNav({
                   {badge ? (
                     <span
                       aria-hidden="true"
-                      className="absolute -top-1.5 -right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink px-1 font-mono text-[11px] font-medium leading-none text-bg"
+                      className="absolute -top-1.5 -right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-1 font-mono text-[11px] font-medium leading-none text-bg"
                     >
                       {badge}
                     </span>

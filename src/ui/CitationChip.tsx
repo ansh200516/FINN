@@ -52,7 +52,7 @@ export function CitationChip({
         title={citation.label}
         ariaLabel="Source quote"
       >
-        <blockquote className="mt-3 border-l-2 border-ink pl-3">
+        <blockquote className="mt-3 border-l-2 border-accent pl-3">
           <p className="quote text-ink">“{citation.quote}”</p>
         </blockquote>
         <p className="receipt mt-3">

@@ -99,7 +99,7 @@ function PullBody({ block }: { block: PullBlock }) {
           {block.cites.map((c) => (
             <li key={`${c.label}-${c.quote ?? ""}`} className="mt-3">
               {c.quote && proseQuote(c.quote) ? (
-                <blockquote className="quote text-ink border-l-2 border-ink pl-3">
+                <blockquote className="quote text-ink-2 border-l-2 border-accent pl-3">
                   {c.quote}
                 </blockquote>
               ) : null}

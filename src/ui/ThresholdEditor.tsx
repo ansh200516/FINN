@@ -150,7 +150,7 @@ function Mark({ on }: { on: boolean }) {
     <span
       aria-hidden="true"
       className={`grid size-4 shrink-0 place-items-center rounded-[2px] border ${
-        on ? "border-ink bg-ink" : "border-ink-3"
+        on ? "border-accent bg-accent" : "border-ink-3"
       }`}
     >
       {on ? (

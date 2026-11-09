@@ -290,7 +290,7 @@ export default async function CompanyPage({
           {company.name}
         </h1>
         <div
-          className="mt-3 flex items-end justify-between gap-4 reveal"
+          className="card mt-3 flex items-end justify-between gap-3 px-3 py-3 reveal"
           style={{ animationDelay: "120ms" }}
         >
           <div className="min-w-0">
@@ -316,8 +316,8 @@ export default async function CompanyPage({
             volumes={prices.volumes}
             sessionTypes={prices.sessionTypes}
             highlightIndex={volumeHighlight}
-            width={140}
-            height={44}
+            width={112}
+            height={40}
             ariaLabel={`${company.symbol} close, last ${prices.closes.length} sessions${px.specialCount ? `, ${px.specialCount} special session${px.specialCount === 1 ? "" : "s"} shown hollow` : ""}`}
           />
         </div>

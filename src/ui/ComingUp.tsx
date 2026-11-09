@@ -30,7 +30,7 @@ export function ComingUp({
               className={`row-touch flex items-center gap-3 no-callout ${gutter ? "gutter" : ""}`}
             >
               <span className="receipt w-[84px] shrink-0">{u.dateIst}</span>
-              <span className="symbol small w-[88px] shrink-0 truncate text-ink">
+              <span className="symbol small w-[88px] shrink-0 truncate">
                 {u.symbol}
               </span>
               <span className="small min-w-0 flex-1 truncate text-ink-2">

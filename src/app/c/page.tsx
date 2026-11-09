@@ -23,9 +23,7 @@ export default async function CompaniesPage() {
         className="row-touch gutter flex items-center gap-3 py-2 no-callout"
       >
         <span className="w-[104px] shrink-0 min-w-0">
-          <span className="symbol small text-ink block truncate">
-            {r.symbol}
-          </span>
+          <span className="symbol small block truncate">{r.symbol}</span>
           <span className="meta text-ink-3 block truncate">
             {r.industry ?? r.name}
           </span>

@@ -171,7 +171,7 @@ export function AddCompanyForm({
                     }}
                     className="row-touch gutter flex w-full items-center gap-3 py-2 text-left"
                   >
-                    <span className="symbol small w-[112px] shrink-0 text-ink truncate">
+                    <span className="symbol small w-[112px] shrink-0 truncate">
                       {r[0]}
                     </span>
                     <span className="small flex-1 min-w-0 text-ink-2 truncate">

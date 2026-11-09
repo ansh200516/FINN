@@ -86,9 +86,7 @@ export default async function InboxPage() {
                       <span className="text-ink-3">
                         {KIND_LABEL[it.kind] ?? it.kind}
                         {it.symbol ? (
-                          <span className="symbol text-ink ml-2">
-                            {it.symbol}
-                          </span>
+                          <span className="symbol ml-2">{it.symbol}</span>
                         ) : null}
                       </span>
                       <span className="receipt">

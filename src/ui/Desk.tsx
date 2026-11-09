@@ -1,11 +1,14 @@
 "use client";
 
+import { Loader2, Send } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
   type AskChip,
   COMPANY_EMPTY,
   type CompanyReply,
+  NO_PROMISES,
+  NO_RESULTS,
   presentAsk,
 } from "@/lib/companyTurn";
 import {
@@ -293,31 +296,28 @@ export function Desk({
 
   return (
     <>
-      <section className="pb-8" aria-label="Chat">
+      <section className="pb-4" aria-label="Chat">
         <div
-          className="gutter mt-4 pb-4"
+          className="gutter mt-4 pb-20"
           role="log"
           aria-live="polite"
           aria-relevant="additions"
           aria-busy={busy}
         >
           {turns.length ? (
-            <ol className="m-0 list-none p-0">
+            <ol className="m-0 flex list-none flex-col gap-6 p-0">
               {turns.map((turn) => (
-                <li
-                  key={turn.id}
-                  className="border-t border-rule py-4 first:border-t-0 first:pt-0"
-                >
-                  <p className="quote text-ink-2 italic">{turn.question}</p>
-                  <div className="mt-3">
-                    <TurnBody turn={turn} />
+                <li key={turn.id} className="flex flex-col gap-3">
+                  <div className="flex flex-col items-end">
+                    <div className="bubble-user">{turn.question}</div>
                   </div>
+                  <TurnBody turn={turn} />
                 </li>
               ))}
             </ol>
           ) : (
-            <div>
-              <p className="quote text-ink">{COMPANY_EMPTY}</p>
+            <div className="flex flex-col items-start">
+              <div className="bubble-agent">{COMPANY_EMPTY}</div>
               {named ? <p className="receipt mt-2">{named}</p> : null}
             </div>
           )}
@@ -327,44 +327,39 @@ export function Desk({
 
       <form
         data-composer=""
-        className="fixed left-1/2 z-[29] flex w-full max-w-[430px] -translate-x-1/2 items-center border-t border-rule bg-bg"
-        style={{
-          bottom: "calc(var(--bar-h) + env(safe-area-inset-bottom))",
-          height: 44,
-        }}
+        className="composer-dock"
         onSubmit={(event) => {
           event.preventDefault();
           void submit(draft);
         }}
       >
-        <label className="sr-only" htmlFor={inputId}>
-          {symbol ? `Ask ${symbol}` : "Ask"}
-        </label>
-        {symbol ? (
-          <span className="eyebrow pl-4 text-ink">{symbol}</span>
-        ) : null}
-        <input
-          id={inputId}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={symbol ? `Ask ${symbol}` : "Ask"}
-          maxLength={500}
-          enterKeyHint="send"
-          autoComplete="off"
-          autoCapitalize="off"
-          autoCorrect="off"
-          disabled={busy}
-          className="h-[44px] min-w-0 flex-1 bg-transparent px-4 text-[16px] text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
-          style={{ height: 44 }}
-        />
-        <button
-          type="submit"
-          disabled={busy || !draft.trim()}
-          className="h-[44px] px-4 eyebrow text-accent disabled:text-ink-3"
-          style={{ height: 44, minWidth: 44 }}
-        >
-          Send
-        </button>
+        <div className="composer-box">
+          <label className="sr-only" htmlFor={inputId}>
+            {symbol ? `Ask ${symbol}` : "Ask"}
+          </label>
+          {symbol ? <span className="ticker-chip">{symbol}</span> : null}
+          <input
+            id={inputId}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={symbol ? `Ask ${symbol}` : "Ask"}
+            maxLength={500}
+            enterKeyHint="send"
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            disabled={busy}
+            className="h-11 min-w-0 flex-1 bg-transparent px-3 text-[16px] font-light text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
+          />
+          <button
+            type="submit"
+            disabled={busy || !draft.trim()}
+            className="composer-send"
+            aria-label="Send"
+          >
+            <Send size={16} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        </div>
       </form>
     </>
   );
@@ -444,46 +439,122 @@ function TurnBody({ turn }: { turn: Turn }) {
   const shown = turn.shown;
   if (shown.kind === "pending") {
     return (
-      <p className="receipt">
-        {shown.ask
-          ? askWaitCopy(
-              turn.symbol ?? "the company",
-              shown.slow ? ASK_WAIT_SLOW_MS : 0,
-            )
-          : "Looking."}
+      <p className="agent-status">
+        <Loader2 className="animate-spin" size={14} aria-hidden="true" />
+        <span>
+          {shown.ask
+            ? askWaitCopy(
+                turn.symbol ?? "the company",
+                shown.slow ? ASK_WAIT_SLOW_MS : 0,
+              )
+            : "Looking."}
+        </span>
       </p>
     );
   }
-  if (shown.kind === "error")
-    return <p className="small text-ink">{shown.message}</p>;
+  if (shown.kind === "error") {
+    return <AgentTurn text={shown.message} tone="error" />;
+  }
   if (shown.kind === "line") {
-    return (
-      <div>
-        <p className="small text-ink">{shown.text}</p>
-        <CardLink href={shown.href} label={shown.link} />
-      </div>
-    );
+    return <AgentTurn text={shown.text} href={shown.href} link={shown.link} />;
   }
   if (shown.kind === "ask") {
     return (
-      <div>
-        <AskAnswer text={shown.text} chips={shown.chips} />
-        <CardLink href={shown.href} label={shown.link} />
-      </div>
+      <AgentTurn
+        text={shown.text}
+        href={shown.href}
+        link={shown.link}
+        result={
+          shown.chips.length ? <AskAnswer text="" chips={shown.chips} /> : null
+        }
+      />
     );
   }
   if (shown.kind === "reply") {
+    const prose = shown.lead ?? replyProse(shown.reply);
     return (
-      <div>
-        {shown.lead ? <p className="small text-ink">{shown.lead}</p> : null}
-        <div className={shown.lead ? "mt-3" : undefined}>
-          <ReplyBody reply={shown.reply} symbol={shown.symbol} />
-        </div>
-        <CardLink href={shown.href} label={shown.link} />
-      </div>
+      <AgentTurn
+        text={prose}
+        href={shown.href}
+        link={shown.link}
+        tone={shown.reply.kind === "error" ? "error" : "agent"}
+        result={replyResult(shown.reply, shown.symbol)}
+      />
     );
   }
   return null;
+}
+
+/** The one sentence above a structured result. Null when the result is the sentence. */
+function replyProse(reply: CompanyReply): string | null {
+  switch (reply.kind) {
+    case "rule":
+    case "rejected":
+      return reply.sentence;
+    case "error":
+      return reply.message;
+    case "results":
+      return reply.card ? null : NO_RESULTS;
+    case "promises":
+      return reply.rows.length ? null : NO_PROMISES;
+    case "nse":
+      return reply.headline;
+    case "reading":
+      return reply.block.verdict || reply.block.title;
+    default:
+      return null;
+  }
+}
+
+function replyResult(reply: CompanyReply, symbol: string) {
+  switch (reply.kind) {
+    case "results":
+      return reply.card ? <ReplyBody reply={reply} symbol={symbol} /> : null;
+    case "promises":
+      return reply.rows.length ? (
+        <ReplyBody reply={reply} symbol={symbol} />
+      ) : null;
+    case "reading":
+      return <ReplyBody reply={reply} symbol={symbol} />;
+    case "nse":
+      return (
+        <div data-source="NSE">
+          <p className="receipt">{reply.note}</p>
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+function AgentTurn({
+  text,
+  result = null,
+  href = null,
+  link = null,
+  tone = "agent",
+}: {
+  text: string | null;
+  result?: ReactNode;
+  href?: string | null;
+  link?: string | null;
+  tone?: "agent" | "error";
+}) {
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-2">
+      {text ? (
+        <div
+          className={
+            tone === "error" ? "bubble-agent bubble-error" : "bubble-agent"
+          }
+        >
+          {text}
+        </div>
+      ) : null}
+      {result ? <div className="thread-result">{result}</div> : null}
+      <CardLink href={href ?? null} label={link ?? null} />
+    </div>
+  );
 }
 
 function CardLink({
@@ -495,12 +566,8 @@ function CardLink({
 }) {
   if (!href || !label) return null;
   return (
-    <Link
-      href={href}
-      className="hit mt-1 inline-flex items-center receipt text-accent"
-    >
+    <Link href={href} className="thread-link">
       {label}
-      <span aria-hidden="true"> →</span>
     </Link>
   );
 }

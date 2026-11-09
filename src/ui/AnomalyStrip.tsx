@@ -33,7 +33,7 @@ function Row({ a }: { a: AnomalyWithSymbol }) {
         className="row-touch flex items-center gap-3 gutter py-2 no-callout"
         aria-label={a.summary}
       >
-        <span className="w-[88px] shrink-0 symbol small text-ink truncate">
+        <span className="w-[88px] shrink-0 symbol small truncate">
           {a.symbol}
         </span>
         <span className="flex-1 min-w-0 flex items-baseline gap-3">

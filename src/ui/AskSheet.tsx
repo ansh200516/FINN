@@ -155,7 +155,7 @@ export function AskSheet({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="hit flex w-full items-center justify-between rounded-[var(--r-pill)] border border-rule bg-surface px-4 shadow-[0_6px_18px_rgba(21,19,15,0.10)] text-left"
+          className="hit flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 text-left backdrop-blur-md"
           aria-haspopup="dialog"
         >
           <span className="small text-ink-2 truncate">

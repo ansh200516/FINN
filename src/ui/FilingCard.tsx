@@ -105,7 +105,7 @@ export function OneLinerRow({ event, now }: { event: EventCard; now: number }) {
         href={`/e/${encodeURIComponent(event.eventKey)}`}
         className="row-touch flex items-center gap-3 gutter py-2 no-callout active:bg-surface"
       >
-        <span className="w-[88px] shrink-0 symbol small text-ink truncate">
+        <span className="w-[88px] shrink-0 symbol small truncate">
           {event.symbol}
         </span>
         <span className="flex-1 min-w-0">

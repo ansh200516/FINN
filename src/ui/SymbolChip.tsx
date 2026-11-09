@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-/** Ticker in Plex Sans 500 tracked +0.02em; links to the company page unless `plain`. */
+/** Ticker in Geist, tracked; links to the company page unless `plain`. */
 export function SymbolChip({
   symbol,
   plain = false,

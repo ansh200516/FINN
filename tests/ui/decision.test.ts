@@ -18,6 +18,7 @@ import {
   showAsMoveCard,
 } from "@/ui/decision";
 import type { EventCard } from "@/ui/model";
+import { WatchLine } from "@/ui/WatchLine";
 
 function ev(
   partial: Partial<EventCard> & Pick<EventCard, "category">,
@@ -67,10 +68,10 @@ const kept: LedgerCounts = {
 };
 
 describe("edition headline", () => {
-  it("counts decisions, and says when there are none", () => {
-    expect(editionHeadline(0)).toBe("Nothing to decide.");
-    expect(editionHeadline(1)).toBe("1 decision.");
-    expect(editionHeadline(3)).toBe("3 decisions.");
+  it("counts only what to act on", () => {
+    expect(editionHeadline(0)).toBe("Nothing to act on.");
+    expect(editionHeadline(1)).toBe("1 to act on.");
+    expect(editionHeadline(3)).toBe("3 to act on.");
   });
 });
 
@@ -257,6 +258,21 @@ describe("hasFigures", () => {
       ),
     ).toBe(true);
     expect(hasFigures(ev({ category: "dividend", card: null }))).toBe(false);
+  });
+});
+
+describe("WatchLine", () => {
+  it("stays one closed line until the tap", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        WatchLine,
+        { count: 12 },
+        createElement("p", null, "Revenue up 29% year on year."),
+      ),
+    );
+    expect(html).toContain("12 to watch");
+    expect(html).toContain("Revenue up 29% year on year.");
+    expect(html).not.toMatch(/<details[^>]*\sopen[\s>]/);
   });
 });
 

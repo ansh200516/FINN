@@ -36,6 +36,7 @@ import { Fold } from "@/ui/Fold";
 import type { AnomalyWithSymbol, BriefWindow, EventCard } from "@/ui/model";
 import { QuietState } from "@/ui/QuietState";
 import { TierHeader } from "@/ui/TierHeader";
+import { WatchLine } from "@/ui/WatchLine";
 import { WindowScrubber } from "@/ui/WindowScrubber";
 
 export const dynamic = "force-dynamic";
@@ -82,6 +83,26 @@ interface Item {
   priority: number;
   at: number;
   event?: EventCard;
+}
+
+function decisionCards(list: Item[]) {
+  return list.map((item, i) => (
+    <DecisionCard
+      key={item.key}
+      symbol={item.symbol}
+      time={item.time}
+      decision={item.decision}
+      sentence={item.sentence}
+      href={item.href}
+      action={item.action}
+      index={i}
+      figures={
+        item.event && hasFigures(item.event) ? (
+          <CardBody event={item.event} compact />
+        ) : null
+      }
+    />
+  ));
 }
 
 export default async function BriefPage({
@@ -178,7 +199,8 @@ export default async function BriefPage({
       b.at - a.at,
   );
 
-  const decisions = items.filter((i) => i.decision !== "nothing").length;
+  const act = items.filter((i) => i.decision === "act");
+  const watch = items.filter((i) => i.decision === "watch");
   const quiet = brief.counts.events === 0 && items.length === 0;
   const calendar = calendarLine(now, brief.anomalies, win);
   const upcoming = brief.upcoming ?? [];
@@ -192,7 +214,7 @@ export default async function BriefPage({
           (win.preset === "custom" ? `Showing ${win.label}.` : undefined)
         }
       >
-        {editionHeadline(decisions)}
+        {editionHeadline(act.length)}
       </Dateline>
 
       <WindowScrubber window={win} now={now} />
@@ -201,27 +223,22 @@ export default async function BriefPage({
         <p className="gutter mt-3 receipt text-ink-2">{calendar}</p>
       ) : null}
 
-      {items.length ? (
+      {act.length ? (
         <section className="mt-5 flex flex-col gap-3" aria-label="Decisions">
-          {items.map((item, i) => (
-            <DecisionCard
-              key={item.key}
-              symbol={item.symbol}
-              time={item.time}
-              decision={item.decision}
-              sentence={item.sentence}
-              href={item.href}
-              action={item.action}
-              index={i}
-              figures={
-                item.event && hasFigures(item.event) ? (
-                  <CardBody event={item.event} compact />
-                ) : null
-              }
-            />
-          ))}
+          {decisionCards(act)}
         </section>
-      ) : quiet ? (
+      ) : null}
+
+      {watch.length ? (
+        <WatchLine
+          count={watch.length}
+          className={act.length ? "mt-4" : "mt-5"}
+        >
+          {decisionCards(watch)}
+        </WatchLine>
+      ) : null}
+
+      {!act.length && !watch.length && quiet ? (
         <QuietState
           reason={
             brief.quiet?.reason === "Nothing needs you"
@@ -257,7 +274,7 @@ export default async function BriefPage({
       ) : null}
 
       <EndOfEdition
-        shown={items.length}
+        shown={act.length}
         filedAway={brief.counts.filedAway}
         checkedAtMs={brief.checkedAtMs}
       />

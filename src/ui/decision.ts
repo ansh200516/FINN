@@ -65,9 +65,10 @@ export function decisionRank(d: Decision): number {
   return 2;
 }
 
-export function editionHeadline(n: number): string {
-  if (n <= 0) return "Nothing to decide.";
-  return `${n} ${n === 1 ? "decision" : "decisions"}.`;
+/** Dateline counts Act only. Watch is a line under the cards. */
+export function editionHeadline(act: number): string {
+  if (act <= 0) return "Nothing to act on.";
+  return `${act} to act on.`;
 }
 
 export function tallyByIsin(

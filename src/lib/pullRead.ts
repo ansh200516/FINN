@@ -1,7 +1,7 @@
 /**
  * Read path for the company-page pull menu. Stored pages and XBRL rows only.
  */
-import { and, count, desc, eq, or, sql } from "drizzle-orm";
+import { and, count, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   documentPages,
@@ -90,23 +90,45 @@ function guideRank(g: {
   );
 }
 
+const PULL_CACHE_MS = 5 * 60_000;
+type PullCache = Map<string, { at: number; blocks: PullBlock[] }>;
+const pullCache = globalThis as { __finnPull?: PullCache };
+
+function cachedPull(): PullCache {
+  if (!pullCache.__finnPull) pullCache.__finnPull = new Map();
+  return pullCache.__finnPull;
+}
+
 export async function loadPullMenu(args: {
   isin: string;
   isBank: boolean;
 }): Promise<PullBlock[]> {
-  const [docRows, quarterRows, guideRows, callRows] = await Promise.all([
+  const key = `${args.isin}:${args.isBank ? 1 : 0}`;
+  const hit = cachedPull().get(key);
+  if (hit && Date.now() - hit.at < PULL_CACHE_MS) return hit.blocks;
+
+  const needle = or(
+    ...NEEDLES.map((n) => sql`lower(${documentPages.text}) like ${`%${n}%`}`),
+  );
+  const [pageRows, quarterRows, guideRows, callRows] = await Promise.all([
     db
-      .select()
-      .from(documents)
+      .select({
+        page: documentPages.page,
+        text: documentPages.text,
+        docId: documents.id,
+        period: documents.period,
+        url: documents.url,
+      })
+      .from(documentPages)
+      .innerJoin(documents, eq(documentPages.docId, documents.id))
       .where(
         and(
           eq(documents.isin, args.isin),
           eq(documents.kind, "annual_report"),
           eq(documents.textStatus, "ok"),
+          needle,
         ),
-      )
-      .orderBy(desc(documents.period), desc(documents.pages))
-      .limit(1),
+      ),
     db
       .select()
       .from(resultsQuarters)
@@ -147,23 +169,19 @@ export async function loadPullMenu(args: {
       ),
   ]);
 
-  const doc = docRows[0];
-  const needle = or(
-    ...NEEDLES.map((n) => sql`lower(${documentPages.text}) like ${`%${n}%`}`),
+  const latestPeriod = pageRows.reduce<string | null>(
+    (best, row) => ((row.period ?? "") > (best ?? "") ? row.period : best),
+    null,
   );
-  const pageRows = doc
-    ? await db
-        .select({ page: documentPages.page, text: documentPages.text })
-        .from(documentPages)
-        .where(and(eq(documentPages.docId, doc.id), needle))
-    : [];
-  const pages: PullPage[] = pageRows
+  const chosen = pageRows.filter((row) => row.period === latestPeriod);
+  const doc = chosen[0];
+  const pages: PullPage[] = chosen
     .slice()
     .sort((a, b) => a.page - b.page)
     .map((p) => ({ page: p.page, text: p.text }));
   const have = new Map<string, string>();
   if (doc) {
-    for (const p of pages) have.set(pageKey(doc.id, p.page), p.text);
+    for (const p of pages) have.set(pageKey(doc.docId, p.page), p.text);
   }
 
   const candidates = guideRows
@@ -246,7 +264,7 @@ export async function loadPullMenu(args: {
     };
   });
 
-  return composePull({
+  const blocks = composePull({
     isBank:
       args.isBank || quarters.some((q) => q.nii != null && q.ppop != null),
     hasTranscript: (callRows[0]?.n ?? 0) > 0,
@@ -256,6 +274,8 @@ export async function loadPullMenu(args: {
     quarters,
     guidance: guides,
   });
+  cachedPull().set(key, { at: Date.now(), blocks });
+  return blocks;
 }
 
 function pageKey(docId: string, page: number): string {

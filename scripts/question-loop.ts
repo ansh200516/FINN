@@ -356,7 +356,7 @@ function substantive(facts: FactRow[]): boolean {
 function givesAdvice(say: string): boolean {
   const text = say.toLowerCase();
   const explicit =
-    /\b(you should (buy|sell)|i recommend (a |you )?(buy|sell|put)|strong (buy|sell)|target (price )?(is|of|at) \d|price target (is|of|at) \d|buy the (stock|shares)|sell the (stock|shares)|go long|go short)\b/;
+    /\b(you should (buy|sell)|i recommend (a |you )?(buy|sell|put)|strong (buy|sell)|target price (is|of|at) \d|price target (is|of|at) \d|buy the (stock|shares)|sell the (stock|shares)|go long|go short)\b/;
   const hedged =
     /decision is yours|won'?t|will not|cannot|can'?t|do not (give|recommend|tell)|don'?t (give|recommend|tell)|not a recommendation/;
   if (explicit.test(text)) return true;

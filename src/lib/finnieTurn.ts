@@ -248,9 +248,7 @@ function readSay(data: unknown): string {
   if (!data || typeof data !== "object") return "";
   const say = (data as { say?: unknown }).say;
   if (typeof say !== "string") return "";
-  const text = say.replace(/\s+/g, " ").trim();
-  if (!text) return "";
-  return text.length > 280 ? `${text.slice(0, 279).trim()}…` : text;
+  return say.replace(/\s+/g, " ").trim();
 }
 
 function readCalls(data: unknown): Chosen[] {

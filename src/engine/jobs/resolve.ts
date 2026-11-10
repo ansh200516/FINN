@@ -15,6 +15,7 @@ import { db } from "@/db/client";
 import { parseJsonColumn, StringArray } from "@/db/json";
 import { companies, users } from "@/db/schema";
 import { jsonTextArrayHasUpper } from "@/db/sql";
+import { type CompanyName, matchCompanyName } from "@/lib/companyMatch";
 import { logger } from "@/lib/logger";
 import {
   fetchEquityMaster,
@@ -89,6 +90,66 @@ function pickEq(rows: Row[]): Row | undefined {
   return rows.find((r) => !r[3] || r[3] === "EQ") ?? rows[0];
 }
 
+function namesOf(
+  rows: Array<{ symbol: string; name: string; aliasesJson: string }>,
+): CompanyName[] {
+  return rows.map((row) => ({
+    symbol: row.symbol,
+    name: row.name,
+    aliases: parseJsonColumn(StringArray, row.aliasesJson, []),
+  }));
+}
+
+/** Company name or alias on a row already in the book, after exact symbol miss. */
+async function matchListedName(query: string): Promise<ResolvedSymbol | null> {
+  const listed = await db
+    .select({
+      symbol: companies.nseSymbol,
+      name: companies.name,
+      isin: companies.isin,
+      aliasesJson: companies.aliasesJson,
+    })
+    .from(companies);
+  const hit = matchCompanyName(query, namesOf(listed));
+  if (!hit) return null;
+  const row = listed.find(
+    (item) => item.symbol.toUpperCase() === hit.symbol.toUpperCase(),
+  );
+  if (!row) return null;
+  const typed = query.trim();
+  const same = typed.toUpperCase() === row.symbol.toUpperCase();
+  return {
+    symbol: row.symbol,
+    isin: row.isin,
+    name: row.name,
+    series: null,
+    via: same ? "db" : "alias",
+    typed: same ? undefined : typed,
+  };
+}
+
+function matchMasterName(query: string, rows: Row[]): ResolvedSymbol | null {
+  const hit = matchCompanyName(
+    query,
+    rows.map((row) => ({ symbol: row[0], name: row[1], aliases: [] })),
+  );
+  if (!hit) return null;
+  const cur = pickEq(
+    rows.filter((row) => row[0].toUpperCase() === hit.symbol.toUpperCase()),
+  );
+  if (!cur) return null;
+  const typed = query.trim();
+  const same = typed.toUpperCase() === cur[0].toUpperCase();
+  return {
+    symbol: cur[0],
+    isin: cur[2],
+    name: cur[1],
+    series: cur[3] ?? "EQ",
+    via: "symbols.json",
+    typed: same ? undefined : typed,
+  };
+}
+
 /** Resolve a typed symbol / old symbol / ISIN to the current NSE listing. */
 export async function resolveNseSymbol(
   query: string,
@@ -124,6 +185,8 @@ export async function resolveNseSymbol(
       via: "alias",
       typed: q,
     };
+  const byName = await matchListedName(query);
+  if (byName) return byName;
 
   // 2. bundled master
   const rows = await loadSymbolsJson();
@@ -138,6 +201,8 @@ export async function resolveNseSymbol(
         series: hit[3] ?? "EQ",
         via: "symbols.json",
       };
+    const named = matchMasterName(query, rows);
+    if (named) return named;
     for (const [current, olds] of Object.entries(SYMBOL_ALIASES)) {
       if (!olds.includes(q)) continue;
       const cur = pickEq(rows.filter((r) => r[0].toUpperCase() === current));

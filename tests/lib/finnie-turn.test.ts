@@ -583,6 +583,85 @@ describe("runFinnieTurn", () => {
     expect(fitted.brief.filedAway).toBe(9);
   });
 
+  it("regenerates an invented total once, then drops the sentence that still has it", async () => {
+    const invented = "The names are on file. The total is 38.";
+    llm.mockResolvedValueOnce(
+      model({ calls: [{ tool: "list_portfolio", args: {} }] }),
+    );
+    llm.mockResolvedValueOnce(model({ say: invented }));
+    llm.mockResolvedValueOnce(model({ say: invented }));
+    const result = await runFinnieTurn("What is on the book?", null);
+    expect(llm).toHaveBeenCalledTimes(3);
+    const rewrite = String(llm.mock.calls[2]?.[0].prompt);
+    expect(rewrite).toContain("38");
+    expect(rewrite).toContain("not in the tool JSON");
+    expect(result.say).toContain("The names are on file.");
+    expect(result.say).not.toContain("38");
+  });
+
+  it("rejects a symbol the sentence did not name and retries once with that company", async () => {
+    const voltas = "INE226A01021";
+    const airtel = "INE397D01024";
+    await db.insert(companies).values([
+      {
+        isin: voltas,
+        nseSymbol: "VOLTAS",
+        name: "Voltas Limited",
+        aliasesJson: "[]",
+        inPortfolio: true,
+        isAdhoc: false,
+      },
+      {
+        isin: airtel,
+        nseSymbol: "BHARTIARTL",
+        name: "Bharti Airtel Limited",
+        aliasesJson: "[]",
+        inPortfolio: true,
+        isAdhoc: false,
+      },
+    ]);
+    try {
+      llm.mockResolvedValueOnce(
+        model({
+          calls: [
+            {
+              tool: "get_brief",
+              args: { symbol: "BHARTIARTL", window: "7d" },
+            },
+          ],
+        }),
+      );
+      llm.mockResolvedValueOnce(
+        model({
+          calls: [
+            {
+              tool: "get_brief",
+              args: { symbol: "BHARTIARTL", window: "7d" },
+            },
+          ],
+        }),
+      );
+      llm.mockResolvedValueOnce(
+        model({ say: "The Voltas filing is one routine line." }),
+      );
+      const result = await runFinnieTurn(
+        "If the latest Voltas filing is routine, give me one line and say why it does not need a longer card.",
+        "BHARTIARTL",
+      );
+      expect(llm).toHaveBeenCalledTimes(3);
+      expect(String(llm.mock.calls[1]?.[0].prompt)).toContain("VOLTAS");
+      const facts = factsOf(String(llm.mock.calls[2]?.[0].prompt));
+      expect(JSON.stringify(facts)).toContain("VOLTAS");
+      expect(JSON.stringify(facts)).not.toContain("BHARTIARTL");
+      expect(result.symbol).toBe("VOLTAS");
+      const hrefs = [...result.links.map((link) => link.href), ...result.pages];
+      expect(hrefs).toContain("/c/VOLTAS");
+    } finally {
+      await db.delete(companies).where(eq(companies.isin, voltas));
+      await db.delete(companies).where(eq(companies.isin, airtel));
+    }
+  });
+
   it("does not load the book for a sentence", () => {
     const turn = readFileSync("src/lib/finnieTurn.ts", "utf8");
     const context = readFileSync("src/lib/finnieContext.ts", "utf8");

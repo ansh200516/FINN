@@ -134,7 +134,7 @@ export async function executeTool(
     case "open_company":
       return openCompany(args.symbol, focus);
     case "get_brief":
-      return briefFor(args.window);
+      return briefFor(args.window, args.symbol);
     case "list_unread":
       return listUnread();
     case "mark_read":
@@ -613,15 +613,45 @@ async function findSymbol(
   | { ok: true; symbol: string; isin: string; name: string }
   | { ok: false; error: string }
 > {
-  const symbol = ticker(raw) ?? (useFocus ? ticker(focus ?? undefined) : null);
-  if (!symbol) return { ok: false, error: "Name a company." };
-  const found = await resolveNseSymbol(symbol);
-  if (!found)
-    return {
-      ok: false,
-      error: `${symbol} is not an NSE-listed equity symbol.`,
-    };
-  return { ok: true, symbol: found.symbol, isin: found.isin, name: found.name };
+  const typed = (raw ?? "").trim();
+  if (typed) {
+    const found = await resolveNseSymbol(typed);
+    if (found) {
+      return {
+        ok: true,
+        symbol: found.symbol,
+        isin: found.isin,
+        name: found.name,
+      };
+    }
+    const asTicker = ticker(typed);
+    if (asTicker) {
+      return {
+        ok: false,
+        error: `${asTicker} is not an NSE-listed equity symbol.`,
+      };
+    }
+  }
+  if (useFocus) {
+    const fallback = ticker(focus ?? undefined);
+    if (fallback) {
+      const found = await resolveNseSymbol(fallback);
+      if (found) {
+        return {
+          ok: true,
+          symbol: found.symbol,
+          isin: found.isin,
+          name: found.name,
+        };
+      }
+    }
+  }
+  return {
+    ok: false,
+    error: typed
+      ? `${typed} is not an NSE-listed equity symbol.`
+      : "Name a company.",
+  };
 }
 
 async function inBook(isin: string): Promise<boolean> {
@@ -825,9 +855,18 @@ const WINDOWS: Record<string, "24h" | "48h" | "7d" | "30d" | "close"> = {
   since_close: "close",
 };
 
-async function briefFor(raw: string | undefined): Promise<ToolOutcome> {
+async function briefFor(
+  raw: string | undefined,
+  symbol?: string,
+): Promise<ToolOutcome> {
   const window = briefWindow(raw);
   if ("error" in window) return bare({ error: window.error });
+  let only = "";
+  if (symbol?.trim()) {
+    const found = await findSymbol(symbol, null, false);
+    if (!found.ok) return bare({ error: found.error });
+    only = found.symbol;
+  }
   const now = Date.now();
   const user = await getDemoUser();
   const rules = await getTripwires(user.id);
@@ -845,6 +884,7 @@ async function briefFor(raw: string | undefined): Promise<ToolOutcome> {
   const act: FinnieLine[] = [];
   let watch = 0;
   for (const event of [...view.tier1, ...view.tier2]) {
+    if (only && event.symbol.toUpperCase() !== only) continue;
     const judged = judgeEvent(event, ledgers.get(event.isin) ?? null);
     if (judged.decision === "watch") watch += 1;
     if (judged.decision !== "act") continue;
@@ -855,6 +895,7 @@ async function briefFor(raw: string | undefined): Promise<ToolOutcome> {
     });
   }
   for (const anomaly of view.anomalies) {
+    if (only && anomaly.symbol.toUpperCase() !== only) continue;
     const move = {
       pct: anomaly.pctMove,
       volumeRatio: anomaly.volumeRatio,
@@ -870,11 +911,12 @@ async function briefFor(raw: string | undefined): Promise<ToolOutcome> {
       href: "/",
     });
   }
-  return linesOutcome(
+  const outcome = linesOutcome(
     {
       status: "brief",
       window: view.window.preset,
       label: view.window.label,
+      ...(only ? { symbol: only } : {}),
       act: act.map((line) => ({
         symbol: line.symbol,
         sentence: line.text,
@@ -885,6 +927,13 @@ async function briefFor(raw: string | undefined): Promise<ToolOutcome> {
     },
     act,
   );
+  if (!only) return outcome;
+  return {
+    ...outcome,
+    symbol: only,
+    href: `/c/${encodeURIComponent(only)}`,
+    link: `Open ${only}`,
+  };
 }
 
 async function listUnread(): Promise<ToolOutcome> {

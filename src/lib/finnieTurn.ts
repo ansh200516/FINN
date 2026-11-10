@@ -13,6 +13,12 @@ import {
   remainingBudget,
 } from "@/engine/llm/gateway";
 import type { LlmTier } from "@/engine/types";
+import {
+  type CompanyName,
+  companiesMentioned,
+  matchCompanyName,
+  mentionsToken,
+} from "@/lib/companyMatch";
 import { executeTool } from "@/lib/finnieTools";
 import {
   FINNIE_CHAIN_CAP,
@@ -28,6 +34,8 @@ import {
   type ToolArgs,
   type ToolOutcome,
 } from "@/lib/finnieTypes";
+import { dropUngroundedSentences, ungroundedNumbers } from "@/lib/groundedSay";
+import { listCompanyNames } from "@/lib/queries";
 
 const CHAIN_USER_CAP = 500;
 const CHAIN_SAY_CAP = 800;
@@ -134,6 +142,7 @@ const ANSWER_SYSTEM = [
   "Answer the latest sentence using only the tool JSON.",
   "say is that answer. Be concise.",
   "Do not state a number or a name that is not in the tool JSON.",
+  "Do not add numbers to make a total. A count has to be a count field the tool JSON already returned.",
   "No buy. No sell. No target price. No news.",
   "A results question leads with Revenue, EBITDA, PBT, and PAT. When the labels are NII and PPOP, lead with NII, PPOP, PBT, and PAT. For each line that is present, give quarter-on-quarter and year-on-year. If qoqPct or yoyPct is null, omit that comparison.",
   "When the tool JSON includes results, name every period in that quarters array, not only the latest, with the headline lines that are present. Do not say the data is missing when those periods are present.",
@@ -178,29 +187,34 @@ export async function runFinnieTurn(
   const memory = clipChain(prior);
   if (await modelAtSoftCap("bulk")) return quiet(FINNIE_OUT_OF_CALLS);
 
+  const directory = await companyDirectory();
+  const named = companiesMentioned(text, directory);
+  const allowed = named.length ? named : open ? [open] : [];
   let calls: PlanCall[];
   try {
-    const planned = await callWithRetry(() =>
-      callStructured({
-        task: "finnie",
-        tier: "bulk",
-        schema: ToolPlan,
-        prompt: planPrompt(text, memory),
-        system: PLAN_SYSTEM,
-        promptVersion: "plan-4",
-        temperature: 0,
-        maxTokens: 512,
-      }),
-    );
-    calls = planned.data.calls.map((call) => ({
-      tool: call.tool,
-      args: call.args ?? {},
-    }));
+    calls = await planCalls(text, memory);
   } catch (error) {
     if (error instanceof LlmBudgetExhausted) return quiet(FINNIE_OUT_OF_CALLS);
     return quiet(FINNIE_MODEL_DOWN);
   }
   if (!calls.length) return quiet(FINNIE_NO_MATCH);
+  if (calls.some((call) => callMissesCompany(call, allowed, directory, text))) {
+    const hint = allowed.length === 1 ? allowed[0] : allowed.join(" and ");
+    if (hint) {
+      try {
+        const retried = await planCalls(text, memory, hint);
+        if (retried.length) calls = retried;
+      } catch (error) {
+        if (error instanceof LlmBudgetExhausted)
+          return quiet(FINNIE_OUT_OF_CALLS);
+      }
+    }
+  }
+  if (allowed.length === 1) {
+    calls = calls.map((call) =>
+      withCompany(call, allowed[0] ?? "", named.length === 1, directory, text),
+    );
+  }
 
   const ran: Ran[] = [];
   for (const call of calls) {
@@ -240,12 +254,41 @@ export async function runFinnieTurn(
         schema: FinnieSay,
         prompt: answerPrompt(text, memory, ran),
         system: ANSWER_SYSTEM,
-        promptVersion: "answer-5",
+        promptVersion: "answer-6",
         temperature: 0,
         maxTokens: 2048,
       }),
     );
     say = cleanSay(answered.data.say);
+    const facts = ran.map((item) => ({
+      tool: item.tool,
+      data: item.outcome.fact,
+    }));
+    if (ungroundedNumbers(say, text, facts).length) {
+      try {
+        const again = await callWithRetry(() =>
+          callStructured({
+            task: "finnie",
+            tier: "bulk",
+            schema: FinnieSay,
+            prompt: answerPrompt(
+              text,
+              memory,
+              ran,
+              ungroundedNumbers(say, text, facts),
+            ),
+            system: ANSWER_SYSTEM,
+            promptVersion: "answer-6",
+            temperature: 0,
+            maxTokens: 2048,
+          }),
+        );
+        say = cleanSay(again.data.say);
+      } catch {
+        // The first answer stands. The stray sentence is removed below.
+      }
+      say = dropUngroundedSentences(say, text, facts);
+    }
   } catch (error) {
     if (error instanceof LlmBudgetExhausted)
       return present(FINNIE_OUT_OF_CALLS, ran, open);
@@ -267,10 +310,126 @@ async function callWithRetry<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-function planPrompt(sentence: string, memory: FinnieMemory[]): string {
+async function companyDirectory(): Promise<CompanyName[]> {
+  try {
+    return await listCompanyNames();
+  } catch {
+    return [];
+  }
+}
+
+async function planCalls(
+  sentence: string,
+  memory: FinnieMemory[],
+  company?: string,
+): Promise<PlanCall[]> {
+  const planned = await callWithRetry(() =>
+    callStructured({
+      task: "finnie",
+      tier: "bulk",
+      schema: ToolPlan,
+      prompt: planPrompt(sentence, memory, company),
+      system: PLAN_SYSTEM,
+      promptVersion: company ? "plan-5" : "plan-4",
+      temperature: 0,
+      maxTokens: 512,
+    }),
+  );
+  return planned.data.calls.map((call) => ({
+    tool: call.tool,
+    args: call.args ?? {},
+  }));
+}
+
+const SYMBOL_TOOLS = new Set<FinnieTool>([
+  "add_to_portfolio",
+  "remove_from_portfolio",
+  "get_results",
+  "get_promises",
+  "get_reading",
+  "get_quote",
+  "get_corporate_actions",
+  "set_alert",
+  "disable_alert",
+  "open_company",
+  "get_brief",
+  "get_management",
+  "compare",
+]);
+
+function symbolArgs(args: ToolArgs): string[] {
+  const out: string[] = [];
+  for (const key of ["symbol", "symbolA", "symbolB", "scope"] as const) {
+    const value = args[key];
+    if (typeof value !== "string") continue;
+    const clean = value.trim();
+    if (!clean || clean.toLowerCase() === "book") continue;
+    out.push(clean);
+  }
+  return out;
+}
+
+function callMissesCompany(
+  call: PlanCall,
+  allowed: string[],
+  rows: CompanyName[],
+  utterance: string,
+): boolean {
+  if (!allowed.length || !SYMBOL_TOOLS.has(call.tool)) return false;
+  const args = symbolArgs(call.args);
+  if (!args.length) return false;
+  for (const raw of args) {
+    if (mentionsToken(utterance, raw)) continue;
+    const resolved = matchCompanyName(raw, rows)?.symbol ?? null;
+    if (resolved && allowed.includes(resolved)) continue;
+    return true;
+  }
+  return false;
+}
+
+function withCompany(
+  call: PlanCall,
+  symbol: string,
+  namedInSentence: boolean,
+  rows: CompanyName[],
+  utterance: string,
+): PlanCall {
+  if (!symbol || !SYMBOL_TOOLS.has(call.tool)) return call;
+  const args = { ...call.args };
+  const current = typeof args.symbol === "string" ? args.symbol.trim() : "";
+  if (current && mentionsToken(utterance, current)) return call;
+  const resolved = current
+    ? (matchCompanyName(current, rows)?.symbol ?? null)
+    : null;
+  if (resolved === symbol) return call;
+  if (!current && !namedInSentence) return call;
+  if (!namedInSentence && !resolved) return call;
+  args.symbol = symbol;
+  if (
+    typeof args.scope === "string" &&
+    args.scope.trim().toLowerCase() !== "book" &&
+    !mentionsToken(utterance, args.scope)
+  ) {
+    const scope = matchCompanyName(args.scope, rows)?.symbol ?? null;
+    if (scope !== symbol) args.scope = symbol;
+  }
+  return { tool: call.tool, args };
+}
+
+function planPrompt(
+  sentence: string,
+  memory: FinnieMemory[],
+  company?: string,
+): string {
   const lines = [`Question: ${sentence}`];
   const thread = formatThread(memory);
   if (thread) lines.push("", thread);
+  if (company) {
+    lines.push(
+      "",
+      `The previous call used a different symbol. Use ${company} as args.symbol.`,
+    );
+  }
   lines.push("", "Catalog:", catalogText(), "", TOOL_CHOICE_EXAMPLES);
   return lines.join("\n");
 }
@@ -279,6 +438,7 @@ function answerPrompt(
   sentence: string,
   memory: FinnieMemory[],
   ran: Ran[],
+  stray?: string[],
 ): string {
   const lines = [`Question: ${sentence}`];
   const thread = formatThread(memory);
@@ -288,6 +448,12 @@ function answerPrompt(
     data: item.outcome.fact,
   }));
   lines.push("", "Tools:", JSON.stringify(facts));
+  if (stray?.length) {
+    lines.push(
+      "",
+      `The previous answer used ${stray.join(", ")}, which is not in the tool JSON. Rewrite the answer without that number. Do not add figures together. A count has to be a count field the tool JSON already returned.`,
+    );
+  }
   return lines.join("\n");
 }
 

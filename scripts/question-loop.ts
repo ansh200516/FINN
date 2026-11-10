@@ -353,8 +353,45 @@ function substantive(facts: FactRow[]): boolean {
   return false;
 }
 
-function givesAdvice(say: string): boolean {
-  const text = say.toLowerCase();
+function quoteStrings(value: unknown, into: string[]): void {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) quoteStrings(item, into);
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "quote" && typeof item === "string") {
+      const clean = item.replace(/\s+/g, " ").trim();
+      if (clean.length >= 12) into.push(clean);
+    } else {
+      quoteStrings(item, into);
+    }
+  }
+}
+
+/** A management quote copied from the tool payload is not the model's advice. */
+function withoutPayloadQuotes(
+  say: string,
+  facts: Array<{ data: unknown }>,
+): string {
+  const quotes: string[] = [];
+  for (const fact of facts) quoteStrings(fact.data, quotes);
+  if (!quotes.length) return say;
+  const norms = quotes.map((quote) => quote.toLowerCase());
+  return say.replace(/[“"]([^“"]{8,})[”"]/g, (full, inner: string) => {
+    const text = inner.replace(/\s+/g, " ").trim().toLowerCase();
+    const copied = norms.some(
+      (quote) => quote.includes(text) || text.includes(quote),
+    );
+    return copied ? " " : full;
+  });
+}
+
+export function givesAdvice(
+  say: string,
+  facts: Array<{ data: unknown }> = [],
+): boolean {
+  const text = withoutPayloadQuotes(say, facts).toLowerCase();
   const explicit =
     /\b(you should (buy|sell)|i recommend (a |you )?(buy|sell|put)|strong (buy|sell)|target price (is|of|at) \d|price target (is|of|at) \d|buy the (stock|shares)|sell the (stock|shares)|go long|go short)\b/;
   const hedged =
@@ -440,7 +477,7 @@ function grade(
   if (question.company && !hasSurface(result)) {
     fails.push("missing_company_link");
   }
-  if (givesAdvice(say)) fails.push("trade_advice");
+  if (givesAdvice(say, facts)) fails.push("trade_advice");
   if (question.followOf) {
     const symbols = factSymbols(facts);
     const expected = question.company;
@@ -659,12 +696,20 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "loop failed";
-  console.error(
-    message
-      .replace(/AIza[0-9A-Za-z_-]{10,}/g, "[redacted]")
-      .replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://[redacted]"),
+function isDirectRun(): boolean {
+  return process.argv.some((item) =>
+    item.replaceAll("\\", "/").endsWith("scripts/question-loop.ts"),
   );
-  process.exit(1);
-});
+}
+
+if (isDirectRun()) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : "loop failed";
+    console.error(
+      message
+        .replace(/AIza[0-9A-Za-z_-]{10,}/g, "[redacted]")
+        .replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://[redacted]"),
+    );
+    process.exit(1);
+  });
+}

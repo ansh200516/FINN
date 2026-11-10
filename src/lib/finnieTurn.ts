@@ -75,27 +75,42 @@ const TOOL_LINES: Record<FinnieTool, string> = {
   add_to_portfolio: "Add one symbol to the book. args.symbol.",
   remove_from_portfolio: "Remove one symbol from the book. args.symbol.",
   get_results:
-    "Results for one symbol. args.symbol. args.quarters is 1 to 8 and defaults to 4: each period with revenue or NII, EBITDA or PPOP, PAT, and year-on-year when computed.",
+    "Headline quarterly results for one company. Use this for a results question, and together with get_promises for promised versus delivered. args.symbol. args.quarters is 1 to 8 and defaults to 4. Each period includes Revenue or NII or Total income, EBITDA or PPOP, PBT, and PAT, with qoqPct and yoyPct when computed.",
   get_promises:
-    "Guidance for one symbol, up to 12 rows: quote, metric, promised value, verdict, and delivered value. args.symbol.",
+    "What management guided for one company, up to 12 rows: quote, metric, horizon, promised value, verdict, and delivered value. A null delivered value means that guidance is still open. args.symbol. Call this with get_results when the question is promised versus delivered over recent quarters. This is not the pull-menu Guidance reading.",
   get_reading:
-    "One of the eight readings for a symbol. args.symbol. args.which is the reading name.",
+    "One of the eight pull readings. args.symbol. args.which is exactly Business snapshot, Financial snapshot, Trajectory, Balance sheet, Cash quality, Narrative vs. numbers, Guidance, or Bull vs. bear. Promised versus delivered over recent quarters is get_results and get_promises, not this tool alone.",
   get_quote: "Live price for one symbol. args.symbol.",
   get_index: "Live index level. args.name.",
   get_corporate_actions: "Corporate actions for one symbol. args.symbol.",
   set_alert:
-    "Turn on a price, volume, or category alert. args.scope, args.kind, args.params.",
+    "Watch a threshold the user sets. args.scope is a symbol or the book. args.kind is price, volume, or category. A price move beyond a chosen percent uses params.pct. Volume more than about 2× its recent average uses params.ratio and params.lookbackDays. A material filing type uses params.categories, including results, m_and_a, and management_change.",
   disable_alert: "Turn off an alert. args.scope, args.kind, args.params.",
   open_company: "Page for one symbol. args.symbol.",
-  get_brief: "Act lines on the brief. args.window is optional.",
+  get_brief:
+    "Windowed digest of portfolio filings. What matters is listed first. Routine filings are counted as filed away. The default window is the last 24 hours. args.window is 24h, 48h, 7d, 30d, or close.",
   list_unread: "Unread inbox rows.",
   mark_read: "Mark the inbox read.",
   get_upcoming: "Upcoming filings and events.",
-  missed_promises: "Missed or cut guidance across the book.",
-  movers: "Holdings that moved. args.pct is optional.",
-  get_management: "People changes for one symbol. args.symbol.",
+  missed_promises:
+    "Missed or cut guidance across the whole book. One company's promised versus delivered walk is get_results and get_promises, not this tool.",
+  movers:
+    "Holdings that already moved. args.pct is optional. A watch for a future move is set_alert.",
+  get_management:
+    "A management change for one company: the person, the role, the action, the profile excerpt, and prior roles, so the answer can say who they are and where they came from. args.symbol.",
   compare: "Latest results for two symbols. args.symbolA and args.symbolB.",
 };
+
+/** Illustrations for the tool step. The code does not match these strings. */
+const TOOL_CHOICE_EXAMPLES = [
+  "Examples of tool choice. These illustrate the catalog. They are not strings the code matches.",
+  'Windowed digest: "For a time window I choose — by default the last 24 hours, but let me pick the period — show me every corporate filing/announcement across my portfolio, filtered and prioritised so I see what matters first and the routine stuff is collapsed or hidden." Tool: get_brief.',
+  'Triggered alert: "a material announcement of a type I care about (results, M&A, management change, and so on)" or "volume more than ~2× its recent average, or a price move beyond ±X% in a day." Tool: set_alert.',
+  'Management change: don\'t just say "CFO resigned." Who the incoming person is and where they came from. Tool: get_management.',
+  "Quarterly results: Revenue, EBITDA, PBT and PAT, this quarter vs. last quarter (QoQ) and vs. the same quarter a year ago (YoY). A bank uses NII, PPOP, PBT and PAT. Tool: get_results.",
+  "Pull menu, one reading: Business snapshot; Financial snapshot; Trajectory; Balance sheet; Cash quality; Narrative vs. numbers; Guidance; Bull vs. bear. Tool: get_reading. args.which is that reading.",
+  'Promised versus delivered: "take the last four quarters and, against management\'s own headline guidance and growth commentary, tell me what was promised vs. what was actually delivered." Tools: get_results with args.quarters 4, and get_promises. Both. Not get_reading alone.',
+].join("\n");
 
 const PLAN_SYSTEM = [
   "You are Finnie.",
@@ -104,19 +119,24 @@ const PLAN_SYSTEM = [
   "Return 1 to 4 calls. If no tool applies, return an empty calls list.",
   "args are optional. Use args.symbol for a company.",
   "get_results may set args.quarters from 1 to 8. Omitted, it is 4.",
+  "Promised versus delivered over recent quarters is get_results and get_promises together.",
+  "A results question is get_results. A management change is get_management. A filing digest is get_brief. A threshold to watch is set_alert. One pull-menu reading is get_reading.",
+  "The examples under the catalog illustrate tool choice. They are not strings to match.",
   "Do not invent a tool.",
 ].join(" ");
 
 const ANSWER_SYSTEM = [
   "You are Finnie.",
   "Answer the latest sentence using only the tool JSON.",
-  "say is that answer.",
+  "say is that answer. Be concise.",
   "Do not state a number or a name that is not in the tool JSON.",
-  "No buy. No sell. No target price.",
-  "If the tool JSON includes results and promises, the sentence has to use both payloads.",
-  "Walk the quarters against the guidance rows. Do not stop at the latest revenue figure.",
-  "When delivered is null, say that row is not yet scored and include its quote.",
-  'When the question asks for a comparison or a judgment, end with "The decision is yours."',
+  "No buy. No sell. No target price. No news.",
+  "A results question leads with Revenue, EBITDA, PBT, and PAT. When the labels are NII and PPOP, lead with NII, PPOP, PBT, and PAT. For each line that is present, give quarter-on-quarter and year-on-year. If qoqPct or yoyPct is null, omit that comparison.",
+  "When the tool JSON includes results and promises, use both payloads. Name every results period, not only the latest, with the headline lines that are present. Then give each promise row's horizon, quote, promised value, verdict, and delivered value. Do not attach a quote to a results period unless that row's horizon names the period.",
+  "When delivered is null, say that guidance is still open and quote what management said.",
+  "A management-change question names the person and the profile, including prior roles when the tool JSON has them.",
+  "A pull reading answers from that reading's verdict, lines, and table.",
+  'When the question asks for a judgment, or compares what was promised with what was delivered, end with "The decision is yours."',
   "Do not invent guidance.",
 ].join(" ");
 
@@ -149,7 +169,7 @@ export async function runFinnieTurn(
       schema: ToolPlan,
       prompt: planPrompt(text, memory),
       system: PLAN_SYSTEM,
-      promptVersion: "plan-1",
+      promptVersion: "plan-2",
       temperature: 0,
       maxTokens: 512,
     });
@@ -195,7 +215,7 @@ export async function runFinnieTurn(
       schema: FinnieSay,
       prompt: answerPrompt(text, memory, ran),
       system: ANSWER_SYSTEM,
-      promptVersion: "answer-2",
+      promptVersion: "answer-3",
       temperature: 0,
       maxTokens: 1024,
     });
@@ -211,7 +231,7 @@ function planPrompt(sentence: string, memory: FinnieMemory[]): string {
   const lines = [`Question: ${sentence}`];
   const thread = formatThread(memory);
   if (thread) lines.push("", thread);
-  lines.push("", "Catalog:", catalogText());
+  lines.push("", "Catalog:", catalogText(), "", TOOL_CHOICE_EXAMPLES);
   return lines.join("\n");
 }
 

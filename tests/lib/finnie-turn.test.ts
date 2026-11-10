@@ -280,7 +280,8 @@ describe("runFinnieTurn", () => {
       expect(turn).not.toContain("loadChatPack");
       expect(turn).not.toContain("the results are Q2");
       expect(tools).not.toContain("the results are Q2");
-      expect(turn).not.toContain("four quarters");
+      expect(first).toContain("Examples of tool choice");
+      expect(second).not.toContain("Examples of tool choice");
       expect(turn).not.toMatch(
         /(?:sentence|text|question)\.(?:match|includes|search|toLowerCase)/,
       );
@@ -307,6 +308,152 @@ describe("runFinnieTurn", () => {
       expect(html).toContain("Full page");
       expect(html).toContain('href="/c/RELIANCE"');
       expect(html).not.toContain("the results are Q2");
+    } finally {
+      await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
+      await db
+        .delete(resultsQuarters)
+        .where(eq(resultsQuarters.isin, RELIANCE));
+      await db.delete(companies).where(eq(companies.isin, RELIANCE));
+    }
+  });
+
+  it("gives the answer call both payloads for the brief's promised-versus-delivered sentence", async () => {
+    const sentence =
+      "take the last four quarters and, against management's own headline guidance and growth commentary, tell me what was promised vs. what was actually delivered";
+    await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
+    await db.delete(resultsQuarters).where(eq(resultsQuarters.isin, RELIANCE));
+    await db.delete(companies).where(eq(companies.isin, RELIANCE));
+    const ends = [
+      "2024-09-30",
+      "2024-12-31",
+      "2025-03-31",
+      "2025-06-30",
+      "2025-09-30",
+    ];
+    await db.insert(companies).values({
+      isin: RELIANCE,
+      nseSymbol: "RELIANCE",
+      name: "Reliance Industries Limited",
+      aliasesJson: "[]",
+      inPortfolio: true,
+      isAdhoc: false,
+    });
+    await db.insert(resultsQuarters).values(
+      ends.map((periodEnd, i) => ({
+        isin: RELIANCE,
+        periodEnd,
+        basis: "consolidated",
+        source: "xbrl",
+        revenue: (100 + i * 10) * CR,
+        otherIncome: 0,
+        financeCosts: 5 * CR,
+        dna: 4 * CR,
+        pbeit: 30 * CR,
+        pbt: 20 * CR,
+        pat: 12 * CR,
+        checksJson: "{}",
+        updatedAt: Date.now(),
+      })),
+    );
+    await db.insert(guidance).values({
+      id: "rel-brief-open",
+      isin: RELIANCE,
+      docId: "doc-rel",
+      quote: "Revenue growth stays in the low teens.",
+      metric: "revenue_growth",
+      direction: "range",
+      low: 10,
+      high: 12,
+      unit: "%",
+      horizon: "FY26",
+      status: "open",
+      verdict: null,
+      evidenceJson: "{}",
+      createdAt: Date.now(),
+    });
+    try {
+      llm.mockResolvedValueOnce(
+        model({
+          calls: [
+            {
+              tool: "get_results",
+              args: { symbol: "RELIANCE", quarters: 4 },
+            },
+            { tool: "get_promises", args: { symbol: "RELIANCE" } },
+          ],
+        }),
+      );
+      llm.mockResolvedValueOnce(
+        model({
+          say: "Guidance is still open. The decision is yours.",
+        }),
+      );
+      const result = await runFinnieTurn(sentence, null);
+      expect(llm).toHaveBeenCalledTimes(2);
+      const first = String(llm.mock.calls[0]?.[0].prompt);
+      const second = String(llm.mock.calls[1]?.[0].prompt);
+      expect(first.startsWith(`Question: ${sentence}`)).toBe(true);
+      expect(second.startsWith(`Question: ${sentence}`)).toBe(true);
+      expect(second).not.toContain("Catalog:");
+      const facts = factsOf(second);
+      expect(facts.map((row) => row.tool)).toEqual([
+        "get_results",
+        "get_promises",
+      ]);
+      const results = facts[0]?.data as {
+        status: string;
+        quarters: Array<{
+          period: string;
+          revenue: { qoqPct: number | null; yoyPct: number | null };
+          ebitda: { label: string } | null;
+          pbt: { label: string; crore: number | null } | null;
+          pat: { label: string } | null;
+        }>;
+      };
+      const promises = facts[1]?.data as {
+        status: string;
+        rows: Array<{
+          quote: string;
+          horizon: string | null;
+          verdict: string;
+          delivered: string | null;
+        }>;
+      };
+      expect(results.status).toBe("results");
+      expect(results.quarters.length).toBeGreaterThan(1);
+      const latest = results.quarters.at(-1);
+      expect(latest?.revenue.qoqPct).toEqual(expect.any(Number));
+      expect(latest?.revenue.yoyPct).toEqual(expect.any(Number));
+      expect(latest?.ebitda?.label).toBe("EBITDA");
+      expect(latest?.pbt?.label).toBe("PBT");
+      expect(latest?.pbt?.crore).toEqual(expect.any(Number));
+      expect(latest?.pat?.label).toBe("PAT");
+      expect(promises.status).toBe("promises");
+      expect(promises.rows[0]?.quote).toContain("low teens");
+      expect(promises.rows[0]?.horizon).toBe("FY26");
+      expect(promises.rows[0]?.verdict).toBe("open");
+      expect(promises.rows[0]?.delivered).toBeNull();
+      expect(result.tools).toEqual(["get_results", "get_promises"]);
+      expect(result.pages).toEqual(["/c/RELIANCE", "/c/RELIANCE"]);
+      const turn = readFileSync("src/lib/finnieTurn.ts", "utf8");
+      const tools = readFileSync("src/lib/finnieTools.ts", "utf8");
+      expect(tools).not.toContain(sentence);
+      expect(turn).not.toMatch(
+        /(?:sentence|text|question)\.(?:match|includes|search|toLowerCase)/,
+      );
+      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
+        "The decision is yours.",
+      );
+      const html = renderToStaticMarkup(
+        createElement(FinnieAnswer, {
+          say: result.say,
+          cards: result.cards,
+          pages: result.pages,
+          links: result.links,
+        }),
+      );
+      expect(html).toContain("Full page");
+      expect(html).toContain('href="/c/RELIANCE"');
     } finally {
       await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
       await db

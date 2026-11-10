@@ -116,9 +116,15 @@ describe("chat log", () => {
             quarters: [
               {
                 period: "Q2 FY27",
-                revenue: { label: "Revenue", crore: 150, yoyPct: 50 },
+                revenue: {
+                  label: "Revenue",
+                  crore: 150,
+                  qoqPct: null,
+                  yoyPct: 50,
+                },
                 ebitda: null,
-                pat: { label: "PAT", crore: 15, yoyPct: 50 },
+                pbt: null,
+                pat: { label: "PAT", crore: 15, qoqPct: null, yoyPct: 50 },
               },
             ],
           },

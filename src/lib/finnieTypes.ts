@@ -85,12 +85,14 @@ export interface FinniePerson {
   role: string | null;
   action: string | null;
   excerpt: string | null;
+  priorRoles: string[];
 }
 
 /** One results quarter the model was given. Money is ₹ crore. */
 export interface ChatQuarterMetric {
   label: string;
   crore: number | null;
+  qoqPct: number | null;
   yoyPct: number | null;
 }
 
@@ -98,6 +100,7 @@ export interface ChatQuarter {
   period: string;
   revenue: ChatQuarterMetric | null;
   ebitda: ChatQuarterMetric | null;
+  pbt: ChatQuarterMetric | null;
   pat: ChatQuarterMetric | null;
 }
 

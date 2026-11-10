@@ -191,13 +191,18 @@ function parseCard(value: unknown): FinnieCard | null {
         role?: unknown;
         action?: unknown;
         excerpt?: unknown;
+        priorRoles?: unknown;
       };
       if (typeof person.person !== "string") continue;
+      const prior = person.priorRoles;
       people.push({
         person: person.person,
         role: typeof person.role === "string" ? person.role : null,
         action: typeof person.action === "string" ? person.action : null,
         excerpt: typeof person.excerpt === "string" ? person.excerpt : null,
+        priorRoles: Array.isArray(prior)
+          ? prior.filter((role): role is string => typeof role === "string")
+          : [],
       });
     }
     return { kind: "management", symbol: rec.symbol, people };
@@ -218,6 +223,7 @@ function parseQuarters(value: unknown): ChatQuarter[] {
       period?: unknown;
       revenue?: unknown;
       ebitda?: unknown;
+      pbt?: unknown;
       pat?: unknown;
     };
     if (typeof rec.period !== "string" || !rec.period.trim()) continue;
@@ -225,6 +231,7 @@ function parseQuarters(value: unknown): ChatQuarter[] {
       period: rec.period.slice(0, 24),
       revenue: parseMetric(rec.revenue),
       ebitda: parseMetric(rec.ebitda),
+      pbt: parseMetric(rec.pbt),
       pat: parseMetric(rec.pat),
     });
     if (out.length >= 8) break;
@@ -234,11 +241,17 @@ function parseQuarters(value: unknown): ChatQuarter[] {
 
 function parseMetric(value: unknown): ChatQuarterMetric | null {
   if (!value || typeof value !== "object") return null;
-  const rec = value as { label?: unknown; crore?: unknown; yoyPct?: unknown };
+  const rec = value as {
+    label?: unknown;
+    crore?: unknown;
+    qoqPct?: unknown;
+    yoyPct?: unknown;
+  };
   if (typeof rec.label !== "string") return null;
   return {
     label: rec.label.slice(0, 40),
     crore: typeof rec.crore === "number" ? rec.crore : null,
+    qoqPct: typeof rec.qoqPct === "number" ? rec.qoqPct : null,
     yoyPct: typeof rec.yoyPct === "number" ? rec.yoyPct : null,
   };
 }

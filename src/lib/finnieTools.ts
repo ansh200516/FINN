@@ -375,13 +375,31 @@ async function readingFor(
     fact: {
       status: "reading",
       symbol: found.symbol,
-      which: block.title,
-      verdict: block.verdict,
+      ...readingPayload(block),
     },
     card: { kind: "reply", symbol: found.symbol, reply },
     symbol: found.symbol,
     ...linkFor(reply, found.symbol),
     book: null,
+  };
+}
+
+function readingPayload(block: {
+  title: string;
+  verdict: string;
+  lines: string[];
+  table?: { headers: string[]; rows: string[][] };
+}): Record<string, unknown> {
+  return {
+    which: block.title,
+    verdict: block.verdict,
+    lines: block.lines.slice(0, 6).map((line) => clipWords(line, 80)),
+    table: block.table
+      ? {
+          headers: block.table.headers,
+          rows: block.table.rows.slice(0, 8),
+        }
+      : null,
   };
 }
 
@@ -655,8 +673,9 @@ function indexName(raw: string | undefined): string | null {
 
 const PROMISE_CAP = 12;
 const QUOTE_WORDS = 40;
-const TOP_METRICS = ["revenue", "nii", "total_income"] as const;
+const TOP_METRICS = ["revenue", "total_income", "nii"] as const;
 const MID_METRICS = ["ebitda", "ppop"] as const;
+const PBT_METRICS = ["pbt"] as const;
 
 function companyPage(symbol: string): string {
   return `/c/${encodeURIComponent(symbol)}`;
@@ -690,6 +709,7 @@ function quarterHistory(
         period: card.fiscalLabel ?? card.periodEnd ?? end.periodEnd,
         revenue: metricOf(card, TOP_METRICS),
         ebitda: metricOf(card, MID_METRICS),
+        pbt: metricOf(card, PBT_METRICS),
         pat: metricOf(card, ["pat"]),
       });
     }
@@ -707,8 +727,14 @@ function metricOf(
   for (const key of keys) {
     const row = lines.find((line) => line.metric === key);
     if (!row) continue;
-    if (row.currentCr == null && row.yoyPct == null) continue;
-    return { label: row.label, crore: row.currentCr, yoyPct: row.yoyPct };
+    if (row.currentCr == null && row.qoqPct == null && row.yoyPct == null)
+      continue;
+    return {
+      label: row.label,
+      crore: row.currentCr,
+      qoqPct: row.qoqPct,
+      yoyPct: row.yoyPct,
+    };
   }
   return null;
 }
@@ -716,6 +742,7 @@ function metricOf(
 function promiseFact(row: LedgerRowView): {
   quote: string;
   metric: string;
+  horizon: string | null;
   promised: string;
   verdict: string;
   delivered: string | null;
@@ -723,6 +750,7 @@ function promiseFact(row: LedgerRowView): {
   return {
     quote: clipWords(row.quote, QUOTE_WORDS),
     metric: row.metric.replace(/_/g, " "),
+    horizon: row.horizon ? row.horizon.replace(/_/g, " ") : null,
     promised: promised(row),
     verdict: row.verdict ?? (row.status === "open" ? "open" : row.status),
     delivered: deliveredValue(row),
@@ -1199,6 +1227,7 @@ function adaptManagement(raw: unknown): {
           role: person.role,
           action: person.action,
           excerpt: person.excerpt,
+          priorRoles: person.priorRoles,
         }))
     : [];
   return { oneLiner: adapted.envelope.oneLiner ?? null, people };

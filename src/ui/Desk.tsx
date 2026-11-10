@@ -20,9 +20,10 @@ import {
   saveChatLog,
 } from "@/lib/chatLog";
 import { NO_PROMISES, NO_RESULTS } from "@/lib/companyTurn";
-import { clipQuarterWall } from "@/lib/finnieSay";
+import { clipQuarterWall, isNumberWall } from "@/lib/finnieSay";
 import {
   type ChatQuarter,
+  type ChatQuarterMetric,
   FINNIE_LOG_CAP,
   FINNIE_MODEL_DOWN,
   type FinnieCard,
@@ -30,10 +31,16 @@ import {
   type FinnieMemory,
   type FinnieTurnResult,
 } from "@/lib/finnieTypes";
+import {
+  type ComparisonRow,
+  comparisonBubble,
+  comparisonsFor,
+} from "@/lib/promiseCompare";
 import { composerBoxHeight, FINNIE_GREETING } from "@/ui/composer";
 import type { LedgerRowView } from "@/ui/model";
 import { useTypingExample } from "@/ui/typingExample";
 import { ReplyBody } from "./CompanyConversation";
+import { ComparisonList, QuarterBoard } from "./PromiseCompareCard";
 import { ResultsGrid } from "./ResultsGrid";
 import { VerdictBadge } from "./VerdictBadge";
 
@@ -328,7 +335,10 @@ function TurnBody({ turn }: { turn: Turn }) {
 const GUIDANCE_CAP = 6;
 const QUOTE_WORDS = 22;
 
-function cardNode(card: FinnieCard | null): ReactNode {
+function cardNode(
+  card: FinnieCard | null,
+  view: { board: boolean; compared: ComparisonRow[] | null },
+): ReactNode {
   if (!card) return null;
   if (card.kind === "portfolio")
     return card.names.length ? <BookNames names={card.names} /> : null;
@@ -340,9 +350,59 @@ function cardNode(card: FinnieCard | null): ReactNode {
     return <PromiseRows rows={card.reply.rows} symbol={card.symbol} />;
   }
   if (card.reply.kind === "results") {
+    const quarters = multiQuarters(card);
+    if (view.compared && quarters.length >= 2) {
+      return (
+        <>
+          <QuarterBoard quarters={quarters} symbol={card.symbol} />
+          <ComparisonList rows={view.compared} symbol={card.symbol} />
+        </>
+      );
+    }
+    if (view.board && quarters.length >= 2) {
+      return <QuarterBoard quarters={quarters} symbol={card.symbol} />;
+    }
     return <QuarterGrids card={card} />;
   }
   return <ReplyBody reply={card.reply} symbol={card.symbol} />;
+}
+
+function multiQuarters(card: FinnieCard): ChatQuarter[] {
+  if (card.kind !== "reply" || card.reply.kind !== "results") return [];
+  const quarters = card.quarters ?? [];
+  if (quarters.length >= 2) return quarters.slice(0, 8);
+  const periodCards = card.periodCards ?? [];
+  if (periodCards.length >= 2) {
+    return periodCards.slice(0, 8).flatMap((item) => {
+      const quarter = quarterFromResults(item);
+      return quarter ? [quarter] : [];
+    });
+  }
+  return [];
+}
+
+function quarterFromResults(card: ResultsCard): ChatQuarter | null {
+  const period = card.fiscalLabel ?? card.periodEnd ?? "";
+  if (!period) return null;
+  const line = (keys: string[]): ChatQuarterMetric | null => {
+    const row = card.headline?.find((item) => keys.includes(item.metric));
+    if (!row) return null;
+    if (row.currentCr == null && row.qoqPct == null && row.yoyPct == null)
+      return null;
+    return {
+      label: row.label,
+      crore: row.currentCr,
+      qoqPct: row.qoqPct,
+      yoyPct: row.yoyPct,
+    };
+  };
+  return {
+    period,
+    revenue: line(["revenue", "nii", "total_income"]),
+    ebitda: line(["ebitda", "ppop"]),
+    pbt: line(["pbt"]),
+    pat: line(["pat"]),
+  };
 }
 
 function PromiseRows({
@@ -591,8 +651,34 @@ export function FinnieAnswer({
   link?: string | null;
   sayAfter?: boolean;
 }) {
+  const resultsIndex = cards.findIndex(
+    (card) => multiQuarters(card).length >= 2,
+  );
+  const promisesIndex = cards.findIndex(
+    (card) => card.kind === "reply" && card.reply.kind === "promises",
+  );
+  const paired = resultsIndex >= 0 && promisesIndex >= 0;
+  const resultsCard = paired ? cards[resultsIndex] : null;
+  const promiseCard = paired ? cards[promisesIndex] : null;
+  const compared =
+    paired &&
+    resultsCard?.kind === "reply" &&
+    promiseCard?.kind === "reply" &&
+    promiseCard.reply.kind === "promises"
+      ? comparisonsFor(
+          multiQuarters(resultsCard),
+          promiseCard.reply.rows,
+          resultsCard.periodCards,
+        )
+      : [];
+  const wall =
+    isNumberWall(say) && cards.some((card) => multiQuarters(card).length >= 2);
   const blocks = cards.map((card, index) => {
-    const node = cardNode(card);
+    if (paired && index === promisesIndex) return null;
+    const node = cardNode(card, {
+      board: wall,
+      compared: paired && index === resultsIndex ? compared : null,
+    });
     const page = pages[index] ?? null;
     if (!node && !page) return null;
     return (
@@ -616,12 +702,17 @@ export function FinnieAnswer({
       label={item.label}
     />
   ));
-  const spoken = clipQuarterWall(say);
+  const spoken = paired
+    ? comparisonBubble(compared)
+    : wall
+      ? ""
+      : clipQuarterWall(say);
   const bubble = spoken ? <div className="bubble-agent">{spoken}</div> : null;
   const jump = <CardLink href={href ?? null} label={link ?? null} />;
+  const decisionLast = sayAfter || paired;
   return (
     <div className="flex min-w-0 flex-col items-start gap-2" data-answer="">
-      {sayAfter ? (
+      {decisionLast ? (
         <>
           {blocks}
           {extras}

@@ -507,6 +507,17 @@
   .rtable svg {
     vertical-align: middle;
   }
+  .qboard-wrap {
+    overflow-x: auto;
+  }
+  .rtable.qboard .qcell {
+    height: auto;
+    white-space: normal;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    vertical-align: top;
+    line-height: 1.3;
+  }
 
   /* ------------------------------------------------------------------------
      Sheet (native dialog as a bottom sheet) and toast
@@ -954,8 +965,7 @@
     bottom: calc(var(--bar-h) + env(safe-area-inset-bottom) + 8px);
   }
   .chat-log {
-    /* Same clearance as the one-line field, plus the extra height of six lines. */
-    padding-bottom: calc(128px + var(--composer-max) - var(--composer-min));
+    padding-bottom: 128px;
   }
   .composer-box {
     display: flex;

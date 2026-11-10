@@ -89,7 +89,7 @@ const TOOL_LINES: Record<FinnieTool, string> = {
   get_results:
     "Headline quarterly results for one company. Use this for a results question, and together with get_promises for promised versus delivered. args.symbol is the NSE symbol of the company named in the latest sentence. HDFC Bank is HDFCBANK, not a fund or an AMC. args.quarters is 1 to 8 and defaults to 4. Each period includes Revenue or NII or Total income, EBITDA or PPOP, PBT, and PAT, with qoqPct and yoyPct when computed.",
   get_promises:
-    "What management guided for one company, up to 12 rows: quote, metric, horizon, promised value, verdict, and delivered value. A null delivered value means that guidance is still open. args.symbol. Call this with get_results when the question is promised versus delivered over recent quarters. This is not the pull-menu Guidance reading.",
+    "What management guided for one company, up to 12 rows: quote, metric, horizon, promised value, verdict, and delivered value. A null delivered value means the row was not scored, not that the quarter is missing. args.symbol. Call this with get_results when the question is promised versus delivered over recent quarters. This is not the pull-menu Guidance reading.",
   get_reading:
     "One of the eight pull readings. args.symbol. args.which is exactly Business snapshot, Financial snapshot, Trajectory, Balance sheet, Cash quality, Narrative vs. numbers, Guidance, or Bull vs. bear. Promised versus delivered over recent quarters is get_results and get_promises, not this tool alone.",
   get_quote: "Live price for one symbol. args.symbol.",
@@ -147,9 +147,8 @@ const ANSWER_SYSTEM = [
   "Do not state a number or a name that is not in the tool JSON.",
   "Do not add numbers to make a total. A count has to be a count field the tool JSON already returned.",
   "No buy. No sell. No target price. No news.",
-  "When the tool JSON includes results, say is at most two short sentences. Do not list every quarter's Revenue, EBITDA, PBT, and PAT. When the lines are NII and PPOP, do not list every quarter of those either. Name what stands out. The screen draws each quarter. Do not write qoqPct or yoyPct. Do not say the results are missing when the quarters array is present.",
-  "When the tool JSON includes promises, the screen draws each row with a verdict and a quote. Do not paste those quotes into say. Name what stands out: kept, missed, open, or unverifiable.",
-  "When delivered is null, that guidance is still open. Say so inside the two sentences. Do not quote the line into say.",
+  "When the tool JSON includes results, say is at most two short sentences. Do not list every quarter's Revenue, EBITDA, PBT, and PAT. When the lines are NII and PPOP, do not list every quarter of those either. Name what stands out. The screen draws one table for the quarters. Do not write qoqPct or yoyPct. Do not say the results are missing when the quarters array is present.",
+  'When the tool JSON also includes promises, the screen compares headline guidance with those quarters. say is two short sentences: how many were kept, how many were missed, and how many are still open, then "The decision is yours." A promise is open only when no quarter covers its horizon. Do not say delivered is null. A null delivered field means the row was not scored. Do not paste quotes into say.',
   "A management-change question names the person and the profile, including prior roles when the tool JSON has them.",
   "A pull reading answers from that reading's verdict, lines, and table.",
   "When the question asks whether a filing earns a card or one line, or whether a filing deserves attention, use the filings array. Name the company and the filing sentence, then say it earns a card when surface is card, or one line when surface is line. Write a full sentence. If filings is empty, say there is no filing in the window. Do not answer with only the word card or the words one line.",

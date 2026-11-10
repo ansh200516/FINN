@@ -299,21 +299,26 @@ describe("runFinnieTurn", () => {
           links: result.links,
         }),
       );
-      expect(html).toContain(say);
+      expect(html).not.toContain(say);
+      expect(html).toContain("Two headline promises were kept.");
+      expect(html).toContain("The decision is yours.");
+      expect(html).not.toContain("not yet scored");
+      expect(html).not.toContain("delivered is null");
       expect(html).toContain("word00");
       expect(html).not.toContain("word40");
       expect(html).toContain("eleven percent");
-      expect(html).toContain("Open");
       expect(html).toContain("Kept");
+      expect(html).toContain("+50.0% YoY");
       expect(html).toContain("Q3 FY25");
       expect(html).toContain("Q4 FY25");
       expect(html).toContain("Q1 FY26");
       expect(html).toContain("Q2 FY26");
       expect(html).toContain("Revenue");
-      expect(html).toContain("QoQ");
       expect(html).toContain("YoY");
+      expect(html).not.toContain("QoQ");
       expect(html).not.toContain("qoqPct");
       expect(html).not.toContain("yoyPct");
+      expect((html.match(/<table/g) ?? []).length).toBe(1);
       expect(html).toContain("more on the company page");
       expect(html).toContain("Full page");
       expect(html).toContain('href="/c/RELIANCE"');

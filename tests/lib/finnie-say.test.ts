@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clipQuarterWall,
+  isNumberWall,
   repairSay,
   stateFilingSurface,
 } from "@/lib/finnieSay";
@@ -46,6 +47,7 @@ describe("finnie say repair", () => {
       "For Q3 FY26, Revenue was 100, EBITDA was 10, PBT was 8, and PAT was 6. The decision is yours.",
     );
     expect(say.split(/(?<=[.!?])\s+/)).toHaveLength(2);
+    expect(isNumberWall(wall)).toBe(true);
   });
 
   it("replaces a short no-filing line when the payload has a surface", () => {

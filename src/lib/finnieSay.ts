@@ -81,6 +81,21 @@ export function isQuarterWall(say: string): boolean {
 }
 
 /**
+ * The model listed the quarter figures. The table built from the tool JSON
+ * is the answer, so the recital is not shown.
+ */
+export function isNumberWall(say: string): boolean {
+  if (!isQuarterWall(say)) return false;
+  const sentences = say
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (sentences.length >= 3) return true;
+  const figures = say.match(/\d[\d,.]*/g) ?? [];
+  return figures.length >= 12;
+}
+
+/**
  * A quarter-by-quarter recital is two sentences on screen.
  * The figures stay in the results table, which is built from the tool JSON.
  */

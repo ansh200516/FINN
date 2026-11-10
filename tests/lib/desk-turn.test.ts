@@ -475,15 +475,16 @@ describe("desk markup", () => {
         ],
       }),
     );
-    expect(html).toContain("For Q3 FY26");
-    expect(html).toContain("For Q4 FY26");
-    expect(html).not.toContain("For Q1 FY27");
-    expect(html).not.toContain("For Q2 FY27");
+    expect(html).not.toContain("For Q3 FY26");
+    expect(html).not.toContain("Revenue was 269,496");
+    expect(html).toContain("Q3 FY26");
+    expect(html).toContain("Q2 FY27");
     expect(html).toContain("2,69,496");
     expect(html).toContain("3,52,861");
-    expect(html).toContain("QoQ");
     expect(html).toContain("YoY");
-    expect(html).toContain("<svg");
+    expect(html).not.toContain("QoQ");
+    expect(html).not.toContain("<svg");
+    expect((html.match(/<table/g) ?? []).length).toBe(1);
     expect(html).not.toContain("qoqPct");
     expect(html).not.toContain("yoyPct");
   });

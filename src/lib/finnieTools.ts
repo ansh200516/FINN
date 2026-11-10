@@ -9,6 +9,7 @@ import { db } from "@/db/client";
 import { parseJsonColumn, StringArray } from "@/db/json";
 import { alerts, events, prices } from "@/db/schema";
 import { barMetrics } from "@/engine/analyse/anomalies";
+import { buildResultsCard } from "@/engine/analyse/results";
 import { ensureCompany, resolveNseSymbol } from "@/engine/jobs/resolve";
 import {
   answerNse,
@@ -20,15 +21,14 @@ import {
   type Category,
   type PriceBar,
   type ResultsCard,
+  type ResultsQuarter,
   type Tripwire,
 } from "@/engine/types";
 import { getBriefView, invalidateBrief } from "@/lib/brief";
-import {
-  type CompanyReply,
-  confirmRule,
-  scoredPromises,
-} from "@/lib/companyTurn";
+import { type CompanyReply, confirmRule } from "@/lib/companyTurn";
 import type {
+  ChatQuarter,
+  ChatQuarterMetric,
   FinnieLine,
   FinniePerson,
   FinnieTool,
@@ -48,6 +48,7 @@ import {
   getCompanyBySymbol,
   getCompanyResultsCard,
   getDemoUser,
+  getEngineQuarters,
   getInbox,
   getLedger,
   getQuarters,
@@ -115,7 +116,7 @@ export async function executeTool(
     case "remove_from_portfolio":
       return removeName(args.symbol, focus, carry);
     case "get_results":
-      return resultsFor(args.symbol, focus);
+      return resultsFor(args, focus);
     case "get_promises":
       return promisesFor(args.symbol, focus);
     case "get_reading":
@@ -285,38 +286,37 @@ async function removeName(
 }
 
 async function resultsFor(
-  raw: string | undefined,
+  args: ToolArgs,
   focus: string | null,
 ): Promise<ToolOutcome> {
-  const found = await findSymbol(raw, focus, true);
+  const found = await findSymbol(args.symbol, focus, true);
   if (!found.ok) return bare({ error: found.error });
-  const card = await getCompanyResultsCard(found.isin);
-  const reply: CompanyReply = { kind: "results", card };
-  const linked = linkFor(reply, found.symbol);
-  if (!card) {
+  const href = companyPage(found.symbol);
+  const engine = await getEngineQuarters(found.isin);
+  const quarters = quarterHistory(engine, quarterCount(args.quarters));
+  const card = buildResultsCard(engine);
+  if (!card && !quarters.length) {
     return {
-      fact: { status: "none", topic: "results", symbol: found.symbol },
+      fact: { status: "none", symbol: found.symbol, quarters: [] },
       card: null,
       symbol: found.symbol,
-      ...linked,
+      href,
+      link: "Full page",
       book: null,
     };
   }
-  const lines = (card.headline ?? []).map((row) => ({
-    label: row.label,
-    crore: row.currentCr,
-    yoyPct: row.yoyPct,
-  }));
+  const reply: CompanyReply = { kind: "results", card };
   return {
-    fact: {
-      status: "results",
+    fact: { status: "results", symbol: found.symbol, quarters },
+    card: {
+      kind: "reply",
       symbol: found.symbol,
-      period: card.fiscalLabel ?? card.periodEnd ?? null,
-      lines,
+      reply,
+      quarters,
     },
-    card: { kind: "reply", symbol: found.symbol, reply },
     symbol: found.symbol,
-    ...linked,
+    href,
+    link: "Full page",
     book: null,
   };
 }
@@ -327,32 +327,31 @@ async function promisesFor(
 ): Promise<ToolOutcome> {
   const found = await findSymbol(raw, focus, true);
   if (!found.ok) return bare({ error: found.error });
-  const rows = scoredPromises(await getLedger(found.isin));
-  const reply: CompanyReply = { kind: "promises", rows };
-  const linked = linkFor(reply, found.symbol);
+  const href = companyPage(found.symbol);
+  const rows = (await getLedger(found.isin))
+    .filter((row) => row.status !== "superseded")
+    .slice(0, PROMISE_CAP);
   if (!rows.length) {
     return {
-      fact: { status: "none", topic: "promises", symbol: found.symbol },
+      fact: { status: "none", symbol: found.symbol, rows: [] },
       card: null,
       symbol: found.symbol,
-      ...linked,
+      href,
+      link: "Full page",
       book: null,
     };
   }
+  const reply: CompanyReply = { kind: "promises", rows };
   return {
     fact: {
       status: "promises",
       symbol: found.symbol,
-      count: rows.length,
-      lines: rows.slice(0, 8).map((row) => ({
-        metric: row.metric,
-        verdict: row.verdict,
-        horizon: row.horizon,
-      })),
+      rows: rows.map(promiseFact),
     },
     card: { kind: "reply", symbol: found.symbol, reply },
     symbol: found.symbol,
-    ...linked,
+    href,
+    link: "Full page",
     book: null,
   };
 }
@@ -652,6 +651,105 @@ function indexName(raw: string | undefined): string | null {
   const key = (raw ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   if (!key) return null;
   return INDEX[key] ?? raw?.trim() ?? null;
+}
+
+const PROMISE_CAP = 12;
+const QUOTE_WORDS = 40;
+const TOP_METRICS = ["revenue", "nii", "total_income"] as const;
+const MID_METRICS = ["ebitda", "ppop"] as const;
+
+function companyPage(symbol: string): string {
+  return `/c/${encodeURIComponent(symbol)}`;
+}
+
+function quarterCount(value: number | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 4;
+  const n = Math.trunc(value);
+  if (n < 1) return 1;
+  if (n > 8) return 8;
+  return n;
+}
+
+function quarterHistory(
+  quarters: ResultsQuarter[],
+  count: number,
+): ChatQuarter[] {
+  if (!quarters.length) return [];
+  try {
+    const full = buildResultsCard(quarters);
+    if (!full) return [];
+    const series = quarters
+      .filter((row) => row.basis === full.basis)
+      .sort((a, b) => a.periodEnd.localeCompare(b.periodEnd));
+    const out: ChatQuarter[] = [];
+    for (const end of series.slice(-count)) {
+      const upTo = series.filter((row) => row.periodEnd <= end.periodEnd);
+      const card = buildResultsCard(upTo, full.basis);
+      if (!card) continue;
+      out.push({
+        period: card.fiscalLabel ?? card.periodEnd ?? end.periodEnd,
+        revenue: metricOf(card, TOP_METRICS),
+        ebitda: metricOf(card, MID_METRICS),
+        pat: metricOf(card, ["pat"]),
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function metricOf(
+  card: ResultsCard,
+  keys: readonly string[],
+): ChatQuarterMetric | null {
+  const lines = card.headline ?? [];
+  for (const key of keys) {
+    const row = lines.find((line) => line.metric === key);
+    if (!row) continue;
+    if (row.currentCr == null && row.yoyPct == null) continue;
+    return { label: row.label, crore: row.currentCr, yoyPct: row.yoyPct };
+  }
+  return null;
+}
+
+function promiseFact(row: LedgerRowView): {
+  quote: string;
+  metric: string;
+  promised: string;
+  verdict: string;
+  delivered: string | null;
+} {
+  return {
+    quote: clipWords(row.quote, QUOTE_WORDS),
+    metric: row.metric.replace(/_/g, " "),
+    promised: promised(row),
+    verdict: row.verdict ?? (row.status === "open" ? "open" : row.status),
+    delivered: deliveredValue(row),
+  };
+}
+
+function deliveredValue(row: LedgerRowView): string | null {
+  const value = row.delivered?.value;
+  if (value == null || !Number.isFinite(value)) return null;
+  const unit = row.delivered?.unit ?? row.unit;
+  if (unit === "INR" && Math.abs(value) >= 1e7)
+    return `${trimNum(value / 1e7)} cr`;
+  if (unit === "%") return `${trimNum(value)}%`;
+  if (unit === "bp") return `${trimNum(value)} bp`;
+  if (unit === "INR_cr") return `${trimNum(value)} cr`;
+  if (unit === "x") return `${trimNum(value)}×`;
+  return trimNum(value);
+}
+
+function trimNum(value: number): string {
+  return String(Math.round(value * 100) / 100);
+}
+
+function clipWords(text: string, max: number): string {
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (words.length <= max) return words.join(" ");
+  return `${words.slice(0, max).join(" ")}…`;
 }
 
 function ticker(raw: string | undefined): string | null {

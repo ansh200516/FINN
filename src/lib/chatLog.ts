@@ -5,6 +5,8 @@
 import type { ResultsCard } from "@/engine/types";
 import type { CompanyReply } from "@/lib/companyTurn";
 import {
+  type ChatQuarter,
+  type ChatQuarterMetric,
   FINNIE_CHAIN_CAP,
   FINNIE_LOG_CAP,
   type FinnieCard,
@@ -201,7 +203,44 @@ function parseCard(value: unknown): FinnieCard | null {
     return { kind: "management", symbol: rec.symbol, people };
   }
   if (rec.kind !== "reply" || typeof rec.symbol !== "string") return null;
-  return parseReply(rec.symbol, rec.reply);
+  const card = parseReply(rec.symbol, rec.reply);
+  if (!card || card.kind !== "reply") return card;
+  const quarters = parseQuarters(rec.quarters);
+  return quarters.length ? { ...card, quarters } : card;
+}
+
+function parseQuarters(value: unknown): ChatQuarter[] {
+  if (!Array.isArray(value)) return [];
+  const out: ChatQuarter[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as {
+      period?: unknown;
+      revenue?: unknown;
+      ebitda?: unknown;
+      pat?: unknown;
+    };
+    if (typeof rec.period !== "string" || !rec.period.trim()) continue;
+    out.push({
+      period: rec.period.slice(0, 24),
+      revenue: parseMetric(rec.revenue),
+      ebitda: parseMetric(rec.ebitda),
+      pat: parseMetric(rec.pat),
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function parseMetric(value: unknown): ChatQuarterMetric | null {
+  if (!value || typeof value !== "object") return null;
+  const rec = value as { label?: unknown; crore?: unknown; yoyPct?: unknown };
+  if (typeof rec.label !== "string") return null;
+  return {
+    label: rec.label.slice(0, 40),
+    crore: typeof rec.crore === "number" ? rec.crore : null,
+    yoyPct: typeof rec.yoyPct === "number" ? rec.yoyPct : null,
+  };
 }
 
 function parseReply(symbol: string, value: unknown): FinnieCard | null {

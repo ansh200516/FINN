@@ -12,7 +12,6 @@ import {
   type Mock,
   vi,
 } from "vitest";
-import { z } from "zod";
 
 vi.mock("@/engine/llm/gateway", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/engine/llm/gateway")>();
@@ -22,7 +21,7 @@ vi.mock("@/engine/llm/gateway", async (importOriginal) => {
 import { db, getDb } from "@/db/client";
 import {
   companies,
-  events,
+  guidance,
   llmLedger,
   resultsQuarters,
   users,
@@ -34,16 +33,21 @@ import {
   todayPt,
 } from "@/engine/llm/gateway";
 import { estimateTokens } from "@/lib/ask";
-import type { ChatContext } from "@/lib/finnieContext";
 import { fitChatContext } from "@/lib/finnieContext";
-import { FinnieReply, runFinnieTurn } from "@/lib/finnieTurn";
-import { FINNIE_NO_MATCH, FINNIE_OUT_OF_CALLS } from "@/lib/finnieTypes";
+import { FinnieSay, runFinnieTurn, ToolPlan } from "@/lib/finnieTurn";
+import {
+  FINNIE_NO_MATCH,
+  FINNIE_OUT_OF_CALLS,
+  FINNIE_TOOLS,
+} from "@/lib/finnieTypes";
 import { FinnieAnswer } from "@/ui/Desk";
 
 const llm = callStructured as unknown as Mock<typeof callStructured>;
 
 const PIIND = "INE603J01030";
 const ITC = "INE154A01025";
+const RELIANCE = "INE002A01018";
+const CR = 1e7;
 
 function model(data: unknown) {
   return {
@@ -58,11 +62,14 @@ function model(data: unknown) {
   };
 }
 
-function contextOf(prompt: string): ChatContext {
-  const marker = "\n\nContext:\n";
+function factsOf(prompt: string): Array<{ tool: string; data: unknown }> {
+  const marker = "\n\nTools:\n";
   const at = prompt.indexOf(marker);
   expect(at).toBeGreaterThan(-1);
-  return JSON.parse(prompt.slice(at + marker.length)) as ChatContext;
+  return JSON.parse(prompt.slice(at + marker.length)) as Array<{
+    tool: string;
+    data: unknown;
+  }>;
 }
 
 beforeAll(async () => {
@@ -97,207 +104,223 @@ beforeEach(() => {
 });
 
 describe("runFinnieTurn", () => {
-  it("answers an unseen question from the act lines, and does not require list_portfolio", async () => {
-    await db.delete(events);
-    const now = Date.now();
-    await db.insert(events).values([
+  it("gives a novel question the tools the model named, and answers from those payloads", async () => {
+    await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
+    await db.delete(resultsQuarters).where(eq(resultsQuarters.isin, RELIANCE));
+    await db.delete(companies).where(eq(companies.isin, RELIANCE));
+    const revs = [100, 110, 120, 130, 150];
+    const ends = [
+      "2024-09-30",
+      "2024-12-31",
+      "2025-03-31",
+      "2025-06-30",
+      "2025-09-30",
+    ];
+    const openQuote = Array.from(
+      { length: 50 },
+      (_, i) => `word${String(i).padStart(2, "0")}`,
+    ).join(" ");
+    await db.insert(companies).values({
+      isin: RELIANCE,
+      nseSymbol: "RELIANCE",
+      name: "Reliance Industries Limited",
+      aliasesJson: "[]",
+      inPortfolio: true,
+      isAdhoc: false,
+    });
+    await db.insert(resultsQuarters).values(
+      ends.map((periodEnd, i) => ({
+        isin: RELIANCE,
+        periodEnd,
+        basis: "consolidated",
+        source: "xbrl",
+        revenue: (revs[i] ?? 0) * CR,
+        pat: (revs[i] ?? 0) * 0.1 * CR,
+        checksJson: "{}",
+        updatedAt: Date.now(),
+      })),
+    );
+    await db.insert(guidance).values([
       {
-        eventKey: `${PIIND}|management_change|deal`,
-        isin: PIIND,
-        category: "management_change",
-        firstAt: now - 60_000,
-        lastAt: now - 60_000,
-        tier: 1,
-        cardType: "management_change",
-        cardJson: JSON.stringify({
-          title: "Managing director",
-          oneLiner: "Jayant Balan becomes MD.",
-          category: "management_change",
-          tier: 1,
-          priority: 80,
-        }),
-        announcementIdsJson: "[]",
+        id: "rel-open",
+        isin: RELIANCE,
+        docId: "doc-rel",
+        quote: openQuote,
+        metric: "revenue_growth",
+        direction: "range",
+        low: 10,
+        high: 12,
+        unit: "%",
+        horizon: "FY26",
+        status: "open",
+        verdict: null,
+        evidenceJson: "{}",
+        createdAt: Date.now(),
       },
       {
-        eventKey: `${ITC}|management_change|deal`,
-        isin: ITC,
-        category: "management_change",
-        firstAt: now - 5 * 60_000,
-        lastAt: now - 5 * 60_000,
-        tier: 1,
-        cardType: "management_change",
-        cardJson: JSON.stringify({
-          title: "Finance chief",
-          oneLiner: "The finance chief leaves the board.",
-          category: "management_change",
-          tier: 1,
-          priority: 70,
+        id: "rel-kept",
+        isin: RELIANCE,
+        docId: "doc-rel",
+        quote: "EBITDA margin holds at eleven percent.",
+        metric: "ebitda_margin",
+        direction: "absolute",
+        low: 11,
+        high: 11,
+        unit: "%",
+        status: "settled",
+        verdict: "kept",
+        evidenceJson: JSON.stringify({
+          delivered: { value: 11, unit: "%", source: "xbrl" },
         }),
-        announcementIdsJson: "[]",
+        createdAt: Date.now() - 1000,
+      },
+      {
+        id: "rel-old",
+        isin: RELIANCE,
+        docId: "doc-rel",
+        quote: "SUPERSEDED_MARKER should stay out of the payload.",
+        metric: "capex",
+        status: "superseded",
+        verdict: "cut",
+        evidenceJson: "{}",
+        createdAt: Date.now() - 2000,
       },
     ]);
-
-    const sentence = "blorp the quartz ledger";
-    const say = "PIIND has a management change to read. The decision is yours.";
-    llm.mockResolvedValueOnce(model({ say, showList: false, write: null }));
-
-    const result = await runFinnieTurn(sentence, null);
-
-    expect(result.say).toBe(say);
-    expect(result.say).not.toContain("ITC Limited");
-    expect(result.say).not.toContain("PI Industries");
-    expect(result.tools).toEqual([]);
-    expect(result.tools).not.toContain("list_portfolio");
-    expect(result.card).toBeNull();
-    expect(result.cards).toEqual([]);
-    expect(llm).toHaveBeenCalledTimes(1);
-    expect(llm.mock.calls[0]?.[0]).toMatchObject({
-      task: "finnie",
-      tier: "bulk",
-      schema: FinnieReply,
-    });
-    const prompt = String(llm.mock.calls[0]?.[0].prompt);
-    expect(prompt.startsWith(`Question: ${sentence}\n`)).toBe(true);
-    const context = contextOf(prompt);
-    expect(context.brief.act.map((line) => line.symbol).sort()).toEqual([
-      "ITC",
-      "PIIND",
-    ]);
-    expect(
-      context.brief.act.some((line) => line.sentence.includes("Jayant Balan")),
-    ).toBe(true);
-    expect(
-      context.brief.act.some((line) =>
-        line.sentence.toLowerCase().includes("finance chief"),
-      ),
-    ).toBe(true);
-    for (const line of context.brief.act) {
-      expect(line.href.startsWith("/e/")).toBe(true);
-    }
-    expect(context.portfolio.map((row) => row.symbol)).toEqual([
-      "ITC",
-      "PIIND",
-    ]);
-    expect(
-      context.portfolio.find((row) => row.symbol === "PIIND"),
-    ).toMatchObject({
-      href: "/c/PIIND",
-      movePct: null,
-      results: null,
-      promises: { kept: 0, missed: 0, open: 0 },
-    });
-    expect(String(llm.mock.calls[0]?.[0].system)).toContain(
-      "using only the context JSON",
-    );
-    expect(String(llm.mock.calls[0]?.[0].system)).not.toContain(
-      "list_portfolio",
-    );
-    await db.delete(events);
-  });
-
-  it("loads the same context for a rating question and an unseen question", async () => {
-    const reply = {
-      say: "Noted.",
-      showList: false,
-      write: null,
-    };
-    llm.mockResolvedValue(model(reply));
-    await runFinnieTurn("blorp the quartz ledger", null);
-    await runFinnieTurn("rate my portfolio", null);
-    const first = contextOf(String(llm.mock.calls[0]?.[0].prompt));
-    const second = contextOf(String(llm.mock.calls[1]?.[0].prompt));
-    expect(second).toEqual(first);
-    expect(String(llm.mock.calls[1]?.[0].prompt)).toContain(
-      "Question: rate my portfolio",
-    );
-    expect(llm.mock.calls.every((call) => call[0].schema === FinnieReply)).toBe(
-      true,
-    );
-  });
-
-  it("shows the holdings card only when the model sets showList", async () => {
-    llm.mockResolvedValueOnce(
-      model({
-        say: "The book is the card.",
-        showList: true,
-        write: null,
-      }),
-    );
-    const shown = await runFinnieTurn("qqqq list the names", null);
-    expect(shown.say).toBe("The book is the card.");
-    expect(shown.card?.kind).toBe("portfolio");
-    if (shown.card?.kind === "portfolio") {
-      expect(shown.card.names.map((row) => row.symbol)).toEqual([
-        "ITC",
-        "PIIND",
+    try {
+      const sentence = "zylophone the marigold ledger";
+      const say =
+        "RELIANCE revenue growth of 10–12% is open and not yet scored. Management said word00. The margin row was kept at 11%. The decision is yours.";
+      llm.mockResolvedValueOnce(
+        model({
+          calls: [
+            {
+              tool: "get_results",
+              args: { symbol: "RELIANCE", quarters: 4 },
+            },
+            { tool: "get_promises", args: { symbol: "RELIANCE" } },
+          ],
+        }),
+      );
+      llm.mockResolvedValueOnce(model({ say }));
+      const result = await runFinnieTurn(sentence, null);
+      expect(llm).toHaveBeenCalledTimes(2);
+      expect(llm.mock.calls[0]?.[0]).toMatchObject({
+        task: "finnie",
+        tier: "bulk",
+        schema: ToolPlan,
+        system: expect.stringContaining("Do not answer"),
+      });
+      expect(llm.mock.calls[1]?.[0]).toMatchObject({
+        schema: FinnieSay,
+        system: expect.stringContaining("only the tool JSON"),
+      });
+      const first = String(llm.mock.calls[0]?.[0].prompt);
+      const second = String(llm.mock.calls[1]?.[0].prompt);
+      expect(first.startsWith(`Question: ${sentence}`)).toBe(true);
+      expect(first).toContain("Catalog:");
+      for (const name of FINNIE_TOOLS) expect(first).toContain(name);
+      expect(first).not.toContain("PI Industries");
+      expect(first).not.toContain("word00");
+      expect(first).not.toContain('"crore":150');
+      expect(second).not.toContain("Catalog:");
+      expect(second.startsWith(`Question: ${sentence}`)).toBe(true);
+      const facts = factsOf(second);
+      expect(facts.map((row) => row.tool)).toEqual([
+        "get_results",
+        "get_promises",
       ]);
+      const results = facts[0]?.data as {
+        symbol: string;
+        quarters: Array<{
+          period: string;
+          revenue: { crore: number; yoyPct: number | null };
+        }>;
+      };
+      expect(results.symbol).toBe("RELIANCE");
+      expect(results.quarters.map((row) => row.period)).toEqual([
+        "Q3 FY25",
+        "Q4 FY25",
+        "Q1 FY26",
+        "Q2 FY26",
+      ]);
+      expect(results.quarters[3]?.revenue).toMatchObject({
+        crore: 150,
+        yoyPct: 50,
+      });
+      const promises = facts[1]?.data as {
+        rows: Array<{
+          quote: string;
+          metric: string;
+          promised: string;
+          verdict: string;
+          delivered: string | null;
+        }>;
+      };
+      expect(promises.rows).toHaveLength(2);
+      const open = promises.rows.find((row) => row.verdict === "open");
+      const kept = promises.rows.find((row) => row.verdict === "kept");
+      expect(open?.metric).toBe("revenue growth");
+      expect(open?.promised).toContain("10");
+      expect(open?.promised).toContain("12");
+      expect(open?.delivered).toBeNull();
+      expect(open?.quote).toContain("word00");
+      expect(open?.quote).toContain("word39");
+      expect(open?.quote).not.toContain("word40");
+      expect(kept?.quote).toContain("eleven percent");
+      expect(kept?.delivered).toContain("11");
+      expect(second).not.toContain("SUPERSEDED_MARKER");
+      expect(result.say).toBe(say);
+      expect(result.say).not.toContain("the results are Q2");
+      expect(result.tools).toEqual(["get_results", "get_promises"]);
+      expect(result.pages).toEqual(["/c/RELIANCE", "/c/RELIANCE"]);
+      const turn = readFileSync("src/lib/finnieTurn.ts", "utf8");
+      const tools = readFileSync("src/lib/finnieTools.ts", "utf8");
+      expect(turn).not.toContain("zylophone");
+      expect(turn).not.toContain("marigold");
+      expect(turn).not.toContain("loadChatPack");
+      expect(turn).not.toContain("the results are Q2");
+      expect(tools).not.toContain("the results are Q2");
+      expect(turn).not.toContain("four quarters");
+      expect(turn).not.toMatch(
+        /(?:sentence|text|question)\.(?:match|includes|search|toLowerCase)/,
+      );
+      expect(tools).not.toMatch(
+        /(?:sentence|text|question)\.(?:match|includes|search|toLowerCase)/,
+      );
+      const html = renderToStaticMarkup(
+        createElement(FinnieAnswer, {
+          say: result.say,
+          cards: result.cards,
+          pages: result.pages,
+          links: result.links,
+        }),
+      );
+      expect(html).toContain(say);
+      expect(html).toContain("word00");
+      expect(html).not.toContain("word40");
+      expect(html).toContain("eleven percent");
+      expect(html).toContain("Open");
+      expect(html).toContain("Kept");
+      expect(html).toContain("Q3 FY25");
+      expect(html).toContain("Q2 FY26");
+      expect(html).toContain("Revenue");
+      expect(html).toContain("Full page");
+      expect(html).toContain('href="/c/RELIANCE"');
+      expect(html).not.toContain("the results are Q2");
+    } finally {
+      await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
+      await db
+        .delete(resultsQuarters)
+        .where(eq(resultsQuarters.isin, RELIANCE));
+      await db.delete(companies).where(eq(companies.isin, RELIANCE));
     }
-    expect(shown.tools).toEqual([]);
-
-    llm.mockResolvedValueOnce(
-      model({
-        say: "Two names, and that is enough.",
-        showList: false,
-        write: null,
-      }),
-    );
-    const hidden = await runFinnieTurn("whats in my portfolio", null);
-    expect(hidden.say).toBe("Two names, and that is enough.");
-    expect(hidden.card).toBeNull();
-    expect(hidden.say).not.toContain("ITC Limited");
   });
 
-  it("runs a write the model asked for and keeps the model's sentence", async () => {
-    const say = "PIIND is already in the book.";
-    llm.mockResolvedValueOnce(
-      model({
-        say,
-        showList: false,
-        write: { tool: "add_to_portfolio", args: { symbol: "PIIND" } },
-      }),
-    );
-    const result = await runFinnieTurn("put PIIND in the book", null);
-    expect(result.say).toBe(say);
-    expect(result.tools).toEqual(["add_to_portfolio"]);
-    expect(result.book).toBe("already_in");
-    expect(result.symbol).toBe("PIIND");
-    expect(llm).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not fetch when the model names a read as a write", async () => {
-    llm.mockResolvedValueOnce(
-      model({
-        say: "Nothing to change.",
-        showList: false,
-        write: { tool: "list_portfolio", args: {} },
-      }),
-    );
+  it("stops when the model names no tool", async () => {
+    llm.mockResolvedValueOnce(model({ calls: [] }));
     const result = await runFinnieTurn("zzzz quantum holdings", null);
-    expect(result.say).toBe("Nothing to change.");
-    expect(result.tools).toEqual([]);
-    expect(result.card).toBeNull();
-    expect(llm).toHaveBeenCalledTimes(1);
-  });
-
-  it("includes the open company for every sentence once a company is in focus", async () => {
-    llm.mockResolvedValue(
-      model({ say: "Noted.", showList: false, write: null }),
-    );
-    await runFinnieTurn("any sentence at all", "PIIND");
-    await runFinnieTurn("a totally different sentence", null);
-    const focused = contextOf(String(llm.mock.calls[0]?.[0].prompt));
-    const plain = contextOf(String(llm.mock.calls[1]?.[0].prompt));
-    expect(focused.company?.symbol).toBe("PIIND");
-    expect(focused.company?.scoredPromises.missed).toBe(0);
-    expect(plain.company).toBeNull();
-    expect({ ...focused, company: null }).toEqual(plain);
-  });
-
-  it("says it could not match when the model call fails", async () => {
-    llm.mockRejectedValue(new Error("down"));
-    const result = await runFinnieTurn("blorp the quartz ledger", null);
     expect(result.say).toBe(FINNIE_NO_MATCH);
-    expect(result.card).toBeNull();
+    expect(result.cards).toEqual([]);
     expect(result.tools).toEqual([]);
     expect(llm).toHaveBeenCalledTimes(1);
   });
@@ -317,12 +340,55 @@ describe("runFinnieTurn", () => {
       updatedAt: Date.now(),
     });
     try {
-      const result = await runFinnieTurn("rate my portfolio", null);
+      const result = await runFinnieTurn("zylophone the marigold ledger", null);
       expect(result.say).toBe(FINNIE_OUT_OF_CALLS);
       expect(llm).not.toHaveBeenCalled();
     } finally {
       await db.delete(llmLedger).where(eq(llmLedger.model, name));
     }
+  });
+
+  it("runs a write the model asked for and keeps the model's sentence", async () => {
+    const say = "PIIND is already in the book.";
+    llm.mockResolvedValueOnce(
+      model({
+        calls: [{ tool: "add_to_portfolio", args: { symbol: "PIIND" } }],
+      }),
+    );
+    llm.mockResolvedValueOnce(model({ say }));
+    const result = await runFinnieTurn("blorp PIIND onto the shelf", null);
+    expect(result.say).toBe(say);
+    expect(result.tools).toEqual(["add_to_portfolio"]);
+    expect(result.book).toBe("already_in");
+    expect(result.symbol).toBe("PIIND");
+    const second = String(llm.mock.calls[1]?.[0].prompt);
+    expect(factsOf(second)[0]?.tool).toBe("add_to_portfolio");
+  });
+
+  it("sends only the last eight turns to both calls", async () => {
+    llm.mockResolvedValueOnce(
+      model({ calls: [{ tool: "list_portfolio", args: {} }] }),
+    );
+    llm.mockResolvedValueOnce(model({ say: "Noted." }));
+    const memory = Array.from({ length: 10 }, (_, i) => {
+      const label = String(i).padStart(2, "0");
+      return {
+        user: `user-${label} asked about PIIND`,
+        say: `finnie-${label} kept a PIIND line`,
+        results: [] as string[],
+      };
+    });
+    await runFinnieTurn("and the latest sentence", null, memory);
+    const first = String(llm.mock.calls[0]?.[0].prompt);
+    const second = String(llm.mock.calls[1]?.[0].prompt);
+    for (const prompt of [first, second]) {
+      expect(prompt).toContain("finnie-02 kept a PIIND line");
+      expect(prompt).toContain("finnie-09 kept a PIIND line");
+      expect(prompt).not.toContain("finnie-00");
+      expect(prompt).not.toContain("finnie-01");
+    }
+    expect(first).toContain("Catalog:");
+    expect(second).not.toContain("Catalog:");
   });
 
   it("keeps the context under the token cap and the list caps", () => {
@@ -370,304 +436,13 @@ describe("runFinnieTurn", () => {
     expect(fitted.brief.filedAway).toBe(9);
   });
 
-  it("has no phrase-to-tool table", () => {
+  it("does not load the book for a sentence", () => {
     const turn = readFileSync("src/lib/finnieTurn.ts", "utf8");
     const context = readFileSync("src/lib/finnieContext.ts", "utf8");
-    expect(turn).not.toContain("list_portfolio");
-    expect(turn).not.toContain("get_brief");
-    expect(turn).not.toContain("missed_promises");
-    expect(turn).not.toContain("rate my");
-    expect(context).not.toContain("list_portfolio");
-    expect(context).not.toMatch(/loadChatPack\([^)]*sentence/);
+    expect(turn).not.toContain("loadChatPack");
     expect(context).toContain(
       "export async function loadChatPack(focus: string | null)",
     );
-    const schema = z.toJSONSchema(FinnieReply, {
-      target: "draft-7",
-      io: "output",
-    });
-    const enums = stringEnums(schema);
-    expect(enums.some((items) => items.includes("list_portfolio"))).toBe(false);
-    expect(enums.some((items) => items.includes("get_brief"))).toBe(false);
-    expect(enums.some((items) => items.includes("add_to_portfolio"))).toBe(
-      true,
-    );
-    expect(enums.some((items) => items.includes("mark_read"))).toBe(true);
-    expect(
-      enums.some(
-        (items) => items.includes("results") && items.includes("brief"),
-      ),
-    ).toBe(true);
-    expect(turn).not.toContain("give me the analysis");
-    expect(JSON.stringify(schema)).toContain("cards");
-  });
-
-  it("renders the results card when the model chooses it", async () => {
-    await db.delete(resultsQuarters).where(eq(resultsQuarters.isin, PIIND));
-    await db.insert(resultsQuarters).values([
-      {
-        isin: PIIND,
-        periodEnd: "2024-09-30",
-        basis: "consolidated",
-        source: "xbrl",
-        revenue: 1_600_000_000,
-        checksJson: "{}",
-        updatedAt: Date.now(),
-      },
-      {
-        isin: PIIND,
-        periodEnd: "2025-09-30",
-        basis: "consolidated",
-        source: "xbrl",
-        revenue: 2_000_000_000,
-        checksJson: "{}",
-        updatedAt: Date.now(),
-      },
-    ]);
-    try {
-      const say =
-        "PIIND is down 19% on 30× volume. You asked to be told. The decision is yours.";
-      llm.mockResolvedValueOnce(
-        model({
-          say,
-          showList: false,
-          cards: [{ symbol: "PIIND", kind: "results" }],
-          write: null,
-        }),
-      );
-      const result = await runFinnieTurn(
-        "give me the analysis for PIIND",
-        null,
-      );
-      expect(result.say).toBe(say);
-      const context = contextOf(String(llm.mock.calls[0]?.[0].prompt));
-      expect(
-        context.portfolio.find((row) => row.symbol === "PIIND")?.results,
-      ).toMatchObject({ label: "Revenue", crore: 200, yoyPct: 25 });
-      expect(String(llm.mock.calls[0]?.[0].system)).toContain(
-        "Do not answer with only the price or volume line.",
-      );
-      expect(result.cards[0]).toMatchObject({
-        kind: "reply",
-        symbol: "PIIND",
-        reply: { kind: "results" },
-      });
-      expect(result.pages[0]).toBe("/c/PIIND");
-      const html = renderToStaticMarkup(
-        createElement(FinnieAnswer, {
-          say: result.say,
-          cards: result.cards,
-          pages: result.pages,
-          links: result.links,
-        }),
-      );
-      expect(html).toContain("Revenue");
-      expect(html).toContain("Full page");
-      expect(html).toContain('href="/c/PIIND"');
-    } finally {
-      await db.delete(resultsQuarters).where(eq(resultsQuarters.isin, PIIND));
-    }
-  });
-
-  it("draws the act rows when the model chooses brief", async () => {
-    await db.delete(events);
-    const now = Date.now();
-    await db.insert(events).values({
-      eventKey: `${PIIND}|management_change|deal`,
-      isin: PIIND,
-      category: "management_change",
-      firstAt: now - 60_000,
-      lastAt: now - 60_000,
-      tier: 1,
-      cardType: "management_change",
-      cardJson: JSON.stringify({
-        title: "Managing director",
-        oneLiner: "Jayant Balan becomes MD.",
-        category: "management_change",
-        tier: 1,
-        priority: 80,
-      }),
-      announcementIdsJson: "[]",
-    });
-    try {
-      const say = "PIIND stands out. The decision is yours.";
-      llm.mockResolvedValueOnce(
-        model({
-          say,
-          showList: false,
-          cards: [{ symbol: "PIIND", kind: "brief" }],
-          write: null,
-        }),
-      );
-      const result = await runFinnieTurn("which stocks should I act on", null);
-      expect(result.say).toBe(say);
-      const lines = result.cards.find((card) => card.kind === "lines");
-      expect(lines?.kind).toBe("lines");
-      if (lines?.kind === "lines") {
-        expect(lines.lines[0]?.symbol).toBe("PIIND");
-        expect(lines.lines[0]?.text).toContain("Jayant Balan");
-        expect(lines.lines[0]?.href.startsWith("/e/")).toBe(true);
-      }
-      const html = renderToStaticMarkup(
-        createElement(FinnieAnswer, {
-          say: result.say,
-          cards: result.cards,
-          pages: result.pages,
-          links: result.links,
-        }),
-      );
-      expect(html).toContain("Jayant Balan");
-      expect(html).toContain("Full page");
-      expect(html).toContain("/e/");
-    } finally {
-      await db.delete(events);
-    }
-  });
-
-  it("links a named symbol when the model chooses no card", async () => {
-    llm.mockResolvedValueOnce(
-      model({
-        say: "PIIND is the name on the page.",
-        showList: false,
-        cards: [],
-        write: null,
-      }),
-    );
-    const result = await runFinnieTurn("zzzz quartz", null);
-    expect(result.cards).toEqual([]);
-    expect(result.links).toEqual([{ href: "/c/PIIND", label: "Full page" }]);
-    const html = renderToStaticMarkup(
-      createElement(FinnieAnswer, {
-        say: result.say,
-        cards: result.cards,
-        pages: result.pages,
-        links: result.links,
-      }),
-    );
-    expect(html).toContain('href="/c/PIIND"');
-    expect(html).toContain("Full page");
-  });
-
-  it("passes a prior PIIND reply into the next prompt", async () => {
-    const priorSay =
-      "For PIIND, Q2 FY27 Revenue is 1701.8 crore, down 9.11% year-on-year.";
-    llm.mockResolvedValueOnce(
-      model({
-        say: "VOLTAS stands out. The decision is yours.",
-        showList: false,
-        cards: [],
-        write: null,
-      }),
-    );
-    llm.mockResolvedValueOnce(
-      model({
-        say: "The app has no options data. PIIND is already down. The decision is yours.",
-        showList: false,
-        cards: [{ symbol: "PIIND", kind: "results" }],
-        write: null,
-      }),
-    );
-    await runFinnieTurn("which stocks to act upon next week", null);
-    const followUp =
-      "so buying a put will be a good option for this next week?";
-    const result = await runFinnieTurn(followUp, null, [
-      {
-        user: "give me the analysis for PIIND",
-        say: priorSay,
-        results: ["PIIND"],
-      },
-    ]);
-    expect(llm).toHaveBeenCalledTimes(2);
-    const first = String(llm.mock.calls[0]?.[0].prompt);
-    const second = String(llm.mock.calls[1]?.[0].prompt);
-    expect(first).not.toContain(priorSay);
-    expect(first).not.toContain("Thread:");
-    expect(second.startsWith(`Question: ${followUp}\n`)).toBe(true);
-    expect(second).toContain(`User: give me the analysis for PIIND`);
-    expect(second).toContain(`Finnie: ${priorSay}`);
-    expect(second).toContain("Results cards already shown: PIIND");
-    const system = String(llm.mock.calls[1]?.[0].system);
-    expect(system).toContain(
-      "Answer the latest sentence in light of the thread",
-    );
-    expect(system).toContain("no options data");
-    expect(system).toContain(
-      "Do not paste an earlier results paragraph unchanged.",
-    );
-    expect(result.cards).toEqual([]);
-    expect(result.links).toEqual([{ href: "/c/PIIND", label: "Full page" }]);
-    const html = renderToStaticMarkup(
-      createElement(FinnieAnswer, {
-        say: result.say,
-        cards: result.cards,
-        pages: result.pages,
-        links: result.links,
-      }),
-    );
-    expect(html).toContain('href="/c/PIIND"');
-    expect(html).not.toContain("rtable");
-  });
-
-  it("draws the results card again when the follow-up asks to see the numbers", async () => {
-    llm.mockResolvedValueOnce(
-      model({
-        say: "Here are the PIIND numbers again.",
-        showList: false,
-        cards: [{ symbol: "PIIND", kind: "results" }],
-        write: null,
-      }),
-    );
-    const result = await runFinnieTurn("show me the numbers again", null, [
-      {
-        user: "how is PIIND",
-        say: "For PIIND, revenue is 1701.8 crore.",
-        results: ["PIIND"],
-      },
-    ]);
-    expect(result.cards[0]).toMatchObject({
-      kind: "reply",
-      symbol: "PIIND",
-      reply: { kind: "results" },
-    });
-    expect(result.pages[0]).toBe("/c/PIIND");
-  });
-
-  it("sends only the last eight turns", async () => {
-    llm.mockResolvedValueOnce(
-      model({ say: "Noted.", showList: false, cards: [], write: null }),
-    );
-    const memory = Array.from({ length: 10 }, (_, i) => {
-      const label = String(i).padStart(2, "0");
-      return {
-        user: `user-${label} asked about PIIND`,
-        say: `finnie-${label} kept a PIIND line`,
-        results: [] as string[],
-      };
-    });
-    await runFinnieTurn("and the latest sentence", null, memory);
-    const prompt = String(llm.mock.calls[0]?.[0].prompt);
-    expect(prompt).toContain("finnie-02 kept a PIIND line");
-    expect(prompt).toContain("finnie-09 kept a PIIND line");
-    expect(prompt).toContain("user-02 asked about PIIND");
-    expect(prompt).not.toContain("finnie-00");
-    expect(prompt).not.toContain("finnie-01");
-    expect(prompt).not.toContain("user-00");
-    expect(prompt).not.toContain("user-01");
+    expect(context).not.toMatch(/loadChatPack\([^)]*sentence/);
   });
 });
-
-function stringEnums(node: unknown, found: string[][] = []): string[][] {
-  if (!node || typeof node !== "object") return found;
-  if (Array.isArray(node)) {
-    for (const item of node) stringEnums(item, found);
-    return found;
-  }
-  const rec = node as Record<string, unknown>;
-  if (
-    Array.isArray(rec.enum) &&
-    rec.enum.every((item) => typeof item === "string")
-  )
-    found.push(rec.enum as string[]);
-  for (const value of Object.values(rec)) stringEnums(value, found);
-  return found;
-}

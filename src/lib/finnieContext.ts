@@ -1,7 +1,7 @@
 /**
- * The book, loaded once per chat turn. The sentence is not an argument.
- * Every question sees this same shape. Each holding carries its move, the
- * latest revenue or NII headline, promise counts, and a page href.
+ * A book snapshot kept for tests of the token cap. Chat does not send it.
+ * A turn asks the model for tools, then answers from the JSON those tools
+ * return.
  */
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db/client";

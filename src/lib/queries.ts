@@ -1015,6 +1015,13 @@ export async function getQuarters(isin: string): Promise<QuarterRow[]> {
   return (await loadCompanyQuarters(isin)).quarters;
 }
 
+/** Exchange quarters in period order, both bases, for a results series. */
+export async function getEngineQuarters(
+  isin: string,
+): Promise<ResultsQuarter[]> {
+  return (await loadCompanyQuarters(isin)).engine;
+}
+
 /** Latest results card from exchange quarters. Null when none are on file. */
 export async function getCompanyResultsCard(
   isin: string,

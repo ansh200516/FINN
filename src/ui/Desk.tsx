@@ -9,8 +9,9 @@ import {
   loadChatLog,
   saveChatLog,
 } from "@/lib/chatLog";
-import { NO_RESULTS } from "@/lib/companyTurn";
+import { NO_PROMISES, NO_RESULTS } from "@/lib/companyTurn";
 import {
+  type ChatQuarter,
   FINNIE_LOG_CAP,
   FINNIE_MODEL_DOWN,
   type FinnieCard,
@@ -18,10 +19,14 @@ import {
   type FinnieMemory,
   type FinnieTurnResult,
 } from "@/lib/finnieTypes";
+import { groupIndian } from "@/lib/format";
 import { FINNIE_GREETING } from "@/ui/composer";
+import type { LedgerRowView } from "@/ui/model";
 import { useTypingExample } from "@/ui/typingExample";
 import { ReplyBody } from "./CompanyConversation";
+import { DeltaChip } from "./DeltaChip";
 import { ResultsGrid } from "./ResultsGrid";
+import { VerdictBadge } from "./VerdictBadge";
 
 type Shown =
   | { kind: "pending" }
@@ -248,7 +253,119 @@ function cardNode(card: FinnieCard | null): ReactNode {
     return card.lines.length ? <FactLines lines={card.lines} /> : null;
   if (card.kind === "compare") return <CompareCard card={card} />;
   if (card.kind === "management") return <ManagementCard card={card} />;
-  return <ReplyBody reply={card.reply} symbol={card.symbol} />;
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      {card.reply.kind === "promises" ? (
+        <PromiseRows rows={card.reply.rows} symbol={card.symbol} />
+      ) : (
+        <ReplyBody reply={card.reply} symbol={card.symbol} />
+      )}
+      {card.quarters?.length ? (
+        <QuarterStrip rows={card.quarters} symbol={card.symbol} />
+      ) : null}
+    </div>
+  );
+}
+
+function PromiseRows({
+  rows,
+  symbol,
+}: {
+  rows: LedgerRowView[];
+  symbol: string;
+}) {
+  const shown = rows.filter((row) => row.status !== "superseded");
+  if (!shown.length) return <p className="small text-ink">{NO_PROMISES}</p>;
+  return (
+    <ul className="m-0 list-none p-0" aria-label={`${symbol} promises`}>
+      {shown.map((row) => (
+        <li key={row.id} className="border-b border-rule py-2 last:border-b-0">
+          <VerdictBadge verdict={row.verdict ?? "open"} className="small" />
+          <p className="small mt-1 text-ink">{clipWords(row.quote, 40)}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function QuarterStrip({
+  rows,
+  symbol,
+}: {
+  rows: ChatQuarter[];
+  symbol: string;
+}) {
+  const revenue = metricLabel(rows, "revenue", "Revenue");
+  const ebitda = metricLabel(rows, "ebitda", "EBITDA");
+  const pat = metricLabel(rows, "pat", "PAT");
+  return (
+    <table className="rtable" aria-label={`${symbol} quarters, ₹ crore`}>
+      <thead>
+        <tr>
+          <th scope="col" className="hd">
+            Period
+          </th>
+          <th scope="col" className="hd r">
+            {revenue}
+          </th>
+          <th scope="col" className="hd r">
+            {ebitda}
+          </th>
+          <th scope="col" className="hd r">
+            {pat}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.period}>
+            <th scope="row" className="cell small text-ink-2">
+              {row.period}
+            </th>
+            <QuarterCell metric={row.revenue} />
+            <QuarterCell metric={row.ebitda} />
+            <QuarterCell metric={row.pat} />
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function QuarterCell({ metric }: { metric: ChatQuarter["revenue"] }) {
+  return (
+    <td className="cell r">
+      <span className="num">{fmtCr(metric?.crore ?? null)}</span>
+      {metric?.yoyPct != null ? (
+        <span className="mt-0.5 block">
+          <DeltaChip value={metric.yoyPct} />
+        </span>
+      ) : null}
+    </td>
+  );
+}
+
+function metricLabel(
+  rows: ChatQuarter[],
+  key: "revenue" | "ebitda" | "pat",
+  fallback: string,
+): string {
+  for (const row of rows) {
+    const label = row[key]?.label;
+    if (label) return label;
+  }
+  return fallback;
+}
+
+function fmtCr(value: number | null): string {
+  if (value == null) return "—";
+  return groupIndian(value, Math.abs(value) < 100 ? 1 : 0);
+}
+
+function clipWords(text: string, max: number): string {
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (words.length <= max) return words.join(" ");
+  return `${words.slice(0, max).join(" ")}…`;
 }
 
 function FactLines({ lines }: { lines: FinnieLine[] }) {

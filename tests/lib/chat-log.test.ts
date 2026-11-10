@@ -94,6 +94,46 @@ describe("chat log", () => {
     expect(storage.getItem(CHAT_LOG_KEY)).toContain("1701.8");
   });
 
+  it("keeps the quarter strip on a results card", () => {
+    const storage = memoryStorage();
+    saveChatLog(storage, [
+      turn(1, {
+        cards: [
+          {
+            kind: "reply",
+            symbol: "RELIANCE",
+            reply: {
+              kind: "results",
+              card: {
+                isin: "INE002A01018",
+                basis: "consolidated",
+                checksum: "exchange_xbrl",
+                rows: [],
+                ebitdaFormula: "pbt+fin+dna",
+                sourceUrl: null,
+              },
+            },
+            quarters: [
+              {
+                period: "Q2 FY27",
+                revenue: { label: "Revenue", crore: 150, yoyPct: 50 },
+                ebitda: null,
+                pat: { label: "PAT", crore: 15, yoyPct: 50 },
+              },
+            ],
+          },
+        ],
+        pages: ["/c/RELIANCE"],
+      }),
+    ]);
+    const loaded = loadChatLog(storage);
+    expect(loaded[0]?.cards[0]).toMatchObject({
+      kind: "reply",
+      symbol: "RELIANCE",
+      quarters: [{ period: "Q2 FY27", revenue: { crore: 150, yoyPct: 50 } }],
+    });
+  });
+
   it("returns nothing for a missing or broken log", () => {
     const storage = memoryStorage();
     expect(loadChatLog(storage)).toEqual([]);

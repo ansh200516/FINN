@@ -46,6 +46,8 @@ export interface ToolArgs {
   kind?: string;
   window?: string;
   pct?: number;
+  /** How many results quarters get_results returns. 1–8, default 4. */
+  quarters?: number;
   /** false turns the named rule off. A new threshold replaces the saved one. */
   enabled?: boolean;
   params?: {
@@ -85,13 +87,32 @@ export interface FinniePerson {
   excerpt: string | null;
 }
 
+/** One results quarter the model was given. Money is ₹ crore. */
+export interface ChatQuarterMetric {
+  label: string;
+  crore: number | null;
+  yoyPct: number | null;
+}
+
+export interface ChatQuarter {
+  period: string;
+  revenue: ChatQuarterMetric | null;
+  ebitda: ChatQuarterMetric | null;
+  pat: ChatQuarterMetric | null;
+}
+
 /** A card built from a tool result. The model does not write this. */
 export type FinnieCard =
   | {
       kind: "portfolio";
       names: Array<{ symbol: string; name: string; aliases: string[] }>;
     }
-  | { kind: "reply"; symbol: string; reply: CompanyReply }
+  | {
+      kind: "reply";
+      symbol: string;
+      reply: CompanyReply;
+      quarters?: ChatQuarter[];
+    }
   | { kind: "lines"; lines: FinnieLine[] }
   | {
       kind: "compare";

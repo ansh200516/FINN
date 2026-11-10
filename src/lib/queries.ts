@@ -1023,6 +1023,34 @@ export async function getCompanyResultsCard(
   return buildResultsCard(engine);
 }
 
+/** Latest results card for each company. One read for the whole book. */
+export async function getResultsCardsByIsin(
+  isins: string[],
+): Promise<Map<string, ResultsCard>> {
+  const out = new Map<string, ResultsCard>();
+  if (!isins.length) return out;
+  const rows = await db
+    .select()
+    .from(t.resultsQuarters)
+    .where(inArray(t.resultsQuarters.isin, isins))
+    .orderBy(asc(t.resultsQuarters.periodEnd));
+  const grouped = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = grouped.get(row.isin) ?? [];
+    list.push(row);
+    grouped.set(row.isin, list);
+  }
+  for (const [isin, list] of grouped) {
+    try {
+      const card = buildResultsCard(list.map(rowToResultsQuarter));
+      if (card) out.set(isin, card);
+    } catch {
+      // One bad company does not drop the rest of the book.
+    }
+  }
+  return out;
+}
+
 /**
  * Verification already computed for the results card of this snapshot quarter.
  * Null when that basis has no card, or the card is for a different period.

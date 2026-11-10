@@ -107,8 +107,12 @@ export interface FinnieTurnResult {
   say: string;
   tools: string[];
   card: FinnieCard | null;
-  /** Cards from this turn, in tool order. */
+  /** Cards from this turn, in the order the model chose. */
   cards: FinnieCard[];
+  /** Page under each card. Same length as `cards`. Null when that card has none. */
+  pages: Array<string | null>;
+  /** Text links when the model named a symbol and did not choose a card. */
+  links: Array<{ href: string; label: string }>;
   /** Cards first, then `say`. Used when the decision is left to the user. */
   sayAfter: boolean;
   href: string | null;

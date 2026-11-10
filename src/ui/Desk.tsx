@@ -22,6 +22,8 @@ type Shown =
       kind: "finnie";
       say: string;
       cards: FinnieCard[];
+      pages: Array<string | null>;
+      links: Array<{ href: string; label: string }>;
       href: string | null;
       link: string | null;
       sayAfter: boolean;
@@ -35,7 +37,7 @@ interface Turn {
 
 /**
  * Chat only. A sentence goes to Finnie with the book already loaded.
- * The bubble is Finnie's answer. The holdings card shows when showList is set.
+ * The bubble is Finnie's answer. Cards are the ones the model chose.
  */
 export function Desk({
   initialSymbol = null,
@@ -91,6 +93,8 @@ export function Desk({
         kind: "finnie",
         say: res.say,
         cards,
+        pages: res.pages ?? [],
+        links: res.links ?? [],
         href: res.href,
         link: res.link,
         sayAfter: res.sayAfter,
@@ -100,6 +104,8 @@ export function Desk({
         kind: "finnie",
         say: FINNIE_MODEL_DOWN,
         cards: [],
+        pages: [],
+        links: [],
         href: null,
         link: null,
         sayAfter: false,
@@ -197,6 +203,8 @@ function TurnBody({ turn }: { turn: Turn }) {
     <FinnieAnswer
       say={shown.say}
       cards={shown.cards}
+      pages={shown.pages}
+      links={shown.links}
       href={shown.href}
       link={shown.link}
       sayAfter={shown.sayAfter}
@@ -298,25 +306,45 @@ function ManagementCard({
 export function FinnieAnswer({
   say,
   cards,
+  pages = [],
+  links = [],
   href = null,
   link = null,
   sayAfter = false,
 }: {
   say: string;
   cards: FinnieCard[];
+  pages?: Array<string | null>;
+  links?: Array<{ href: string; label: string }>;
   href?: string | null;
   link?: string | null;
   sayAfter?: boolean;
 }) {
   const blocks = cards.map((card, index) => {
     const node = cardNode(card);
-    if (!node) return null;
+    const page = pages[index] ?? null;
+    if (!node && !page) return null;
     return (
-      <div className="thread-result" key={`${card.kind}-${index}`}>
+      <div
+        className={node ? "thread-result" : undefined}
+        key={`${card.kind}-${index}`}
+      >
         {node}
+        {page ? (
+          <div className={node ? "mt-2" : undefined}>
+            <CardLink href={page} label="Full page" />
+          </div>
+        ) : null}
       </div>
     );
   });
+  const extras = links.map((item, index) => (
+    <CardLink
+      key={`${item.href}-${index}`}
+      href={item.href}
+      label={item.label}
+    />
+  ));
   const bubble = say ? <div className="bubble-agent">{say}</div> : null;
   const jump = <CardLink href={href ?? null} label={link ?? null} />;
   return (
@@ -324,6 +352,7 @@ export function FinnieAnswer({
       {sayAfter ? (
         <>
           {blocks}
+          {extras}
           {jump}
           {bubble}
         </>
@@ -331,6 +360,7 @@ export function FinnieAnswer({
         <>
           {bubble}
           {blocks}
+          {extras}
           {jump}
         </>
       )}

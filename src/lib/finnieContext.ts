@@ -1,13 +1,14 @@
 /**
  * The book, loaded once per chat turn. The sentence is not an argument.
- * Every question sees this same shape.
+ * Every question sees this same shape. Each holding carries its move, the
+ * latest revenue or NII headline, promise counts, and a page href.
  */
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db/client";
 import { parseJsonColumn, StringArray } from "@/db/json";
 import { guidance, prices } from "@/db/schema";
 import { barMetrics } from "@/engine/analyse/anomalies";
-import type { PriceBar } from "@/engine/types";
+import type { PriceBar, ResultsCard } from "@/engine/types";
 import { estimateTokens } from "@/lib/ask";
 import { getBriefView } from "@/lib/brief";
 import { scoredPromises } from "@/lib/companyTurn";
@@ -19,6 +20,7 @@ import {
   getCompanyResultsCard,
   getDemoUser,
   getLedger,
+  getResultsCardsByIsin,
   getTripwires,
   guidanceVerdictGroups,
 } from "@/lib/queries";
@@ -34,7 +36,10 @@ const MISSED_CAP = 15;
 const MOVER_CAP = 15;
 const UPCOMING_CAP = 8;
 const ACT_CAP = 30;
+const HOLDING_CAP = 40;
 const MOVE_PCT = 5;
+
+const HEADLINE_METRICS = ["revenue", "nii", "total_income"] as const;
 
 const SCORED_KEYS = [
   "missed",
@@ -52,6 +57,29 @@ export interface ChatName {
   symbol: string;
   name: string;
   aliases: string[];
+}
+
+export interface PromiseCounts {
+  kept: number;
+  missed: number;
+  open: number;
+}
+
+/** One line from the results card: revenue, or NII when that is the top line. */
+export interface HoldingResults {
+  period: string | null;
+  label: string;
+  crore: number | null;
+  yoyPct: number | null;
+}
+
+export interface HoldingLine {
+  symbol: string;
+  name: string;
+  href: string;
+  movePct: number | null;
+  results: HoldingResults | null;
+  promises: PromiseCounts;
 }
 
 export interface ActLine {
@@ -105,7 +133,7 @@ export interface ChatContext {
   movers: Mover[];
   upcoming: UpcomingItem[];
   company: CompanyFocus | null;
-  portfolio: Array<{ symbol: string; name: string }>;
+  portfolio: HoldingLine[];
 }
 
 export interface ChatPack {
@@ -113,6 +141,8 @@ export interface ChatPack {
   context: ChatContext;
   /** Full book for the holdings card. Not trimmed. */
   names: ChatName[];
+  /** Act rows for a brief card. Not trimmed. */
+  act: ActLine[];
 }
 
 export async function loadChatPack(focus: string | null): Promise<ChatPack> {
@@ -122,12 +152,20 @@ export async function loadChatPack(focus: string | null): Promise<ChatPack> {
   const names = bookNames(isins, byIsin);
   const thresholds = thresholdsFrom(await getTripwires(user.id));
   const symbol = focusSymbol(focus);
-  const [brief, missed, movers, company] = await Promise.all([
-    loadBrief(isins, thresholds),
-    loadMissed(isins, byIsin),
-    loadMovers(isins, byIsin),
-    loadCompany(symbol),
-  ]);
+  const [brief, missed, movePcts, resultCards, tallies, company] =
+    await Promise.all([
+      loadBrief(isins, thresholds),
+      loadMissed(isins, byIsin),
+      loadMovePcts(isins, byIsin),
+      getResultsCardsByIsin(isins),
+      loadTallies(isins),
+      loadCompany(symbol),
+    ]);
+  const isinOf = new Map<string, string>();
+  for (const [isin, row] of byIsin) {
+    const symbolOf = row.nseSymbol.trim().toUpperCase();
+    if (symbolOf) isinOf.set(symbolOf, isin);
+  }
   return {
     context: fitChatContext({
       brief: {
@@ -136,12 +174,29 @@ export async function loadChatPack(focus: string | null): Promise<ChatPack> {
         filedAway: brief.filedAway,
       },
       missed,
-      movers,
+      movers: moversFrom(movePcts),
       upcoming: brief.upcoming,
       company,
-      portfolio: names.map((row) => ({ symbol: row.symbol, name: row.name })),
+      portfolio: names.map((row) => {
+        const isin = isinOf.get(row.symbol) ?? "";
+        const tally = tallies.get(isin);
+        const card = isin ? resultCards.get(isin) : undefined;
+        return {
+          symbol: row.symbol,
+          name: row.name,
+          href: `/c/${encodeURIComponent(row.symbol)}`,
+          movePct: movePcts.get(row.symbol) ?? null,
+          results: card ? headlineOf(card) : null,
+          promises: {
+            kept: tally?.kept ?? 0,
+            missed: tally?.missed ?? 0,
+            open: tally?.open ?? 0,
+          },
+        };
+      }),
     }),
     names,
+    act: brief.act,
   };
 }
 
@@ -173,7 +228,7 @@ export function fitChatContext(
       date: row.date,
     })),
     company: copyCompany(input.company),
-    portfolio: input.portfolio.map((row) => ({ ...row })),
+    portfolio: input.portfolio.slice(0, HOLDING_CAP).map(copyHolding),
   };
   let guard = 0;
   while (estimateTokens(JSON.stringify(context)) > tokenCap && guard < 500) {
@@ -326,26 +381,55 @@ async function loadMissed(
   return lines;
 }
 
-async function loadMovers(
+async function loadMovePcts(
   isins: string[],
   byIsin: Awaited<ReturnType<typeof companiesByIsin>>,
-): Promise<Mover[]> {
+): Promise<Map<string, number>> {
   const moves = await Promise.all(
     isins.map(async (isin) => {
       const company = byIsin.get(isin);
       const symbol = company?.nseSymbol.trim().toUpperCase();
       if (!symbol) return null;
       const move = await latestStoredMove(isin);
-      if (!move || Math.abs(move.pct) < MOVE_PCT) return null;
+      if (!move) return null;
       return { symbol, pct: Number(move.pct.toFixed(2)) };
     }),
   );
-  return moves
-    .filter((row): row is Mover => row != null)
+  return new Map(
+    moves
+      .filter((row): row is { symbol: string; pct: number } => row != null)
+      .map((row) => [row.symbol, row.pct]),
+  );
+}
+
+function moversFrom(pcts: Map<string, number>): Mover[] {
+  return [...pcts.entries()]
+    .filter(([, pct]) => Math.abs(pct) >= MOVE_PCT)
+    .map(([symbol, pct]) => ({ symbol, pct }))
     .sort(
       (a, b) =>
         Math.abs(b.pct) - Math.abs(a.pct) || a.symbol.localeCompare(b.symbol),
     );
+}
+
+async function loadTallies(isins: string[]) {
+  return tallyByIsin(await guidanceVerdictGroups(isins));
+}
+
+function headlineOf(card: ResultsCard): HoldingResults | null {
+  const rows = card.headline ?? [];
+  for (const metric of HEADLINE_METRICS) {
+    const row = rows.find((line) => line.metric === metric);
+    if (!row) continue;
+    if (row.currentCr == null && row.yoyPct == null) continue;
+    return {
+      period: card.fiscalLabel ?? card.periodEnd ?? null,
+      label: row.label,
+      crore: row.currentCr,
+      yoyPct: row.yoyPct,
+    };
+  }
+  return null;
 }
 
 async function latestStoredMove(
@@ -518,6 +602,24 @@ function emptyCounts(): ScoredCounts {
 
 function isScored(verdict: string): verdict is ScoredKey {
   return (SCORED_KEYS as readonly string[]).includes(verdict);
+}
+
+function copyHolding(row: HoldingLine): HoldingLine {
+  return {
+    symbol: row.symbol,
+    name: row.name,
+    href: row.href,
+    movePct: row.movePct,
+    results: row.results
+      ? {
+          period: row.results.period,
+          label: clip(row.results.label, 40),
+          crore: row.results.crore,
+          yoyPct: row.results.yoyPct,
+        }
+      : null,
+    promises: { ...row.promises },
+  };
 }
 
 function copyCompany(company: CompanyFocus | null): CompanyFocus | null {

@@ -14,7 +14,6 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
   type AskChip,
-  COMPANY_EMPTY,
   type CompanyReply,
   NO_PROMISES,
   NO_RESULTS,
@@ -36,8 +35,9 @@ import {
   COMPOSER_MODES,
   type ComposerMode,
   type ComposerScope,
-  composerExample,
+  FINNIE_GREETING,
 } from "@/ui/composer";
+import { useTypingExample } from "@/ui/typingExample";
 import { ASK_WAIT_SLOW_MS, askFailureCopy, askWaitCopy } from "./ask/status";
 import { askFiling } from "./askClient";
 import { AskAnswer, ReplyBody } from "./CompanyConversation";
@@ -106,7 +106,7 @@ export function Desk({
   const [mode, setMode] = useState<ComposerMode>("ask");
   const [scope, setScope] = useState<ComposerScope>("name");
   const [busy, setBusy] = useState(false);
-  const example = composerExample(mode, scope);
+  const hint = useTypingExample(mode, scope, draft.length > 0);
   const [turns, setTurns] = useState<Turn[]>([]);
   const named =
     companies.find((c) => c.symbol === symbol)?.name ??
@@ -232,7 +232,7 @@ export function Desk({
   }
 
   async function submit(text: string) {
-    const question = text.trim() || example;
+    const question = text.trim() || hint.submit;
     if (!question || busy) return;
     const focus = scope === "name" ? symbol : null;
     let parsed = parseDeskTurn(question, companies, focus);
@@ -329,23 +329,22 @@ export function Desk({
           aria-relevant="additions"
           aria-busy={busy}
         >
-          {turns.length ? (
-            <ol className="m-0 flex list-none flex-col gap-6 p-0">
-              {turns.map((turn) => (
-                <li key={turn.id} className="flex flex-col gap-3">
-                  <div className="flex flex-col items-end">
-                    <div className="bubble-user">{turn.question}</div>
-                  </div>
-                  <TurnBody turn={turn} />
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <div className="flex flex-col items-start">
-              <div className="bubble-agent">{COMPANY_EMPTY}</div>
-              {named ? <p className="receipt mt-2">{named}</p> : null}
-            </div>
-          )}
+          <ol className="m-0 flex list-none flex-col gap-6 p-0">
+            <li className="flex flex-col items-start">
+              <div className="bubble-agent">{FINNIE_GREETING}</div>
+              {!turns.length && named ? (
+                <p className="receipt mt-2">{named}</p>
+              ) : null}
+            </li>
+            {turns.map((turn) => (
+              <li key={turn.id} className="flex flex-col gap-3">
+                <div className="flex flex-col items-end">
+                  <div className="bubble-user">{turn.question}</div>
+                </div>
+                <TurnBody turn={turn} />
+              </li>
+            ))}
+          </ol>
           <div ref={endRef} />
         </div>
       </section>
@@ -363,22 +362,30 @@ export function Desk({
         <div className="composer-box">
           <div className="composer-field">
             <label className="sr-only" htmlFor={inputId}>
-              {example}
+              Ask Finnie
             </label>
             {symbol ? <span className="ticker-chip">{symbol}</span> : null}
-            <input
-              id={inputId}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder={example}
-              maxLength={500}
-              enterKeyHint="send"
-              autoComplete="off"
-              autoCapitalize="off"
-              autoCorrect="off"
-              disabled={busy}
-              className="h-11 min-w-0 flex-1 bg-transparent px-3 text-[16px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
-            />
+            <div className="composer-input-wrap">
+              <input
+                id={inputId}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={hint.placeholder}
+                maxLength={500}
+                enterKeyHint="send"
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                disabled={busy}
+                className={`composer-input h-11 w-full bg-transparent px-3 text-[16px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70 ${hint.ghost !== null ? "is-ghosting" : ""}`}
+              />
+              {hint.ghost !== null ? (
+                <span className="composer-ghost" aria-hidden="true">
+                  {hint.ghost}
+                  <span className="composer-caret" />
+                </span>
+              ) : null}
+            </div>
             <button
               type="submit"
               disabled={busy}

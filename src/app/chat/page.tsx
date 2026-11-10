@@ -16,12 +16,6 @@ export default async function ChatPage() {
           <span className="live-dot" aria-hidden="true" />
           <p className="eyebrow text-ink">Chat</p>
         </div>
-        <h1 className="mt-3 text-[20px] font-normal tracking-normal text-ink">
-          Ask when you want to.
-        </h1>
-        <p className="mt-2 max-w-[28ch] text-sm font-normal leading-relaxed text-ink-2">
-          The brief and the company page stay put.
-        </p>
       </header>
       <Desk
         companies={facts.companies}

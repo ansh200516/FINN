@@ -13,9 +13,6 @@ import { isLiveTurn } from "@/lib/nseLive";
 import type { PullBlock, PullTitle } from "@/lib/pull";
 import type { LedgerRowView } from "@/ui/model";
 
-export const COMPANY_EMPTY =
-  "Ask for the results, the promises, or a rule. I’ll only show that.";
-
 export const NO_RESULTS = "No results on file.";
 export const NO_PROMISES = "No scored promise on file.";
 export const NOT_IN_FILINGS_LINE = "not in the filings";

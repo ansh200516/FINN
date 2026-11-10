@@ -2,7 +2,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
-  COMPANY_EMPTY,
   clipAskAnswer,
   confirmRule,
   mergeCategoryList,
@@ -15,6 +14,7 @@ import {
   tripwireId,
 } from "@/lib/companyTurn";
 import { ReplyBody } from "@/ui/CompanyConversation";
+import { FINNIE_GREETING } from "@/ui/composer";
 import { Desk } from "@/ui/Desk";
 import type { LedgerRowView } from "@/ui/model";
 import { ScoredPromises } from "@/ui/ScoredPromises";
@@ -266,7 +266,7 @@ describe("presentAsk", () => {
 });
 
 describe("company thread markup", () => {
-  it("opens on one line and the composer, with no filings menu", () => {
+  it("opens on Finnie's greeting and the composer, with no filings menu", () => {
     const html = renderToStaticMarkup(
       createElement(Desk, {
         companies: [{ symbol: "ITC", name: "ITC Limited", aliases: [] }],
@@ -275,7 +275,8 @@ describe("company thread markup", () => {
         onTurn: () => Promise.reject(new Error("no turn")),
       }),
     );
-    expect(html).toContain(COMPANY_EMPTY);
+    expect(html).toContain(FINNIE_GREETING);
+    expect(html).not.toContain("Ask for the results, the promises, or a rule.");
     expect(html).toContain('data-composer=""');
     expect(html).toContain("ITC Limited");
     expect(html).not.toContain("From the filings");

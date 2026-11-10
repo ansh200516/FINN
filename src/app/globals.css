@@ -905,6 +905,38 @@
     min-width: 0;
     min-height: 44px;
   }
+  .composer-input-wrap {
+    position: relative;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+  .composer-input.is-ghosting {
+    caret-color: transparent;
+  }
+  .composer-ghost {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    padding-inline: 12px;
+    color: var(--ink-3);
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.2;
+    pointer-events: none;
+    overflow: hidden;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .composer-caret {
+    display: inline-block;
+    width: 1px;
+    height: 1.05em;
+    margin-left: 1px;
+    background: currentColor;
+    animation: composer-caret 1s steps(1) infinite;
+  }
   .composer-tools {
     display: flex;
     flex-wrap: wrap;
@@ -1084,6 +1116,17 @@
   }
 }
 
+@keyframes composer-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion override must beat every component rule */
@@ -1093,6 +1136,10 @@
   }
   .load-spin-ring {
     /* biome-ignore lint/complexity/noImportantStyles: hold one frame; a 1ms loop would still spin */
+    animation: none !important;
+  }
+  .composer-caret {
+    /* biome-ignore lint/complexity/noImportantStyles: a 1ms blink would still flicker */
     animation: none !important;
   }
 }

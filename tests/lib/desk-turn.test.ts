@@ -1,7 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { COMPANY_EMPTY } from "@/lib/companyTurn";
 import {
   assumptionLine,
   contextLine,
@@ -12,6 +11,7 @@ import {
   parseDeskTurn,
 } from "@/lib/deskTurn";
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
+import { FINNIE_GREETING } from "@/ui/composer";
 import { Desk } from "@/ui/Desk";
 
 const book: DeskCompany[] = [
@@ -286,7 +286,7 @@ function amberBook(): DeskCompany[] {
 }
 
 describe("desk markup", () => {
-  it("opens on the empty line and a composer, not the filings", () => {
+  it("opens on Finnie's greeting and a composer, not the filings", () => {
     const act = ["One.", "Two.", "Three.", "Fourth stays off the tape."].map(
       (sentence, i) => ({
         symbol: `N${i}`,
@@ -303,7 +303,9 @@ describe("desk markup", () => {
         onTurn: () => Promise.reject(new Error("no turn")),
       }),
     );
-    expect(html).toContain(COMPANY_EMPTY);
+    expect(html).toContain(FINNIE_GREETING);
+    expect(html).not.toContain("Ask for the results, the promises, or a rule.");
+    expect(html).not.toContain("Ask when you want to.");
     expect(html).toContain('data-composer=""');
     expect(html).toContain('placeholder="reliance results"');
     expect(html).toContain("Ask");

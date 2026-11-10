@@ -1067,8 +1067,35 @@ async function managementFor(
       ),
     )
     .orderBy(desc(events.lastAt))
-    .limit(1);
-  const event = rows[0];
+    .limit(8);
+  if (!rows.length) {
+    return {
+      fact: { status: "none", topic: "management", symbol: found.symbol },
+      card: null,
+      symbol: found.symbol,
+      href: `/c/${encodeURIComponent(found.symbol)}`,
+      link: `Open ${found.symbol}`,
+      book: null,
+    };
+  }
+  let event = rows[0];
+  let people: FinniePerson[] = [];
+  let oneLiner: string | null = null;
+  for (const row of rows) {
+    if (!event) event = row;
+    try {
+      const adapted = adaptManagement(JSON.parse(row.cardJson));
+      if (!people.length && adapted.people.length) {
+        event = row;
+        people = adapted.people;
+        oneLiner = adapted.oneLiner;
+      } else if (!oneLiner) {
+        oneLiner = adapted.oneLiner;
+      }
+    } catch {
+      // A bad card is skipped. A later row may still name the person.
+    }
+  }
   if (!event) {
     return {
       fact: { status: "none", topic: "management", symbol: found.symbol },
@@ -1080,15 +1107,6 @@ async function managementFor(
     };
   }
   const href = `/e/${encodeURIComponent(event.eventKey)}`;
-  let people: FinniePerson[] = [];
-  let oneLiner: string | null = null;
-  try {
-    const adapted = adaptManagement(JSON.parse(event.cardJson));
-    oneLiner = adapted.oneLiner;
-    people = adapted.people;
-  } catch {
-    people = [];
-  }
   return {
     fact: {
       status: "management",

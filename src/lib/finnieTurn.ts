@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
   callStructured,
   dailyCap,
+  LlmBudgetExhausted,
   MODEL_LADDERS,
   remainingBudget,
 } from "@/engine/llm/gateway";
@@ -15,6 +16,7 @@ import type { LlmTier } from "@/engine/types";
 import { executeTool } from "@/lib/finnieTools";
 import {
   FINNIE_CHAIN_CAP,
+  FINNIE_MODEL_DOWN,
   FINNIE_NO_MATCH,
   FINNIE_OUT_OF_CALLS,
   FINNIE_TOOLS,
@@ -75,7 +77,7 @@ const TOOL_LINES: Record<FinnieTool, string> = {
   add_to_portfolio: "Add one symbol to the book. args.symbol.",
   remove_from_portfolio: "Remove one symbol from the book. args.symbol.",
   get_results:
-    "Headline quarterly results for one company. Use this for a results question, and together with get_promises for promised versus delivered. args.symbol. args.quarters is 1 to 8 and defaults to 4. Each period includes Revenue or NII or Total income, EBITDA or PPOP, PBT, and PAT, with qoqPct and yoyPct when computed.",
+    "Headline quarterly results for one company. Use this for a results question, and together with get_promises for promised versus delivered. args.symbol is the NSE symbol of the company named in the latest sentence. HDFC Bank is HDFCBANK, not a fund or an AMC. args.quarters is 1 to 8 and defaults to 4. Each period includes Revenue or NII or Total income, EBITDA or PPOP, PBT, and PAT, with qoqPct and yoyPct when computed.",
   get_promises:
     "What management guided for one company, up to 12 rows: quote, metric, horizon, promised value, verdict, and delivered value. A null delivered value means that guidance is still open. args.symbol. Call this with get_results when the question is promised versus delivered over recent quarters. This is not the pull-menu Guidance reading.",
   get_reading:
@@ -117,7 +119,7 @@ const PLAN_SYSTEM = [
   "Choose tools for the latest sentence. Do not answer it.",
   "The catalog is the only data in this call. The book is not included.",
   "Return 1 to 4 calls. If no tool applies, return an empty calls list.",
-  "args are optional. Use args.symbol for a company.",
+  "args are optional. args.symbol is the NSE symbol of the company the latest sentence names. Do not substitute a similar ticker. HDFC Bank is HDFCBANK. IndusInd Bank is INDUSINDBK.",
   "get_results may set args.quarters from 1 to 8. Omitted, it is 4.",
   "Promised versus delivered over recent quarters is get_results and get_promises together.",
   "A results question is get_results. A management change is get_management. A filing digest is get_brief. A threshold to watch is set_alert. One pull-menu reading is get_reading.",
@@ -132,7 +134,8 @@ const ANSWER_SYSTEM = [
   "Do not state a number or a name that is not in the tool JSON.",
   "No buy. No sell. No target price. No news.",
   "A results question leads with Revenue, EBITDA, PBT, and PAT. When the labels are NII and PPOP, lead with NII, PPOP, PBT, and PAT. For each line that is present, give quarter-on-quarter and year-on-year. If qoqPct or yoyPct is null, omit that comparison.",
-  "When the tool JSON includes results and promises, use both payloads. Name every results period, not only the latest, with the headline lines that are present. Then give each promise row's horizon, quote, promised value, verdict, and delivered value. Do not attach a quote to a results period unless that row's horizon names the period.",
+  "When the tool JSON includes results, name every period in that quarters array, not only the latest, with the headline lines that are present. Do not say the data is missing when those periods are present.",
+  "When the tool JSON includes results and promises, use both payloads. Then give each promise row's horizon, quote, promised value, verdict, and delivered value. Do not attach a quote to a results period unless that row's horizon names the period.",
   "When delivered is null, say that guidance is still open and quote what management said.",
   "A management-change question names the person and the profile, including prior roles when the tool JSON has them.",
   "A pull reading answers from that reading's verdict, lines, and table.",
@@ -150,6 +153,17 @@ interface Ran {
   outcome: ToolOutcome;
 }
 
+/** Tool JSON from the latest turn. The chat path leaves this unset. */
+let finnieFactTap:
+  | ((rows: Array<{ tool: string; data: unknown }>) => void)
+  | null = null;
+
+export function setFinnieFactTap(
+  tap: ((rows: Array<{ tool: string; data: unknown }>) => void) | null,
+): void {
+  finnieFactTap = tap;
+}
+
 export async function runFinnieTurn(
   sentence: string,
   focus: string | null,
@@ -163,22 +177,25 @@ export async function runFinnieTurn(
 
   let calls: PlanCall[];
   try {
-    const planned = await callStructured({
-      task: "finnie",
-      tier: "bulk",
-      schema: ToolPlan,
-      prompt: planPrompt(text, memory),
-      system: PLAN_SYSTEM,
-      promptVersion: "plan-2",
-      temperature: 0,
-      maxTokens: 512,
-    });
+    const planned = await callWithRetry(() =>
+      callStructured({
+        task: "finnie",
+        tier: "bulk",
+        schema: ToolPlan,
+        prompt: planPrompt(text, memory),
+        system: PLAN_SYSTEM,
+        promptVersion: "plan-3",
+        temperature: 0,
+        maxTokens: 512,
+      }),
+    );
     calls = planned.data.calls.map((call) => ({
       tool: call.tool,
       args: call.args ?? {},
     }));
-  } catch {
-    return quiet(FINNIE_NO_MATCH);
+  } catch (error) {
+    if (error instanceof LlmBudgetExhausted) return quiet(FINNIE_OUT_OF_CALLS);
+    return quiet(FINNIE_MODEL_DOWN);
   }
   if (!calls.length) return quiet(FINNIE_NO_MATCH);
 
@@ -207,24 +224,44 @@ export async function runFinnieTurn(
     }
   }
 
+  finnieFactTap?.(
+    ran.map((item) => ({ tool: item.tool, data: item.outcome.fact })),
+  );
+
   let say = "";
   try {
-    const answered = await callStructured({
-      task: "finnie",
-      tier: "bulk",
-      schema: FinnieSay,
-      prompt: answerPrompt(text, memory, ran),
-      system: ANSWER_SYSTEM,
-      promptVersion: "answer-3",
-      temperature: 0,
-      maxTokens: 1024,
-    });
+    const answered = await callWithRetry(() =>
+      callStructured({
+        task: "finnie",
+        tier: "bulk",
+        schema: FinnieSay,
+        prompt: answerPrompt(text, memory, ran),
+        system: ANSWER_SYSTEM,
+        promptVersion: "answer-4",
+        temperature: 0,
+        maxTokens: 2048,
+      }),
+    );
     say = cleanSay(answered.data.say);
-  } catch {
-    return present(FINNIE_NO_MATCH, ran, open);
+  } catch (error) {
+    if (error instanceof LlmBudgetExhausted)
+      return present(FINNIE_OUT_OF_CALLS, ran, open);
+    return present(FINNIE_MODEL_DOWN, ran, open);
   }
   if (!say) return present(FINNIE_NO_MATCH, ran, open);
   return present(say, ran, open);
+}
+
+const RETRY_PAUSE_MS = 2_500;
+
+async function callWithRetry<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof LlmBudgetExhausted) throw error;
+    await new Promise((resolve) => setTimeout(resolve, RETRY_PAUSE_MS));
+    return run();
+  }
 }
 
 function planPrompt(sentence: string, memory: FinnieMemory[]): string {

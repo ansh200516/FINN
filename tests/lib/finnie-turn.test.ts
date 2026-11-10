@@ -811,6 +811,102 @@ describe("runFinnieTurn", () => {
     }
   });
 
+  it("drops a Nuvama card when the sentence names Reliance", async () => {
+    const nuvama = "INE531F01023";
+    const sentence =
+      "for reliance take the last four quarters and, against management's own headline guidance and growth commentary, tell me what was promised vs. what was actually delivered.";
+    await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
+    await db.delete(guidance).where(eq(guidance.isin, nuvama));
+    await db.delete(companies).where(eq(companies.isin, RELIANCE));
+    await db.delete(companies).where(eq(companies.isin, nuvama));
+    await db.insert(companies).values([
+      {
+        isin: RELIANCE,
+        nseSymbol: "RELIANCE",
+        name: "Reliance Industries Limited",
+        aliasesJson: "[]",
+        inPortfolio: true,
+        isAdhoc: false,
+      },
+      {
+        isin: nuvama,
+        nseSymbol: "NUVAMA",
+        name: "Nuvama Wealth Management Limited",
+        aliasesJson: "[]",
+        inPortfolio: true,
+        isAdhoc: true,
+      },
+    ]);
+    await db.insert(guidance).values([
+      {
+        id: "rel-turn-open",
+        isin: RELIANCE,
+        docId: "doc-rel",
+        quote: "Revenue growth stays in the low teens.",
+        metric: "revenue_growth",
+        direction: "range",
+        low: 10,
+        high: 12,
+        unit: "%",
+        horizon: "FY26",
+        status: "open",
+        verdict: null,
+        evidenceJson: "{}",
+        createdAt: Date.now(),
+      },
+      {
+        id: "nuv-marker",
+        isin: nuvama,
+        docId: "doc-nuv",
+        quote: "NUVAMA_ONLY_MARKER wealth pledge stays open.",
+        metric: "pledge",
+        status: "open",
+        verdict: null,
+        evidenceJson: "{}",
+        createdAt: Date.now(),
+      },
+    ]);
+    try {
+      const plan = {
+        calls: [
+          { tool: "get_results", args: { symbol: "RELIANCE", quarters: 4 } },
+          { tool: "get_promises", args: { symbol: "NUVAMA" } },
+        ],
+      };
+      llm.mockResolvedValueOnce(model(plan));
+      llm.mockResolvedValueOnce(model(plan));
+      llm.mockResolvedValueOnce(
+        model({
+          say: "Reliance delivered the four quarters. NUVAMA stays out of this answer.",
+        }),
+      );
+      const result = await runFinnieTurn(sentence, null);
+      const prompt = String(llm.mock.calls.at(-1)?.[0].prompt);
+      expect(prompt).not.toContain("NUVAMA_ONLY_MARKER");
+      expect(prompt).not.toContain("NUVAMA");
+      expect(result.say).not.toContain("NUVAMA");
+      expect(result.say).toContain("Reliance delivered the four quarters.");
+      const html = renderToStaticMarkup(
+        createElement(FinnieAnswer, {
+          say: result.say,
+          cards: result.cards,
+          pages: result.pages,
+          links: result.links,
+          href: result.href,
+          link: result.link,
+        }),
+      );
+      expect(html.toUpperCase()).not.toContain("NUVAMA");
+      expect(html).toContain("low teens");
+      expect(html).toContain('href="/c/RELIANCE"');
+    } finally {
+      await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
+      await db.delete(guidance).where(eq(guidance.isin, nuvama));
+      await db.delete(companies).where(eq(companies.isin, RELIANCE));
+      await db.delete(companies).where(eq(companies.isin, nuvama));
+    }
+  });
+
   it("does not load the book for a sentence", () => {
     const turn = readFileSync("src/lib/finnieTurn.ts", "utf8");
     const context = readFileSync("src/lib/finnieContext.ts", "utf8");

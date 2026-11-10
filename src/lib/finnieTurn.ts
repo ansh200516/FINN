@@ -18,6 +18,7 @@ import {
   companiesMentioned,
   matchCompanyName,
   mentionsToken,
+  omitCompaniesAbsentFrom,
 } from "@/lib/companyMatch";
 import { repairSay } from "@/lib/finnieSay";
 import { executeTool } from "@/lib/finnieTools";
@@ -192,7 +193,9 @@ export async function runFinnieTurn(
 
   const directory = await companyDirectory();
   const named = companiesMentioned(text, directory);
-  const allowed = named.length ? named : open ? [open] : [];
+  const earlier = earlierCompanies(memory, open, directory);
+  const allowed = named.length ? named : earlier;
+  const toolFocus = named.length === 1 ? (named[0] ?? null) : open;
   let calls: PlanCall[];
   try {
     calls = await planCalls(text, memory);
@@ -218,6 +221,8 @@ export async function runFinnieTurn(
       withCompany(call, allowed[0] ?? "", named.length === 1, directory, text),
     );
   }
+  calls = calls.filter((call) => callFits(call, allowed, directory));
+  if (!calls.length) return quiet(FINNIE_NO_MATCH);
 
   const ran: Ran[] = [];
   for (const call of calls) {
@@ -225,8 +230,8 @@ export async function runFinnieTurn(
       const outcome = await executeTool(
         call.tool,
         call.args,
-        open,
-        Boolean(open),
+        toolFocus,
+        Boolean(toolFocus),
       );
       ran.push({ tool: call.tool, outcome });
     } catch {
@@ -297,13 +302,19 @@ export async function runFinnieTurn(
       const kept = dropUngroundedSentences(say, text, facts);
       if (kept) say = kept;
     }
+    say = omitCompaniesAbsentFrom(say, facts, directory);
   } catch (error) {
     if (error instanceof LlmBudgetExhausted)
-      return present(FINNIE_OUT_OF_CALLS, ran, open);
-    return present(FINNIE_MODEL_DOWN, ran, open);
+      return present(FINNIE_OUT_OF_CALLS, ran, open, allowed, named.length > 0);
+    return present(FINNIE_MODEL_DOWN, ran, open, allowed, named.length > 0);
   }
-  if (!say) return present(FINNIE_NO_MATCH, ran, open);
-  return ensureCompanyLinks(present(say, ran, open), named);
+  if (!say) {
+    return present(FINNIE_NO_MATCH, ran, open, allowed, named.length > 0);
+  }
+  return ensureCompanyLinks(
+    present(say, ran, toolFocus ?? open, allowed, named.length > 0),
+    named,
+  );
 }
 
 const RETRY_PAUSE_MS = 2_500;
@@ -519,6 +530,8 @@ function present(
   say: string,
   ran: Ran[],
   focus: string | null,
+  allowed: string[] = [],
+  namedCompany = false,
 ): FinnieTurnResult {
   const cards: FinnieCard[] = [];
   const pages: Array<string | null> = [];
@@ -529,19 +542,28 @@ function present(
   let link: string | null = null;
   for (const item of ran) {
     const outcome = item.outcome;
+    if (!symbolOk(outcome.symbol, allowed)) continue;
     if (outcome.book) book = outcome.book;
     if (outcome.symbol) symbol = outcome.symbol;
-    if (outcome.card) {
-      cards.push(outcome.card);
-      pages.push(pageFor(outcome));
-    } else {
+    const card = confineCard(outcome.card, allowed, namedCompany);
+    if (card) {
+      cards.push(card);
       const page = pageFor(outcome);
-      if (page) links.push({ href: page, label: "Full page" });
+      pages.push(pageOk(page, allowed) ? page : null);
+    } else if (!outcome.card) {
+      const page = pageFor(outcome);
+      if (page && pageOk(page, allowed))
+        links.push({ href: page, label: "Full page" });
     }
-    if (book && outcome.href) {
+    if (book && outcome.href && pageOk(outcome.href, allowed)) {
       href = outcome.href;
       link = outcome.link;
     }
+  }
+  if (symbol && !symbolOk(symbol, allowed)) symbol = allowed[0] ?? null;
+  if (href && !pageOk(href, allowed)) {
+    href = null;
+    link = null;
   }
   return {
     say,
@@ -556,6 +578,88 @@ function present(
     symbol,
     book,
   };
+}
+
+function symbolOk(symbol: string | null, allowed: string[]): boolean {
+  if (!allowed.length || !symbol) return true;
+  return allowed.includes(symbol.trim().toUpperCase());
+}
+
+function pageOk(href: string | null, allowed: string[]): boolean {
+  if (!href || !allowed.length) return true;
+  const matched = /^\/c\/([^/?#]+)/.exec(href);
+  if (!matched?.[1]) return true;
+  let symbol = matched[1];
+  try {
+    symbol = decodeURIComponent(symbol);
+  } catch {
+    symbol = matched[1];
+  }
+  return allowed.includes(symbol.toUpperCase());
+}
+
+function confineCard(
+  card: FinnieCard | null,
+  allowed: string[],
+  namedCompany: boolean,
+): FinnieCard | null {
+  if (!card || !allowed.length) return card;
+  if (card.kind === "portfolio") {
+    if (!namedCompany) return card;
+    const names = card.names.filter((company) =>
+      allowed.includes(company.symbol.trim().toUpperCase()),
+    );
+    return names.length ? { ...card, names } : null;
+  }
+  if (card.kind === "lines") {
+    if (!namedCompany) return card;
+    const lines = card.lines.filter((line) =>
+      allowed.includes(line.symbol.trim().toUpperCase()),
+    );
+    return lines.length ? { ...card, lines } : null;
+  }
+  if (card.kind === "compare") {
+    const fit = [card.a.symbol, card.b.symbol].every((item) =>
+      allowed.includes(item.trim().toUpperCase()),
+    );
+    return fit ? card : null;
+  }
+  const symbol = card.symbol.trim().toUpperCase();
+  if (!symbol) return card;
+  return allowed.includes(symbol) ? card : null;
+}
+
+function callFits(
+  call: PlanCall,
+  allowed: string[],
+  rows: CompanyName[],
+): boolean {
+  if (!allowed.length || !SYMBOL_TOOLS.has(call.tool)) return true;
+  for (const raw of symbolArgs(call.args)) {
+    const resolved = matchCompanyName(raw, rows)?.symbol ?? null;
+    if (resolved) {
+      if (!allowed.includes(resolved)) return false;
+      continue;
+    }
+    const token = raw.trim().toUpperCase();
+    if (allowed.includes(token)) continue;
+    if (/^[A-Z0-9&.-]{1,20}$/.test(token)) return false;
+  }
+  return true;
+}
+
+/** The open chip, or the company the previous turn already used. */
+function earlierCompanies(
+  memory: FinnieMemory[],
+  focus: string | null,
+  rows: CompanyName[],
+): string[] {
+  const open = focusSymbol(focus);
+  if (open) return [open];
+  const last = memory.at(-1);
+  if (!last) return [];
+  if (last.results.length) return last.results;
+  return companiesMentioned(last.user, rows);
 }
 
 function pageFor(outcome: ToolOutcome): string | null {

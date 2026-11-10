@@ -59,4 +59,32 @@ describe("company name resolution", () => {
       ),
     ).toEqual(["VOLTAS"]);
   });
+
+  it("does not read management as Nuvama", () => {
+    const rows = [
+      ...BOOK,
+      {
+        symbol: "RELIANCE",
+        name: "Reliance Industries Limited",
+        aliases: [],
+      },
+      {
+        symbol: "NUVAMA",
+        name: "Nuvama Wealth Management Limited",
+        aliases: [],
+      },
+    ];
+    expect(
+      companiesMentioned(
+        "for reliance take the last four quarters and, against management's own headline guidance and growth commentary, tell me what was promised vs. what was actually delivered.",
+        rows,
+      ),
+    ).toEqual(["RELIANCE"]);
+    expect(companiesMentioned("Airtel filed a board notice.", rows)).toEqual([
+      "BHARTIARTL",
+    ]);
+    expect(
+      companiesMentioned("Gujarat Fluorochemicals across four quarters", rows),
+    ).toEqual(["FLUOROCHEM"]);
+  });
 });

@@ -331,7 +331,9 @@ describe("desk markup", () => {
     expect(html).not.toContain("Ask for the results, the promises, or a rule.");
     expect(html).not.toContain("Ask when you want to.");
     expect(html).toContain('data-composer=""');
+    expect(html).toContain("<textarea");
     expect(html).toContain('placeholder="reliance results"');
+    expect(html).not.toContain("<input");
     expect(html).toContain('aria-label="Send"');
     expect(html).not.toContain("mode-btn");
     expect(html).not.toContain("scope-btn");
@@ -416,5 +418,123 @@ describe("desk markup", () => {
     expect(html).toContain("Reliance Industries Limited");
     expect(html).not.toContain("Name the company.");
     expect(html).not.toContain("]");
+  });
+
+  it("shows a quarter recital as two sentences and still draws the grid", () => {
+    const say = [
+      "For Q3 FY26, Revenue was 269,496 crore, up 4.09% qoq and 10.51% yoy; EBITDA was 46,018 crore; PBT was 29,697 crore; PAT was 22,290 crore.",
+      "For Q4 FY26, Revenue was 298,621 crore, up 10.81% qoq; EBITDA was 44,141 crore; PBT was 27,195 crore; PAT was 20,589 crore.",
+      "For Q1 FY27, Revenue was 311,850 crore, up 4.43% qoq; EBITDA was 47,517 crore; PBT was 30,630 crore; PAT was 23,196 crore.",
+      "For Q2 FY27, Revenue was 352,861 crore, up 6.74% qoq; EBITDA was 56,616 crore; PBT was 38,613 crore; PAT was 29,550 crore.",
+    ].join(" ");
+    const line = (
+      label: string,
+      crore: number,
+      qoqPct: number,
+      yoyPct: number,
+    ) => ({ label, crore, qoqPct, yoyPct });
+    const html = renderToStaticMarkup(
+      createElement(FinnieAnswer, {
+        say,
+        cards: [
+          {
+            kind: "reply",
+            symbol: "RELIANCE",
+            reply: { kind: "results", card: null },
+            quarters: [
+              {
+                period: "Q3 FY26",
+                revenue: line("Revenue", 269496, 4.09, 10.51),
+                ebitda: line("EBITDA", 46018, 0.29, 5.09),
+                pbt: line("PBT", 29697, 1.97, 3.68),
+                pat: line("PAT", 22290, 0.9, 1.64),
+              },
+              {
+                period: "Q4 FY26",
+                revenue: line("Revenue", 298621, 10.81, 12.87),
+                ebitda: line("EBITDA", 44141, -4.08, 0.7),
+                pbt: line("PBT", 27195, -8.43, 6.56),
+                pat: line("PAT", 20589, -7.63, 8.94),
+              },
+              {
+                period: "Q1 FY27",
+                revenue: line("Revenue", 311850, 4.43, 25.41),
+                ebitda: line("EBITDA", 47517, 7.65, 10.75),
+                pbt: line("PBT", 30630, 12.63, 17.54),
+                pat: line("PAT", 23196, -12.66, -24.65),
+              },
+              {
+                period: "Q2 FY27",
+                revenue: line("Revenue", 352861, 6.74, 28.57),
+                ebitda: line("EBITDA", 56616, 19.15, 23.39),
+                pbt: line("PBT", 38613, 26.06, 32.58),
+                pat: line("PAT", 29550, 27.39, 33.76),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(html).toContain("For Q3 FY26");
+    expect(html).toContain("For Q4 FY26");
+    expect(html).not.toContain("For Q1 FY27");
+    expect(html).not.toContain("For Q2 FY27");
+    expect(html).toContain("2,69,496");
+    expect(html).toContain("3,52,861");
+    expect(html).toContain("QoQ");
+    expect(html).toContain("YoY");
+    expect(html).toContain("<svg");
+    expect(html).not.toContain("qoqPct");
+    expect(html).not.toContain("yoyPct");
+  });
+
+  it("caps guidance rows and links to the company page", () => {
+    const verdicts = [
+      "kept",
+      "missed",
+      "open",
+      "unverifiable",
+      "kept",
+      "missed",
+      "kept",
+    ] as const;
+    const html = renderToStaticMarkup(
+      createElement(FinnieAnswer, {
+        say: "Guidance is still open. The decision is yours.",
+        cards: [
+          {
+            kind: "reply",
+            symbol: "RELIANCE",
+            reply: {
+              kind: "promises",
+              rows: [
+                {
+                  id: "old",
+                  quote: "SUPERSEDED_GUIDE should stay hidden.",
+                  status: "superseded",
+                  verdict: "cut",
+                },
+                ...verdicts.map((verdict, index) => ({
+                  id: `g-${index}`,
+                  quote: `GUIDE_${index} stays on the ledger.`,
+                  status: verdict === "open" ? "open" : "settled",
+                  verdict: verdict === "open" ? null : verdict,
+                })),
+              ] as never,
+            },
+          },
+        ],
+      }),
+    );
+    expect(html).toContain("Kept");
+    expect(html).toContain("Missed");
+    expect(html).toContain("Open");
+    expect(html).toContain("Unverifiable");
+    expect(html).toContain("GUIDE_0");
+    expect(html).toContain("GUIDE_5");
+    expect(html).not.toContain("GUIDE_6");
+    expect(html).not.toContain("SUPERSEDED_GUIDE");
+    expect(html).toContain("more on the company page");
+    expect(html).toContain('href="/c/RELIANCE"');
   });
 });

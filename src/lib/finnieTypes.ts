@@ -115,6 +115,8 @@ export type FinnieCard =
       symbol: string;
       reply: CompanyReply;
       quarters?: ChatQuarter[];
+      /** One results card per quarter. The screen draws these; say does not. */
+      periodCards?: ResultsCard[];
     }
   | { kind: "lines"; lines: FinnieLine[] }
   | {

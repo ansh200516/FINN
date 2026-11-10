@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { coverQuarters, repairSay, stateFilingSurface } from "@/lib/finnieSay";
+import {
+  clipQuarterWall,
+  repairSay,
+  stateFilingSurface,
+} from "@/lib/finnieSay";
 
 const quarters = [
   {
@@ -21,14 +25,27 @@ const quarters = [
 ];
 
 describe("finnie say repair", () => {
-  it("adds payload periods the model left out", () => {
+  it("leaves quarter figures out of say", () => {
     const facts = [{ tool: "get_results", data: { quarters } }];
-    const say = coverQuarters("Q2 FY27 revenue 120.", facts);
-    expect(say).toContain("Q3 FY26");
-    expect(say).toContain("Q4 FY26");
-    expect(say).toContain("Q1 FY27");
-    expect(say).toContain("Q2 FY27");
-    expect(say).toContain("-5.1");
+    const say = repairSay("Q2 FY27 revenue held up.", facts);
+    expect(say).toBe("Q2 FY27 revenue held up.");
+    expect(say).not.toContain("Q3 FY26");
+    expect(say).not.toContain("-5.1");
+    expect(say).not.toMatch(/qoqPct|yoyPct/);
+  });
+
+  it("clips a quarter recital to two sentences and keeps the decision line", () => {
+    const wall = [
+      "For Q3 FY26, Revenue was 100, EBITDA was 10, PBT was 8, and PAT was 6.",
+      "For Q4 FY26, Revenue was 110, EBITDA was 11, PBT was 9, and PAT was 7.",
+      "For Q1 FY27, Revenue was 90, EBITDA was 9, PBT was 7, and PAT was 5.",
+      "The decision is yours.",
+    ].join(" ");
+    const say = clipQuarterWall(wall);
+    expect(say).toBe(
+      "For Q3 FY26, Revenue was 100, EBITDA was 10, PBT was 8, and PAT was 6. The decision is yours.",
+    );
+    expect(say.split(/(?<=[.!?])\s+/)).toHaveLength(2);
   });
 
   it("replaces a short no-filing line when the payload has a surface", () => {
@@ -64,12 +81,12 @@ describe("finnie say repair", () => {
     expect(say.length).toBeGreaterThan(40);
   });
 
-  it("drops a false ticker denial and recites the quarters", () => {
+  it("drops a false ticker denial without reciting the quarters", () => {
     const say = repairSay("GUJFLUORO is not an NSE-listed equity symbol.", [
       { tool: "get_results", data: { quarters } },
     ]);
+    expect(say).toBe("The quarters are in the table.");
     expect(say).not.toMatch(/NSE-listed/i);
-    expect(say).toContain("Q3 FY26");
-    expect(say).toContain("Q2 FY27");
+    expect(say).not.toContain("-5.1");
   });
 });

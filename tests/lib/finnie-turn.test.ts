@@ -270,11 +270,9 @@ describe("runFinnieTurn", () => {
       expect(kept?.quote).toContain("eleven percent");
       expect(kept?.delivered).toContain("11");
       expect(second).not.toContain("SUPERSEDED_MARKER");
-      expect(result.say).toContain(say);
-      expect(result.say).toContain("Q3 FY25");
-      expect(result.say).toContain("Q4 FY25");
-      expect(result.say).toContain("Q1 FY26");
-      expect(result.say).toContain("Q2 FY26");
+      expect(result.say).toBe(say);
+      expect(result.say).not.toContain("Q3 FY25");
+      expect(result.say).not.toMatch(/qoqPct|yoyPct/);
       expect(result.say).not.toContain("the results are Q2");
       expect(result.tools).toEqual(["get_results", "get_promises"]);
       expect(result.pages).toEqual(["/c/RELIANCE", "/c/RELIANCE"]);
@@ -308,8 +306,15 @@ describe("runFinnieTurn", () => {
       expect(html).toContain("Open");
       expect(html).toContain("Kept");
       expect(html).toContain("Q3 FY25");
+      expect(html).toContain("Q4 FY25");
+      expect(html).toContain("Q1 FY26");
       expect(html).toContain("Q2 FY26");
       expect(html).toContain("Revenue");
+      expect(html).toContain("QoQ");
+      expect(html).toContain("YoY");
+      expect(html).not.toContain("qoqPct");
+      expect(html).not.toContain("yoyPct");
+      expect(html).toContain("more on the company page");
       expect(html).toContain("Full page");
       expect(html).toContain('href="/c/RELIANCE"');
       expect(html).not.toContain("the results are Q2");
@@ -447,7 +452,13 @@ describe("runFinnieTurn", () => {
         /(?:sentence|text|question)\.(?:match|includes|search|toLowerCase)/,
       );
       expect(String(llm.mock.calls[1]?.[0].system)).toContain(
+        "two short sentences",
+      );
+      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
         "The decision is yours.",
+      );
+      expect(String(llm.mock.calls[1]?.[0].system)).not.toContain(
+        "name every period",
       );
       const html = renderToStaticMarkup(
         createElement(FinnieAnswer, {
@@ -732,10 +743,24 @@ describe("runFinnieTurn", () => {
         facts[0]?.data as { quarters?: Array<{ period: string }> }
       ).quarters;
       expect(quarters?.length).toBeGreaterThanOrEqual(4);
-      for (const quarter of quarters ?? []) {
-        expect(result.say).toContain(quarter.period);
-      }
+      expect(result.say).toBe("The quarters are in the table.");
       expect(result.say).not.toMatch(/is not an NSE-listed/i);
+      expect(result.say).not.toMatch(/qoqPct|yoyPct/);
+      const html = renderToStaticMarkup(
+        createElement(FinnieAnswer, {
+          say: result.say,
+          cards: result.cards,
+          pages: result.pages,
+          links: result.links,
+        }),
+      );
+      for (const quarter of quarters ?? []) {
+        expect(html).toContain(quarter.period);
+      }
+      expect(html).toContain("QoQ");
+      expect(html).toContain("YoY");
+      expect(html).not.toContain("qoqPct");
+      expect(html).not.toContain("yoyPct");
       expect(result.symbol).toBe("FLUOROCHEM");
       const hrefs = [
         result.href,

@@ -5,6 +5,7 @@
  */
 import type { ResultsCard } from "@/engine/types";
 import type { CompanyReply } from "@/lib/companyTurn";
+import { clipQuarterWall } from "@/lib/finnieSay";
 import {
   type ChatQuarter,
   type ChatQuarterMetric,
@@ -74,7 +75,7 @@ export function chainFromLog(turns: ChatLogTurn[]): FinnieMemory[] {
     const results =
       index === recent.length - 1 ? unique(own.concat(older)) : own;
     const user = clip(turn.question, QUESTION_CAP);
-    const say = clip(turn.say, 800);
+    const say = clip(clipQuarterWall(turn.say), 800);
     if (!user && !say) return;
     chain.push({ user, say, results });
   });
@@ -123,7 +124,7 @@ function parseTurn(value: unknown): ChatLogTurn | null {
   return {
     id: rec.id,
     question: clip(rec.question, QUESTION_CAP),
-    say: clip(rec.say, SAY_CAP),
+    say: clip(clipQuarterWall(rec.say), SAY_CAP),
     cards,
     pages,
     links: parseLinks(rec.links),
@@ -220,7 +221,24 @@ function parseCard(value: unknown): FinnieCard | null {
   const card = parseReply(rec.symbol, rec.reply);
   if (!card || card.kind !== "reply") return card;
   const quarters = parseQuarters(rec.quarters);
-  return quarters.length ? { ...card, quarters } : card;
+  const periodCards = parsePeriodCards(rec.periodCards);
+  if (!quarters.length && !periodCards.length) return card;
+  return {
+    ...card,
+    ...(quarters.length ? { quarters } : {}),
+    ...(periodCards.length ? { periodCards } : {}),
+  };
+}
+
+function parsePeriodCards(value: unknown): ResultsCard[] {
+  if (!Array.isArray(value)) return [];
+  const out: ResultsCard[] = [];
+  for (const item of value) {
+    if (!isResultsCard(item)) continue;
+    out.push(item);
+    if (out.length >= 8) break;
+  }
+  return out;
 }
 
 function parseQuarters(value: unknown): ChatQuarter[] {

@@ -269,10 +269,6 @@ function ungroundedNumber(
   return null;
 }
 
-function norm(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
 function periodsOf(facts: FactRow[]): string[] {
   const periods: string[] = [];
   for (const fact of facts) {
@@ -286,23 +282,6 @@ function periodsOf(facts: FactRow[]): string[] {
     }
   }
   return periods;
-}
-
-function croreHits(say: string, facts: FactRow[]): number {
-  const sayNums = new Set(numberTokens(say).map((token) => token.value));
-  let hits = 0;
-  for (const fact of facts) {
-    if (fact.tool !== "get_results") continue;
-    const quarters = fact.data.quarters;
-    if (!Array.isArray(quarters)) continue;
-    for (const quarter of quarters) {
-      if (!quarter || typeof quarter !== "object") continue;
-      const values: number[] = [];
-      walkNumbers(quarter, values);
-      if (values.some((value) => sayNums.has(value))) hits += 1;
-    }
-  }
-  return hits;
 }
 
 function hasSurface(result: FinnieTurnResult): boolean {
@@ -450,18 +429,9 @@ function grade(
   const fails: string[] = [];
   const say = result.say;
   const periods = periodsOf(facts);
-  if (question.fourQuarters) {
-    if (periods.length < 4) {
-      fails.push(`only_latest: results payload has ${periods.length} periods`);
-    } else {
-      const folded = norm(say);
-      const mentioned = periods.filter((period) =>
-        folded.includes(norm(period)),
-      );
-      if (mentioned.length < 2 && croreHits(say, facts) < 3) {
-        fails.push("only_latest: asked for four quarters");
-      }
-    }
+  if (question.fourQuarters && periods.length < 4) {
+    // The screen draws every period from the payload. say does not recite them.
+    fails.push(`only_latest: results payload has ${periods.length} periods`);
   }
   if (question.judgment) {
     const promiseRows = facts.some(

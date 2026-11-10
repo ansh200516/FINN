@@ -293,8 +293,9 @@ async function resultsFor(
   if (!found.ok) return bare({ error: found.error });
   const href = companyPage(found.symbol);
   const engine = await getEngineQuarters(found.isin);
-  const quarters = quarterHistory(engine, quarterCount(args.quarters));
-  const card = buildResultsCard(engine);
+  const history = quarterHistory(engine, quarterCount(args.quarters));
+  const quarters = history.quarters;
+  const card = history.cards.at(-1) ?? buildResultsCard(engine);
   if (!card && !quarters.length) {
     return {
       fact: { status: "none", symbol: found.symbol, quarters: [] },
@@ -313,6 +314,7 @@ async function resultsFor(
       symbol: found.symbol,
       reply,
       quarters,
+      ...(history.cards.length ? { periodCards: history.cards } : {}),
     },
     symbol: found.symbol,
     href,
@@ -722,19 +724,21 @@ function quarterCount(value: number | undefined): number {
 function quarterHistory(
   quarters: ResultsQuarter[],
   count: number,
-): ChatQuarter[] {
-  if (!quarters.length) return [];
+): { quarters: ChatQuarter[]; cards: ResultsCard[] } {
+  if (!quarters.length) return { quarters: [], cards: [] };
   try {
     const full = buildResultsCard(quarters);
-    if (!full) return [];
+    if (!full) return { quarters: [], cards: [] };
     const series = quarters
       .filter((row) => row.basis === full.basis)
       .sort((a, b) => a.periodEnd.localeCompare(b.periodEnd));
     const out: ChatQuarter[] = [];
+    const cards: ResultsCard[] = [];
     for (const end of series.slice(-count)) {
       const upTo = series.filter((row) => row.periodEnd <= end.periodEnd);
       const card = buildResultsCard(upTo, full.basis);
       if (!card) continue;
+      cards.push(card);
       out.push({
         period: card.fiscalLabel ?? card.periodEnd ?? end.periodEnd,
         revenue: metricOf(card, TOP_METRICS),
@@ -743,9 +747,9 @@ function quarterHistory(
         pat: metricOf(card, ["pat"]),
       });
     }
-    return out;
+    return { quarters: out, cards };
   } catch {
-    return [];
+    return { quarters: [], cards: [] };
   }
 }
 

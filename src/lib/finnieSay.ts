@@ -13,10 +13,6 @@ function record(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function norm(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
 function quartersOf(facts: Fact[]): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
   for (const fact of facts) {
@@ -57,37 +53,46 @@ function briefSymbol(facts: Fact[]): string | null {
   return null;
 }
 
-function quarterSentence(quarter: Record<string, unknown>): string {
-  const period = typeof quarter.period === "string" ? quarter.period : "";
-  if (!period) return "";
-  const bits = [period];
-  for (const key of ["revenue", "ebitda", "pbt", "pat"]) {
-    const metric = record(quarter[key]);
-    if (!metric) continue;
-    const label = typeof metric.label === "string" ? metric.label : key;
-    const parts = [label];
-    if (typeof metric.crore === "number") parts.push(String(metric.crore));
-    if (typeof metric.qoqPct === "number") parts.push(`qoq ${metric.qoqPct}`);
-    if (typeof metric.yoyPct === "number") parts.push(`yoy ${metric.yoyPct}`);
-    if (parts.length > 1) bits.push(parts.join(" "));
-  }
-  return `${bits.join(", ")}.`;
+const DECISION = "The decision is yours.";
+
+function sentenceParts(say: string): string[] {
+  const clean = say.replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const sentences = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (sentences.length > 1) return sentences;
+  const marked = clean.replace(
+    /([^.!?])\s+(?=For\s+Q[1-4]\s*FY\s*\d{2}\b)/gi,
+    "$1. ",
+  );
+  return marked
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
-/** Every period in the results payload, not only the latest the model named. */
-export function coverQuarters(say: string, facts: Fact[]): string {
-  const quarters = quartersOf(facts);
-  if (quarters.length < 2) return say;
-  const folded = norm(say);
-  const missing = quarters
-    .filter((quarter) => {
-      const period = quarter.period;
-      return typeof period === "string" && !folded.includes(norm(period));
-    })
-    .map(quarterSentence)
-    .filter(Boolean);
-  if (!missing.length) return say;
-  return `${say} ${missing.join(" ")}`.replace(/\s+/g, " ").trim();
+/** Several quarters, each with the headline lines, written out as prose. */
+export function isQuarterWall(say: string): boolean {
+  const periods = say.match(/\bQ[1-4]\s*FY\s*\d{2}\b/gi) ?? [];
+  const metrics = say.match(/\b(revenue|ebitda|pbt|pat|nii|ppop)\b/gi) ?? [];
+  return periods.length >= 2 && metrics.length >= 4;
+}
+
+/**
+ * A quarter-by-quarter recital is two sentences on screen.
+ * The figures stay in the results table, which is built from the tool JSON.
+ */
+export function clipQuarterWall(say: string): string {
+  const clean = say.replace(/\s+/g, " ").trim();
+  if (!clean || !isQuarterWall(clean)) return clean;
+  const parts = sentenceParts(clean);
+  if (parts.length <= 2) return parts.join(" ");
+  const decision = parts.find((part) => part.includes(DECISION));
+  if (!decision) return parts.slice(0, 2).join(" ");
+  const lead = parts.find((part) => !part.includes(DECISION));
+  return [lead, decision].filter(Boolean).join(" ");
 }
 
 function judgmentSentence(filing: Record<string, unknown>): string {
@@ -150,10 +155,10 @@ export function groundedBrief(facts: Fact[]): string {
 }
 
 export function repairSay(say: string, facts: Fact[]): string {
-  const next = coverQuarters(
+  const next = clipQuarterWall(
     stateFilingSurface(dropListedDenial(say, facts), facts),
-    facts,
   );
   if (next.trim()) return next.replace(/\s+/g, " ").trim();
+  if (quartersOf(facts).length) return "The quarters are in the table.";
   return groundedBrief(facts);
 }

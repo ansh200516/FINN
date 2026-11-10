@@ -2,7 +2,16 @@
 
 import { Loader2, Send } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import type { ResultsCard, ResultsHeadlineRow } from "@/engine/types";
 import {
   type ChatLogTurn,
   chainFromLog,
@@ -11,6 +20,7 @@ import {
   saveChatLog,
 } from "@/lib/chatLog";
 import { NO_PROMISES, NO_RESULTS } from "@/lib/companyTurn";
+import { clipQuarterWall } from "@/lib/finnieSay";
 import {
   type ChatQuarter,
   FINNIE_LOG_CAP,
@@ -20,14 +30,28 @@ import {
   type FinnieMemory,
   type FinnieTurnResult,
 } from "@/lib/finnieTypes";
-import { groupIndian } from "@/lib/format";
-import { FINNIE_GREETING } from "@/ui/composer";
+import { composerBoxHeight, FINNIE_GREETING } from "@/ui/composer";
 import type { LedgerRowView } from "@/ui/model";
 import { useTypingExample } from "@/ui/typingExample";
 import { ReplyBody } from "./CompanyConversation";
-import { DeltaChip } from "./DeltaChip";
 import { ResultsGrid } from "./ResultsGrid";
 import { VerdictBadge } from "./VerdictBadge";
+
+/** Grow with the draft. An empty field stays one line so the placeholder cannot stretch it. */
+function fitComposerField(el: HTMLTextAreaElement, text = el.value) {
+  if (text.length === 0) {
+    el.style.height = "";
+    el.style.overflowY = "hidden";
+    return;
+  }
+  el.style.overflowY = "hidden";
+  el.style.maxHeight = "none";
+  el.style.height = "auto";
+  const box = composerBoxHeight(el.scrollHeight, true);
+  el.style.maxHeight = "";
+  el.style.height = `${box.height}px`;
+  el.style.overflowY = box.scroll ? "auto" : "hidden";
+}
 
 type Shown =
   | { kind: "pending" }
@@ -67,6 +91,8 @@ export function Desk({
 }) {
   const inputId = useId();
   const endRef = useRef<HTMLDivElement>(null);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const fieldWidth = useRef(0);
   const seq = useRef(0);
   const epoch = useRef(0);
   const turnsRef = useRef<Turn[]>([]);
@@ -103,6 +129,33 @@ export function Desk({
     if (!turns.length) return;
     endRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
   }, [turns]);
+
+  useLayoutEffect(() => {
+    const el = fieldRef.current;
+    if (el) fitComposerField(el, draft);
+  }, [draft]);
+
+  useEffect(() => {
+    const el = fieldRef.current;
+    const wrap = el?.parentElement;
+    if (!el || !wrap || typeof ResizeObserver === "undefined") return;
+    fieldWidth.current = wrap.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const next = wrap.clientWidth;
+      if (next === fieldWidth.current) return;
+      fieldWidth.current = next;
+      fitComposerField(el);
+    });
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, []);
+
+  function onFieldKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.repeat) return;
+    if (event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    void submit(draft);
+  }
 
   function patch(id: number, next: Shown) {
     setTurns((prev) =>
@@ -217,10 +270,13 @@ export function Desk({
             </label>
             {symbol ? <span className="ticker-chip">{symbol}</span> : null}
             <div className="composer-input-wrap">
-              <input
+              <textarea
+                ref={fieldRef}
                 id={inputId}
+                rows={1}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={onFieldKeyDown}
                 placeholder={hint.placeholder}
                 maxLength={500}
                 enterKeyHint="send"
@@ -228,7 +284,7 @@ export function Desk({
                 autoCapitalize="off"
                 autoCorrect="off"
                 disabled={busy || !ready}
-                className="composer-input h-11 w-full bg-transparent px-3 text-[16px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
+                className="composer-input w-full bg-transparent text-[16px] leading-[22px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
               />
             </div>
             <button
@@ -269,6 +325,9 @@ function TurnBody({ turn }: { turn: Turn }) {
   );
 }
 
+const GUIDANCE_CAP = 6;
+const QUOTE_WORDS = 22;
+
 function cardNode(card: FinnieCard | null): ReactNode {
   if (!card) return null;
   if (card.kind === "portfolio")
@@ -277,18 +336,13 @@ function cardNode(card: FinnieCard | null): ReactNode {
     return card.lines.length ? <FactLines lines={card.lines} /> : null;
   if (card.kind === "compare") return <CompareCard card={card} />;
   if (card.kind === "management") return <ManagementCard card={card} />;
-  return (
-    <div className="flex min-w-0 flex-col gap-3">
-      {card.reply.kind === "promises" ? (
-        <PromiseRows rows={card.reply.rows} symbol={card.symbol} />
-      ) : (
-        <ReplyBody reply={card.reply} symbol={card.symbol} />
-      )}
-      {card.quarters?.length ? (
-        <QuarterStrip rows={card.quarters} symbol={card.symbol} />
-      ) : null}
-    </div>
-  );
+  if (card.reply.kind === "promises") {
+    return <PromiseRows rows={card.reply.rows} symbol={card.symbol} />;
+  }
+  if (card.reply.kind === "results") {
+    return <QuarterGrids card={card} />;
+  }
+  return <ReplyBody reply={card.reply} symbol={card.symbol} />;
 }
 
 function PromiseRows({
@@ -298,92 +352,140 @@ function PromiseRows({
   rows: LedgerRowView[];
   symbol: string;
 }) {
-  const shown = rows.filter((row) => row.status !== "superseded");
+  const shown = rows
+    .filter((row) => row.status !== "superseded")
+    .slice(0, GUIDANCE_CAP);
   if (!shown.length) return <p className="small text-ink">{NO_PROMISES}</p>;
+  const page = symbol.trim() ? `/c/${encodeURIComponent(symbol.trim())}` : null;
   return (
-    <ul className="m-0 list-none p-0" aria-label={`${symbol} promises`}>
-      {shown.map((row) => (
-        <li key={row.id} className="border-b border-rule py-2 last:border-b-0">
-          <VerdictBadge verdict={row.verdict ?? "open"} className="small" />
-          <p className="small mt-1 text-ink">{clipWords(row.quote, 40)}</p>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function QuarterStrip({
-  rows,
-  symbol,
-}: {
-  rows: ChatQuarter[];
-  symbol: string;
-}) {
-  const revenue = metricLabel(rows, "revenue", "Revenue");
-  const ebitda = metricLabel(rows, "ebitda", "EBITDA");
-  const pat = metricLabel(rows, "pat", "PAT");
-  return (
-    <table className="rtable" aria-label={`${symbol} quarters, ₹ crore`}>
-      <thead>
-        <tr>
-          <th scope="col" className="hd">
-            Period
-          </th>
-          <th scope="col" className="hd r">
-            {revenue}
-          </th>
-          <th scope="col" className="hd r">
-            {ebitda}
-          </th>
-          <th scope="col" className="hd r">
-            {pat}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.period}>
-            <th scope="row" className="cell small text-ink-2">
-              {row.period}
-            </th>
-            <QuarterCell metric={row.revenue} />
-            <QuarterCell metric={row.ebitda} />
-            <QuarterCell metric={row.pat} />
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function QuarterCell({ metric }: { metric: ChatQuarter["revenue"] }) {
-  return (
-    <td className="cell r">
-      <span className="num">{fmtCr(metric?.crore ?? null)}</span>
-      {metric?.yoyPct != null ? (
-        <span className="mt-0.5 block">
-          <DeltaChip value={metric.yoyPct} />
-        </span>
+    <div>
+      <ul className="m-0 list-none p-0" aria-label={`${symbol} guidance`}>
+        {shown.map((row) => {
+          const quote = clipWords(row.quote, QUOTE_WORDS);
+          return (
+            <li
+              key={row.id}
+              className="border-b border-rule py-2 last:border-b-0"
+            >
+              <VerdictBadge verdict={row.verdict ?? "open"} className="small" />
+              {quote ? <p className="small mt-1 text-ink">{quote}</p> : null}
+            </li>
+          );
+        })}
+      </ul>
+      {page ? (
+        <Link href={page} className="thread-link mt-2">
+          more on the company page
+        </Link>
       ) : null}
-    </td>
+    </div>
   );
 }
 
-function metricLabel(
-  rows: ChatQuarter[],
-  key: "revenue" | "ebitda" | "pat",
-  fallback: string,
-): string {
-  for (const row of rows) {
-    const label = row[key]?.label;
-    if (label) return label;
-  }
-  return fallback;
+function QuarterGrids({
+  card,
+}: {
+  card: Extract<FinnieCard, { kind: "reply" }>;
+}) {
+  const grids = gridsFor(card);
+  if (!grids.length) return <p className="small text-ink">{NO_RESULTS}</p>;
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      {grids.map((item, index) => (
+        <div
+          key={`${item.periodEnd ?? item.fiscalLabel ?? "quarter"}-${index}`}
+          className={index ? "border-t border-rule pt-3" : undefined}
+        >
+          <ResultsGrid card={item} showMeta={false} withSpark />
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function fmtCr(value: number | null): string {
-  if (value == null) return "—";
-  return groupIndian(value, Math.abs(value) < 100 ? 1 : 0);
+function gridsFor(card: Extract<FinnieCard, { kind: "reply" }>): ResultsCard[] {
+  if (card.reply.kind !== "results") return [];
+  if (card.periodCards?.length) return card.periodCards.slice(0, 8);
+  if (card.quarters?.length) return cardsFromQuarters(card.quarters);
+  return card.reply.card ? [card.reply.card] : [];
+}
+
+function cardsFromQuarters(quarters: ChatQuarter[]): ResultsCard[] {
+  const keys = ["revenue", "ebitda", "pbt", "pat"] as const;
+  return quarters.map((quarter, index) => {
+    const history = quarters.slice(0, index + 1);
+    const headline = keys.flatMap((key) => {
+      const metric = quarter[key];
+      if (!metric) return [];
+      return [
+        {
+          metric: headlineMetric(key, metric.label),
+          label: metric.label,
+          currentCr: metric.crore,
+          prevQuarterCr: null,
+          yoyQuarterCr: null,
+          qoqDeltaCr: null,
+          qoqPct: metric.qoqPct,
+          yoyDeltaCr: null,
+          yoyPct: metric.yoyPct,
+          marginPct: null,
+          prevMarginPct: null,
+          yoyMarginPct: null,
+        },
+      ];
+    });
+    const rows = headline.map((line) => {
+      const key = sourceKey(line.metric);
+      const spark = history.map((item) => {
+        const value = item[key]?.crore;
+        return value == null ? null : value * 1e7;
+      });
+      const points = spark.filter((value) => value != null).length;
+      return {
+        metric: line.metric,
+        value: line.currentCr == null ? null : line.currentCr * 1e7,
+        qoqPct: line.qoqPct,
+        yoyPct: line.yoyPct,
+        spark: points >= 2 ? spark : [],
+      };
+    });
+    const bank = headline.some(
+      (line) => line.metric === "nii" || line.metric === "ppop",
+    );
+    return {
+      isin: "",
+      basis: "consolidated",
+      checksum: "preliminary",
+      rows: rows as ResultsCard["rows"],
+      ebitdaFormula: "pbt+fin+dna-oi",
+      sourceUrl: null,
+      fiscalLabel: quarter.period,
+      headline,
+      variant: bank ? "bank" : "corporate",
+    };
+  });
+}
+
+function headlineMetric(
+  key: "revenue" | "ebitda" | "pbt" | "pat",
+  label: string,
+): ResultsHeadlineRow["metric"] {
+  if (label === "NII") return "nii";
+  if (label === "PPOP") return "ppop";
+  if (label === "Total income") return "total_income";
+  if (key === "ebitda") return "ebitda";
+  if (key === "pbt") return "pbt";
+  if (key === "pat") return "pat";
+  return "revenue";
+}
+
+function sourceKey(
+  metric: ResultsHeadlineRow["metric"],
+): "revenue" | "ebitda" | "pbt" | "pat" {
+  if (metric === "pbt") return "pbt";
+  if (metric === "pat") return "pat";
+  if (metric === "ebitda" || metric === "ppop") return "ebitda";
+  return "revenue";
 }
 
 function clipWords(text: string, max: number): string {
@@ -514,7 +616,8 @@ export function FinnieAnswer({
       label={item.label}
     />
   ));
-  const bubble = say ? <div className="bubble-agent">{say}</div> : null;
+  const spoken = clipQuarterWall(say);
+  const bubble = spoken ? <div className="bubble-agent">{spoken}</div> : null;
   const jump = <CardLink href={href ?? null} label={link ?? null} />;
   return (
     <div className="flex min-w-0 flex-col items-start gap-2" data-answer="">

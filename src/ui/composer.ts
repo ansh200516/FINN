@@ -6,6 +6,31 @@
 export const FINNIE_GREETING =
   "Hey, I\u2019m Finnie. Ask me for a result, a promise, a price, or a rule.";
 
+/** One line is 44px: 11px padding above and below a 22px line. Six lines, then scroll. */
+export const COMPOSER_LINE_PX = 22;
+export const COMPOSER_PAD_Y = 11;
+export const COMPOSER_MIN_PX = COMPOSER_PAD_Y * 2 + COMPOSER_LINE_PX;
+export const COMPOSER_MAX_LINES = 6;
+export const COMPOSER_MAX_PX =
+  COMPOSER_PAD_Y * 2 + COMPOSER_LINE_PX * COMPOSER_MAX_LINES;
+
+/**
+ * Height of the composer field. An empty field stays one line so a typed
+ * placeholder cannot grow it. Content grows until six lines, then scrolls.
+ */
+export function composerBoxHeight(
+  scrollHeight: number,
+  hasText: boolean,
+): { height: number; scroll: boolean } {
+  if (!hasText) return { height: COMPOSER_MIN_PX, scroll: false };
+  const full =
+    Number.isFinite(scrollHeight) && scrollHeight > 0
+      ? scrollHeight
+      : COMPOSER_MIN_PX;
+  const height = Math.min(Math.max(full, COMPOSER_MIN_PX), COMPOSER_MAX_PX);
+  return { height, scroll: full > COMPOSER_MAX_PX };
+}
+
 export const COMPOSER_EXAMPLES: readonly string[] = [
   "reliance results",
   "reliance promises",

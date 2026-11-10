@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   advanceGhost,
   COMPOSER_EXAMPLES,
+  COMPOSER_MAX_PX,
+  COMPOSER_MIN_PX,
+  composerBoxHeight,
   composerExamples,
   exampleForEmptySend,
   FINNIE_GREETING,
@@ -29,6 +32,27 @@ describe("composer examples", () => {
         if (a !== b) expect(b.startsWith(a)).toBe(false);
       }
     }
+  });
+});
+
+describe("composer height", () => {
+  it("stays one line when empty, grows to six, then scrolls", () => {
+    expect(COMPOSER_MIN_PX).toBe(44);
+    expect(COMPOSER_MAX_PX).toBe(154);
+    expect(composerBoxHeight(400, false)).toEqual({
+      height: 44,
+      scroll: false,
+    });
+    expect(composerBoxHeight(44, true)).toEqual({ height: 44, scroll: false });
+    expect(composerBoxHeight(66, true)).toEqual({ height: 66, scroll: false });
+    expect(composerBoxHeight(154, true)).toEqual({
+      height: 154,
+      scroll: false,
+    });
+    expect(composerBoxHeight(176, true)).toEqual({
+      height: 154,
+      scroll: true,
+    });
   });
 });
 

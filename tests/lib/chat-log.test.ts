@@ -128,6 +128,17 @@ describe("chat log", () => {
                 pat: { label: "PAT", crore: 15, qoqPct: null, yoyPct: 50 },
               },
             ],
+            periodCards: [
+              {
+                isin: "INE002A01018",
+                basis: "consolidated",
+                checksum: "exchange_xbrl",
+                rows: [],
+                ebitdaFormula: "pbt+fin+dna",
+                sourceUrl: null,
+                fiscalLabel: "Q2 FY27",
+              },
+            ],
           },
         ],
         pages: ["/c/RELIANCE"],
@@ -138,7 +149,23 @@ describe("chat log", () => {
       kind: "reply",
       symbol: "RELIANCE",
       quarters: [{ period: "Q2 FY27", revenue: { crore: 150, yoyPct: 50 } }],
+      periodCards: [{ fiscalLabel: "Q2 FY27" }],
     });
+  });
+
+  it("clips a stored quarter recital to two sentences", () => {
+    const storage = memoryStorage();
+    const wall = [
+      "For Q3 FY26, Revenue was 1 crore, EBITDA was 2, PBT was 3, and PAT was 4.",
+      "For Q4 FY26, Revenue was 5 crore, EBITDA was 6, PBT was 7, and PAT was 8.",
+      "For Q1 FY27, Revenue was 9 crore, EBITDA was 10, PBT was 11, and PAT was 12.",
+    ].join(" ");
+    saveChatLog(storage, [turn(1, { say: wall })]);
+    const loaded = loadChatLog(storage);
+    expect(loaded[0]?.say).toContain("Q3 FY26");
+    expect(loaded[0]?.say).toContain("Q4 FY26");
+    expect(loaded[0]?.say).not.toContain("Q1 FY27");
+    expect(loaded[0]?.say.split(/(?<=[.!?])\s+/)).toHaveLength(2);
   });
 
   it("does not load a thread saved under the previous key", () => {

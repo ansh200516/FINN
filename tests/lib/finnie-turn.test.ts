@@ -9,6 +9,7 @@ import {
   type Mock,
   vi,
 } from "vitest";
+import { z } from "zod";
 
 vi.mock("@/engine/llm/gateway", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/engine/llm/gateway")>();
@@ -23,8 +24,13 @@ import {
   MODEL_LADDERS,
   todayPt,
 } from "@/engine/llm/gateway";
-import { runFinnieTurn } from "@/lib/finnieTurn";
-import { FINNIE_MODEL_DOWN, FINNIE_OUT_OF_CALLS } from "@/lib/finnieTypes";
+import { FinnieStep, runFinnieTurn } from "@/lib/finnieTurn";
+import {
+  FINNIE_DOES_NOT_HAVE,
+  FINNIE_MODEL_DOWN,
+  FINNIE_OUT_OF_CALLS,
+  FINNIE_TOOLS,
+} from "@/lib/finnieTypes";
 
 const llm = callStructured as unknown as Mock<typeof callStructured>;
 
@@ -322,5 +328,139 @@ describe("runFinnieTurn", () => {
     expect(llm.mock.calls.every((call) => call[0].task === "finnie")).toBe(
       true,
     );
+  });
+
+  it("calls get_brief when the model refuses an act question", async () => {
+    const at = Date.now() - 5 * 60 * 1000;
+    const actKey = `${PIIND}|management_change|act-question`;
+    await db
+      .insert(events)
+      .values({
+        eventKey: actKey,
+        isin: PIIND,
+        category: "management_change",
+        firstAt: at,
+        lastAt: at,
+        tier: 1,
+        cardType: "management_change",
+        cardJson: JSON.stringify({
+          title: "CFO resigns",
+          oneLiner: "The chief financial officer resigns.",
+          category: "management_change",
+          tier: 1,
+          priority: 70,
+        }),
+        announcementIdsJson: "[]",
+      })
+      .onConflictDoNothing();
+
+    llm
+      .mockResolvedValueOnce(model({ done: true, say: FINNIE_DOES_NOT_HAVE }))
+      .mockResolvedValueOnce(
+        model({ done: true, say: "PIIND is the name to act on." }),
+      );
+
+    const result = await runFinnieTurn(
+      "which stocks should i act upon right now?",
+      null,
+    );
+
+    expect(result.tools).toEqual(["get_brief"]);
+    expect(result.say).toBe("PIIND is the name to act on.");
+    expect(result.say).not.toBe(FINNIE_DOES_NOT_HAVE);
+    expect(result.card?.kind).toBe("lines");
+    if (result.card?.kind === "lines") {
+      const line = result.card.lines.find((row) =>
+        row.href.includes("act-question"),
+      );
+      expect(line?.symbol).toBe("PIIND");
+      expect(line?.href.startsWith("/e/")).toBe(true);
+      expect(line?.text.toLowerCase()).toContain("chief financial officer");
+    }
+    const call = llm.mock.calls[0]?.[0];
+    const prompt = String(call?.prompt);
+    const system = String(call?.system);
+    for (const name of FINNIE_TOOLS) expect(prompt).toContain(name);
+    expect(system).toContain('{"tool":"get_brief","args":{}}');
+    expect(system).toContain("should I buy Reliance");
+    expect(prompt).not.toContain("whether to buy");
+    expect(system).not.toContain("whether to buy");
+  });
+
+  it("calls get_brief when the model names a tool that does not exist", async () => {
+    llm
+      .mockResolvedValueOnce(
+        model({ tool: "act_cards", args: { window: "24h" } }),
+      )
+      .mockResolvedValueOnce(
+        model({ done: true, say: "PIIND is the name to act on." }),
+      );
+
+    const result = await runFinnieTurn(
+      "which stocks should i act upon right now?",
+      null,
+    );
+
+    expect(result.tools).toEqual(["get_brief"]);
+    expect(result.card?.kind).toBe("lines");
+    if (result.card?.kind === "lines") {
+      expect(result.card.lines.some((row) => row.href.startsWith("/e/"))).toBe(
+        true,
+      );
+    }
+    expect(result.say).not.toBe(FINNIE_DOES_NOT_HAVE);
+  });
+
+  it("lists the book when the model refuses a portfolio question", async () => {
+    llm
+      .mockResolvedValueOnce(model({ done: true, say: FINNIE_DOES_NOT_HAVE }))
+      .mockResolvedValueOnce(model({ done: true, say: "Two names." }));
+
+    const result = await runFinnieTurn("what's in my portfolio", null);
+
+    expect(result.tools).toEqual(["list_portfolio"]);
+    expect(result.say).toBe("Two names.");
+    expect(result.card?.kind).toBe("portfolio");
+    if (result.card?.kind === "portfolio") {
+      expect(result.card.names.map((row) => row.symbol)).toEqual([
+        "ITC",
+        "PIIND",
+      ]);
+    }
+  });
+
+  it("answers a buy question in one sentence with no card and no target", async () => {
+    llm.mockResolvedValue(
+      model({
+        tool: "get_quote",
+        args: { symbol: "RELIANCE" },
+        say: "Target 1500.",
+      }),
+    );
+
+    const result = await runFinnieTurn("should I buy Reliance", null);
+
+    expect(result.tools).toEqual([]);
+    expect(result.card).toBeNull();
+    expect(result.href).toBeNull();
+    expect(result.say).toBe(FINNIE_DOES_NOT_HAVE);
+    expect(result.say).not.toMatch(/\d|target|₹/i);
+    expect(llm).not.toHaveBeenCalled();
+  });
+
+  it("requires a tool in one object, including get_brief", () => {
+    const js = z.toJSONSchema(FinnieStep, {
+      target: "draft-7",
+      io: "output",
+    }) as {
+      anyOf?: unknown;
+      required?: string[];
+      properties?: { tool?: { enum?: string[]; description?: string } };
+    };
+    expect(js.anyOf).toBeUndefined();
+    expect(js.required).toContain("tool");
+    expect(js.properties?.tool?.enum).toEqual([...FINNIE_TOOLS, "none"]);
+    expect(js.properties?.tool?.description).toContain("get_brief");
+    expect(js.properties?.tool?.description).toContain("not a buy");
   });
 });

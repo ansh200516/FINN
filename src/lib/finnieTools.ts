@@ -708,7 +708,7 @@ async function briefFor(raw: string | undefined): Promise<ToolOutcome> {
   const thresholds = thresholdsFrom(rules);
   const { view } = await getBriefView({
     now,
-    query: { w: window.preset },
+    query: window.preset === "auto" ? {} : { w: window.preset },
     isins: user.portfolioIsins,
     thresholds,
   });
@@ -1161,8 +1161,13 @@ function headlineFact(symbol: string, card: ResultsCard | null) {
 
 function briefWindow(
   raw: string | undefined,
-): { preset: "24h" | "48h" | "7d" | "30d" | "close" } | { error: string } {
-  const key = (raw ?? "24h").trim().toLowerCase().replace(/\s+/g, " ");
+):
+  | { preset: "auto" | "24h" | "48h" | "7d" | "30d" | "close" }
+  | { error: string } {
+  const key = (raw ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  // No period: the brief on screen. An empty day widens, same as the page.
+  if (!key || key === "auto" || key === "now" || key === "right now")
+    return { preset: "auto" };
   const preset = WINDOWS[key];
   if (!preset)
     return { error: "The window is 24h, 48h, 7d, 30d, or since close." };

@@ -19,17 +19,24 @@ import {
   FINNIE_OUT_OF_CALLS,
   FINNIE_TOOLS,
   type FinniePrior,
+  type FinnieTool,
   type FinnieTurnResult,
   MAX_TOOL_CALLS,
+  type ToolArgs,
   type ToolOutcome,
 } from "@/lib/finnieTypes";
 
+const STEP_TOOLS = [...FINNIE_TOOLS, "none"] as const;
+
 const SYSTEM = [
   "You are Finnie, a research desk.",
-  "Choose one tool, or finish.",
-  "say is one sentence and may use only facts a tool returned.",
+  "Set tool to the one tool that answers the sentence, or none to finish.",
+  "say is one sentence and may use only facts a tool returned. Leave say empty when tool is not none.",
   "Do not invent a figure, a quote, or a company.",
-  `If the ask is news, a target price, whether to buy, shareholding, delivery data, or whether the market is open, finish with “${FINNIE_DOES_NOT_HAVE}” and call no tool.`,
+  "Act means the brief’s Act cards. It is not a buy or a sell.",
+  `Example: “which stocks should I act upon right now?” → {"tool":"get_brief","args":{}}`,
+  `Example: “should I buy Reliance?” → {"tool":"none","say":"${FINNIE_DOES_NOT_HAVE}"}`,
+  "News, a target price, shareholding, delivery data, and whether the market is open use that same none reply. Do not name a price.",
 ].join(" ");
 
 const TOOL_LIST = [
@@ -45,7 +52,7 @@ const TOOL_LIST = [
   "set_alert(scope, kind, params) — replaces the threshold. scope is one symbol or book; kind is price_move, volume_ratio, category, or text. enabled false turns that rule off",
   "disable_alert(scope, kind) — turns off price_move, volume_ratio, or an announcement category, for one symbol or the book",
   "open_company(symbol) — returns /c/SYMBOL",
-  "get_brief(window) — window is 24h, 48h, 7d, 30d, or since close. Act lines, plus the watch count and the filed-away count",
+  "get_brief(window) — Act lines, plus the watch count and the filed-away count. Omit window for right now; that is the brief on screen, widened when the day is empty. Otherwise 24h, 48h, 7d, 30d, or since close",
   "list_unread() — inbox rows with no read time",
   "mark_read() — mark those unread rows read",
   "get_upcoming() — board meetings, results, and calls already on the brief",
@@ -78,18 +85,22 @@ const Args = z.object({
     .optional(),
 });
 
-export const FinnieStep = z.union([
-  z.object({
-    done: z.boolean(),
-    say: z.string(),
-  }),
-  z.object({
-    tool: z.enum(FINNIE_TOOLS),
-    args: Args.nullish(),
-  }),
-]);
+export const FinnieStep = z.object({
+  tool: z
+    .enum(STEP_TOOLS)
+    .describe(
+      "get_brief is the Act list: act, act on, act upon, and the brief. It is not a buy or a sell. none finishes, or refuses a buy or a sell, a target price, news, shareholding, delivery data, or whether the market is open.",
+    ),
+  args: Args,
+  say: z.string().optional(),
+});
 
-type Step = z.infer<typeof FinnieStep>;
+type Step = { done: true; say: string } | { tool: string; args: ToolArgs };
+
+type Call =
+  | { kind: "call"; tool: FinnieTool; args: ToolArgs }
+  | { kind: "say"; say: string }
+  | { kind: "stop" };
 
 export async function runFinnieTurn(
   sentence: string,
@@ -98,6 +109,7 @@ export async function runFinnieTurn(
 ): Promise<FinnieTurnResult> {
   const text = sentence.trim().slice(0, 500);
   if (!text) return quiet("Name a company.");
+  if (isGap(text)) return quiet(FINNIE_DOES_NOT_HAVE);
   const open = focusSymbol(focus);
   const earlier = cleanPrior(prior);
   if (await modelAtSoftCap("bulk")) return quiet(FINNIE_OUT_OF_CALLS);
@@ -115,12 +127,17 @@ export async function runFinnieTurn(
         );
       return present(fallbackSay(last), tools, last);
     }
-    if ("done" in step) return present(step.say, tools, last);
-    tools.push(step.tool);
+    const next = chooseCall(step, text, tools);
+    if (next.kind === "say") return present(next.say, tools, last);
+    if (next.kind === "stop") {
+      if (!tools.length) return quiet(stepSay(step) || FINNIE_DOES_NOT_HAVE);
+      return present(fallbackSay(last), tools, last);
+    }
+    tools.push(next.tool);
     try {
       last = await executeTool(
-        step.tool,
-        step.args ?? {},
+        next.tool,
+        argsForTool(next.tool, text, next.args),
         open,
         Boolean(earlier),
       );
@@ -134,13 +151,19 @@ export async function runFinnieTurn(
         book: null,
       };
     }
-    notes.push(`${step.tool}: ${clip(JSON.stringify(last.fact))}`);
-    const fixed = fixedSay(step.tool, last);
+    notes.push(`${next.tool}: ${clip(JSON.stringify(last.fact))}`);
+    const fixed = fixedSay(next.tool, last);
     if (fixed) return present(fixed, tools, last);
   }
 
   const closing = await decide(text, open, earlier, notes, true);
-  if (closing && closing !== "capped" && "done" in closing)
+  if (
+    closing &&
+    closing !== "capped" &&
+    "done" in closing &&
+    closing.say &&
+    !isRefusal(closing.say)
+  )
     return present(closing.say, tools, last);
   return present(fallbackSay(last), tools, last);
 }
@@ -172,21 +195,37 @@ async function callTier(tier: LlmTier, prompt: string) {
     schema: FinnieStep,
     prompt,
     system: SYSTEM,
-    promptVersion: "2",
+    promptVersion: "3",
     temperature: 0,
     maxTokens: 512,
   });
 }
 
-function readStep(result: { data: unknown }): Step | null {
-  const parsed = FinnieStep.safeParse(result.data);
-  if (!parsed.success) return null;
-  if ("done" in parsed.data) {
-    const say = parsed.data.say.replace(/\s+/g, " ").trim();
-    if (parsed.data.done !== true || !say) return null;
+function readStep(result: { data: unknown } | null | undefined): Step | null {
+  if (!result || typeof result.data !== "object" || result.data == null)
+    return null;
+  const rec = result.data as Record<string, unknown>;
+  const tool =
+    typeof rec.tool === "string"
+      ? rec.tool
+          .trim()
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_")
+      : "";
+  const say =
+    typeof rec.say === "string" ? rec.say.replace(/\s+/g, " ").trim() : "";
+  const args = readArgs(rec.args);
+  if (tool && tool !== "none" && tool !== "done" && tool !== "finish")
+    return { tool, args };
+  if (
+    rec.done === true ||
+    tool === "none" ||
+    tool === "done" ||
+    tool === "finish"
+  )
     return { done: true, say };
-  }
-  return parsed.data;
+  if (say) return { done: true, say };
+  return null;
 }
 
 function promptFor(
@@ -200,6 +239,7 @@ function promptFor(
     prior ? `Previous sentence: ${prior.sentence}` : null,
     prior ? `Previous tool: ${prior.tool ?? "none"}` : null,
     `Sentence: ${sentence}`,
+    "Act, act on, and act upon are get_brief. A buy or a sell, such as should I buy RELIANCE, is none.",
     `Focus: ${focus ?? "none"}`,
     "",
     "Tools:",
@@ -210,12 +250,12 @@ function promptFor(
     notes.length ? notes.map((note) => `- ${note}`).join("\n") : "- none",
     "",
     finish
-      ? 'No more tools. Return {"done":true,"say":"..."} using only the results above.'
-      : 'Return {"tool":"...","args":{...}} or {"done":true,"say":"..."}.',
+      ? 'No more tools. Return {"tool":"none","say":"..."} using only the results above.'
+      : 'Return {"tool":"<one tool>","args":{...}} or {"tool":"none","say":"..."}.',
     "Call list_portfolio only when the user asked which names are in the portfolio.",
     "When a tool has answered the sentence, finish. Do not list the book after an add or a remove.",
     "A follow-up such as “and its promises” or “remove that one” uses Focus, the company from the previous turn. Pass that symbol.",
-    `News, a target price, whether to buy, shareholding, delivery data, and whether the market is open are not tools. Return {"done":true,"say":"${FINNIE_DOES_NOT_HAVE}"} and call no tool.`,
+    `A buy or a sell, a target price, news, shareholding, delivery data, and whether the market is open are not tools. Return {"tool":"none","say":"${FINNIE_DOES_NOT_HAVE}"} and call no tool.`,
     "compare returns the card. Do not rank the two companies.",
     "mark_read is confirmed with the count the tool returned.",
   ]
@@ -346,6 +386,150 @@ function cleanPrior(prior: FinniePrior | null | undefined): FinniePrior | null {
       ? prior.tool
       : null;
   return { sentence, tool };
+}
+
+function stepSay(step: Step): string {
+  return "done" in step ? step.say : "";
+}
+
+function chooseCall(step: Step, sentence: string, ran: string[]): Call {
+  if (!ran.length && isGap(sentence))
+    return { kind: "say", say: FINNIE_DOES_NOT_HAVE };
+  if ("tool" in step) {
+    const known = knownTool(step.tool);
+    if (known) return { kind: "call", tool: known, args: step.args };
+    const covered = coveredTool(sentence);
+    if (covered && !ran.includes(covered))
+      return { kind: "call", tool: covered, args: {} };
+    return { kind: "stop" };
+  }
+  if (!ran.length && (isRefusal(step.say) || !step.say.trim())) {
+    const covered = coveredTool(sentence);
+    if (covered) return { kind: "call", tool: covered, args: {} };
+  }
+  if (!step.say.trim() || (ran.length > 0 && isRefusal(step.say)))
+    return { kind: "stop" };
+  return { kind: "say", say: step.say };
+}
+
+function normAsk(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^a-z0-9'\s.&-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Buy, sell, a target, news, shareholding, delivery, or whether the market is open. Act is not this. */
+function isGap(sentence: string): boolean {
+  const n = normAsk(sentence);
+  if (!n) return false;
+  if (/\b(price target|target price)\b/.test(n)) return true;
+  if (/\bshareholding\b/.test(n)) return true;
+  if (
+    /\bdelivery\b/.test(n) &&
+    /\b(data|volume|percent|percentage|qty|quantity)\b/.test(n)
+  )
+    return true;
+  if (/\bmarket\b/.test(n) && /\bopen\b/.test(n)) return true;
+  if (/\bnews\b/.test(n)) return true;
+  const trade =
+    /\b(buy|sell|short|accumulate)\b/.test(n) || /\ba hold\b/.test(n);
+  const asks =
+    /\b(should|shall|ought|recommend|worth)\b/.test(n) ||
+    /\b(a buy|a sell)\b/.test(n);
+  return trade && asks;
+}
+
+function isRefusal(say: string): boolean {
+  const n = normAsk(say);
+  if (!n) return false;
+  return n === "finnie does not have that" || n.includes("does not have that");
+}
+
+function knownTool(name: string): FinnieTool | null {
+  return (FINNIE_TOOLS as readonly string[]).includes(name)
+    ? (name as FinnieTool)
+    : null;
+}
+
+function coveredTool(sentence: string): FinnieTool | null {
+  const n = normAsk(sentence);
+  if (!n || isGap(sentence)) return null;
+  if (isPortfolioList(n)) return "list_portfolio";
+  if (/\b(add|put)\b/.test(n) && /\b(portfolio|book)\b/.test(n))
+    return "add_to_portfolio";
+  if (/\b(remove|delete|drop)\b/.test(n) && /\b(portfolio|book)\b/.test(n))
+    return "remove_from_portfolio";
+  if (isBrief(n)) return "get_brief";
+  if (/\bmark\b/.test(n) && /\bread\b/.test(n)) return "mark_read";
+  if (/\b(unread|inbox)\b/.test(n)) return "list_unread";
+  if (/\b(upcoming|coming up|board meeting)\b/.test(n)) return "get_upcoming";
+  if (/\b(missed|cut)\b/.test(n) && /\bpromise/.test(n))
+    return "missed_promises";
+  if (/\b(mover|moved)\b/.test(n)) return "movers";
+  if (/\bmanagement\b/.test(n)) return "get_management";
+  if (/\bcompare\b/.test(n) || /\bversus\b/.test(n) || /\bvs\b/.test(n))
+    return "compare";
+  if (/\b(disable|turn off|switch off)\b/.test(n) && /\balert\b/.test(n))
+    return "disable_alert";
+  if (/\balert\b/.test(n)) return "set_alert";
+  if (/\bresults?\b/.test(n)) return "get_results";
+  if (/\bpromises?\b/.test(n)) return "get_promises";
+  if (
+    /\b(balance sheet|cash quality|narrative|guidance|trajectory|bull)\b/.test(
+      n,
+    )
+  )
+    return "get_reading";
+  if (/\b(quote|share price|stock price)\b/.test(n)) return "get_quote";
+  if (/\b(nifty|sensex|india vix)\b/.test(n)) return "get_index";
+  if (/\b(corporate action|dividend|bonus|split)\b/.test(n))
+    return "get_corporate_actions";
+  if (/^(?:open|show)\s+[a-z0-9&.-]{2,20}$/.test(n)) return "open_company";
+  return null;
+}
+
+function isPortfolioList(n: string): boolean {
+  if (/\b(add|remove|delete|drop|put)\b/.test(n)) return false;
+  return /\b(portfolio|holdings|my book|the book)\b/.test(n);
+}
+
+function isBrief(n: string): boolean {
+  if (/\bbrief\b/.test(n) || /\bact\b/.test(n)) return true;
+  if (/\bwhat needs (?:a decision|me)\b/.test(n)) return true;
+  return /\bwhat do i need to do\b/.test(n);
+}
+
+function namedWindow(sentence: string): string | null {
+  const n = normAsk(sentence);
+  if (/\b48\s*h\b|\b48 hours\b|\blast 48\b/.test(n)) return "48h";
+  if (/\b7\s*d\b|\blast 7\b|\b7 days\b|\bthis week\b|\bweek\b/.test(n))
+    return "7d";
+  if (/\b30\s*d\b|\blast 30\b|\b30 days\b|\bthis month\b|\bmonth\b/.test(n))
+    return "30d";
+  if (/\bsince (?:the )?close\b/.test(n)) return "close";
+  if (/\b24\s*h\b|\blast 24\b|\b24 hours\b/.test(n)) return "24h";
+  return null;
+}
+
+function argsForTool(
+  tool: FinnieTool,
+  sentence: string,
+  args: ToolArgs,
+): ToolArgs {
+  if (tool !== "get_brief") return args;
+  const named = namedWindow(sentence);
+  if (named) return { ...args, window: named };
+  const rest = { ...args };
+  delete rest.window;
+  return rest;
+}
+
+function readArgs(value: unknown): ToolArgs {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as ToolArgs;
 }
 
 function focusSymbol(focus: string | null): string | null {

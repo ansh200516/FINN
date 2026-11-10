@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import {
@@ -47,10 +48,9 @@ import {
   MODEL_LADDERS,
   todayPt,
 } from "@/engine/llm/gateway";
-import { FinnieStep, runFinnieTurn } from "@/lib/finnieTurn";
+import { FinnieCalls, FinnieSay, runFinnieTurn } from "@/lib/finnieTurn";
 import {
-  FINNIE_DOES_NOT_HAVE,
-  FINNIE_MODEL_DOWN,
+  FINNIE_NO_MATCH,
   FINNIE_OUT_OF_CALLS,
   FINNIE_TOOLS,
 } from "@/lib/finnieTypes";
@@ -71,6 +71,13 @@ function model(data: unknown) {
     latencyMs: 1,
     cacheKey: "test",
   };
+}
+
+function answerPrompt(sentence: string, prompt: string): string {
+  expect(prompt.startsWith(`${sentence}\n`)).toBe(true);
+  const tail = prompt.slice(sentence.length + 1);
+  expect(JSON.stringify(JSON.parse(tail))).toBe(tail);
+  return tail;
 }
 
 beforeAll(async () => {
@@ -105,48 +112,54 @@ beforeEach(() => {
 });
 
 describe("runFinnieTurn", () => {
-  it("adds PIIND when the model picks add_to_portfolio, and does not list the book", async () => {
+  it("adds PIIND when the model picks add_to_portfolio, and says what the model wrote", async () => {
+    const sentence = "add PIIND to my portfolio";
+    const say = "Already in the book: PIIND.";
     llm
       .mockResolvedValueOnce(
-        model({ tool: "add_to_portfolio", args: { symbol: "PIIND" } }),
+        model({
+          calls: [{ tool: "add_to_portfolio", args: { symbol: "PIIND" } }],
+        }),
       )
-      .mockResolvedValueOnce(
-        model({ done: true, say: "Already in the book: PIIND." }),
-      );
+      .mockResolvedValueOnce(model({ say }));
 
-    const result = await runFinnieTurn("add PIIND to my portfolio", null);
+    const result = await runFinnieTurn(sentence, null);
 
     expect(result.tools).toEqual(["add_to_portfolio"]);
     expect(result.tools).not.toContain("list_portfolio");
     expect(result.book).toBe("already_in");
-    expect(result.say).toBe("Already in the book: PIIND.");
+    expect(result.say).toBe(say);
     expect(result.card).toBeNull();
+    expect(result.sayAfter).toBe(false);
     expect(llm).toHaveBeenCalledTimes(2);
     expect(llm.mock.calls[0]?.[0]).toMatchObject({
       task: "finnie",
       tier: "bulk",
     });
+    expect(llm.mock.calls[1]?.[0].tier).toBe("bulk");
     const first = String(llm.mock.calls[0]?.[0].prompt);
-    expect(first).toContain("add PIIND to my portfolio");
+    expect(first).toContain(sentence);
     expect(first).toContain("add_to_portfolio");
-    const follow = String(llm.mock.calls[1]?.[0].prompt);
-    expect(follow).toContain("already_in");
-    expect(follow).toContain("PIIND");
-    expect(follow).not.toContain("ITC Limited");
+    const tail = answerPrompt(sentence, String(llm.mock.calls[1]?.[0].prompt));
+    expect(tail).toContain("already_in");
+    expect(tail).toContain("PIIND");
+    expect(tail).not.toContain("ITC Limited");
+    expect(tail).not.toContain("Tools:");
   });
 
-  it("lists the book when the model picks list_portfolio", async () => {
+  it("lists the book and keeps the model's sentence, not a count", async () => {
+    const say = "ITC and PIIND are already in the book.";
     llm
-      .mockResolvedValueOnce(model({ tool: "list_portfolio" }))
       .mockResolvedValueOnce(
-        model({ done: true, say: "ITC Limited is already in the book." }),
-      );
+        model({ calls: [{ tool: "list_portfolio", args: {} }] }),
+      )
+      .mockResolvedValueOnce(model({ say }));
 
     const result = await runFinnieTurn("whats in my portfolio", null);
 
     expect(result.tools).toEqual(["list_portfolio"]);
-    expect(result.say).toBe("2 names.");
-    expect(result.say).not.toContain("ITC Limited");
+    expect(result.say).toBe(say);
+    expect(result.say).not.toBe("2 names.");
     expect(result.card?.kind).toBe("portfolio");
     if (result.card?.kind === "portfolio") {
       expect(result.card.names.map((row) => row.symbol)).toEqual([
@@ -156,16 +169,14 @@ describe("runFinnieTurn", () => {
     }
   });
 
-  it("says one sentence and shows no card when the model call fails", async () => {
+  it("says it could not match when the tool step fails, and does not try another tier", async () => {
     llm.mockRejectedValue(new Error("down"));
     const result = await runFinnieTurn("add PIIND to my portfolio", null);
-    expect(result.say).toBe(FINNIE_MODEL_DOWN);
+    expect(result.say).toBe(FINNIE_NO_MATCH);
     expect(result.card).toBeNull();
+    expect(result.cards).toEqual([]);
     expect(result.tools).toEqual([]);
-    expect(llm.mock.calls.map((call) => call[0].tier)).toEqual([
-      "bulk",
-      "reason",
-    ]);
+    expect(llm.mock.calls.map((call) => call[0].tier)).toEqual(["bulk"]);
   });
 
   it("does not call the model when the bulk ledger is at 80% of cap", async () => {
@@ -192,77 +203,144 @@ describe("runFinnieTurn", () => {
     }
   });
 
-  it("returns Act lines and the watch and filed-away counts from the brief", async () => {
-    const at = Date.now() - 5 * 60 * 1000;
-    const actKey = `${PIIND}|management_change|chat`;
+  it("shows the model's sentence for a novel brief question, not a canned count", async () => {
+    await db.delete(events);
+    const now = Date.now();
     await db.insert(events).values([
       {
-        eventKey: actKey,
+        eventKey: `${PIIND}|management_change|deal`,
         isin: PIIND,
         category: "management_change",
-        firstAt: at,
-        lastAt: at,
+        firstAt: now - 60_000,
+        lastAt: now - 60_000,
         tier: 1,
         cardType: "management_change",
         cardJson: JSON.stringify({
-          title: "CFO resigns",
-          oneLiner: "The chief financial officer resigns.",
+          title: "Managing director",
+          oneLiner: "Jayant Balan becomes MD.",
+          category: "management_change",
+          tier: 1,
+          priority: 80,
+        }),
+        announcementIdsJson: "[]",
+      },
+      {
+        eventKey: `${ITC}|management_change|deal`,
+        isin: ITC,
+        category: "management_change",
+        firstAt: now - 5 * 60_000,
+        lastAt: now - 5 * 60_000,
+        tier: 1,
+        cardType: "management_change",
+        cardJson: JSON.stringify({
+          title: "Finance chief",
+          oneLiner: "The finance chief leaves the board.",
           category: "management_change",
           tier: 1,
           priority: 70,
         }),
         announcementIdsJson: "[]",
       },
-      {
-        eventKey: `${PIIND}|unclassified|chat`,
-        isin: PIIND,
-        category: "unclassified",
-        firstAt: at,
-        lastAt: at,
-        tier: 3,
-        cardType: "routine",
-        cardJson: JSON.stringify({
-          title: "Routine filing",
-          oneLiner: "A routine filing.",
-          category: "unclassified",
-          tier: 3,
-          priority: 1,
-        }),
-        announcementIdsJson: "[]",
-      },
     ]);
 
+    const sentence = "anything I need to deal with today?";
+    const say =
+      "PIIND and ITC each have a management change to read. The decision is yours.";
     llm
       .mockResolvedValueOnce(
-        model({ tool: "get_brief", args: { window: "24h" } }),
+        model({ calls: [{ tool: "get_brief", args: {} }] }),
       )
-      .mockResolvedValueOnce(
-        model({
-          done: true,
-          say: "The chief financial officer resigns. The filing has the names.",
-        }),
-      );
+      .mockResolvedValueOnce(model({ say }));
 
-    const result = await runFinnieTurn("what should I act on", null);
+    const result = await runFinnieTurn(sentence, null);
 
     expect(result.tools).toEqual(["get_brief"]);
-    expect(result.say).toBe("1 name needs a decision.");
+    expect(result.say).toBe(say);
+    expect(result.say).not.toMatch(/names need a decision|Nothing to act on/);
+    expect(result.say).not.toBe("Jayant Balan becomes MD.");
     expect(result.card?.kind).toBe("lines");
     if (result.card?.kind === "lines") {
-      expect(result.card.lines.map((line) => line.symbol)).toEqual(["PIIND"]);
-      expect(result.card.lines[0]?.href).toBe(
-        `/e/${encodeURIComponent(actKey)}`,
-      );
-      expect(result.card.lines[0]?.text.toLowerCase()).toContain(
-        "chief financial officer",
-      );
+      expect(result.card.lines.map((line) => line.symbol).sort()).toEqual([
+        "ITC",
+        "PIIND",
+      ]);
+      for (const line of result.card.lines) {
+        expect(line.href.startsWith("/e/")).toBe(true);
+        expect(result.say).not.toBe(line.text);
+      }
+      expect(
+        result.card.lines.some((line) => line.text.includes("Jayant Balan")),
+      ).toBe(true);
+      expect(
+        result.card.lines.some((line) => line.text.includes("finance chief")),
+      ).toBe(true);
     }
-    expect(result.say).not.toMatch(/chief financial officer/i);
-    expect(llm).toHaveBeenCalledTimes(1);
-    expect(llm.mock.calls[0]?.[0].prompt).toContain("get_brief");
+    expect(llm).toHaveBeenCalledTimes(2);
+    expect(llm.mock.calls.map((call) => call[0].tier)).toEqual([
+      "bulk",
+      "bulk",
+    ]);
+    const first = String(llm.mock.calls[0]?.[0].prompt);
+    const system = String(llm.mock.calls[0]?.[0].system);
+    expect(first).toContain(sentence);
+    for (const name of FINNIE_TOOLS) expect(first).toContain(name);
+    expect(first).not.toContain("names need a decision");
+    expect(system).not.toContain("should I buy");
+    expect(system).not.toContain("does not have that");
+    const tail = answerPrompt(sentence, String(llm.mock.calls[1]?.[0].prompt));
+    expect(tail).toContain("Jayant Balan");
+    expect(tail).not.toContain("names need a decision");
+    expect(tail).not.toContain("disable_alert");
+    expect(String(llm.mock.calls[1]?.[0].system)).not.toContain("get_brief");
   });
 
-  it("lists missed and cut promises and leaves unverifiable rows out", async () => {
+  it("gives the answer step only the sentence and the tool JSON, with no price added", async () => {
+    const sentence = "what is the price of ITC";
+    const say = "ITC and PIIND are in the book.";
+    llm
+      .mockResolvedValueOnce(
+        model({ calls: [{ tool: "list_portfolio", args: {} }] }),
+      )
+      .mockResolvedValueOnce(model({ say }));
+
+    const result = await runFinnieTurn(sentence, null);
+
+    expect(llm).toHaveBeenCalledTimes(2);
+    const call = llm.mock.calls[1]?.[0];
+    expect(call?.parts).toBeUndefined();
+    expect(call?.tier).toBe("bulk");
+    const prompt = String(call?.prompt);
+    const tail = answerPrompt(sentence, prompt);
+    const payload = JSON.parse(tail) as Array<{
+      tool: string;
+      data: { names?: Array<{ symbol: string }> };
+    }>;
+    expect(payload).toEqual([
+      {
+        tool: "list_portfolio",
+        data: {
+          status: "listed",
+          count: 2,
+          names: [
+            { symbol: "ITC", name: "ITC Limited" },
+            { symbol: "PIIND", name: "PI Industries Limited" },
+          ],
+        },
+      },
+    ]);
+    expect(tail).not.toMatch(/₹|1324|1,324|1500|1,500/);
+    expect(tail.toLowerCase()).not.toContain("price");
+    expect(prompt).not.toContain("Tools:");
+    expect(prompt).not.toContain("Previous sentence");
+    expect(prompt).not.toContain("get_quote");
+    expect(String(call?.system)).not.toMatch(/₹|\d/);
+    expect(String(call?.system)).not.toContain("ITC Limited");
+    expect(result.say).toBe(say);
+    expect(result.say).not.toMatch(/₹|\d/);
+    expect(result.card?.kind).toBe("portfolio");
+  });
+
+  it("keeps the model's sentence for missed promises and still lists the row", async () => {
     await db.insert(guidance).values([
       {
         id: "g-miss-piind",
@@ -301,20 +379,18 @@ describe("runFinnieTurn", () => {
       },
     ]);
 
+    const say = "PIIND missed the revenue-growth promise for FY27.";
     llm
-      .mockResolvedValueOnce(model({ tool: "missed_promises" }))
       .mockResolvedValueOnce(
-        model({
-          done: true,
-          say: "PIIND revenue growth 12%, FY27, missed.",
-        }),
-      );
+        model({ calls: [{ tool: "missed_promises", args: {} }] }),
+      )
+      .mockResolvedValueOnce(model({ say }));
 
     const result = await runFinnieTurn("which promises were missed", null);
 
     expect(result.tools).toEqual(["missed_promises"]);
-    expect(result.say).toBe("1 missed or cut promise.");
-    expect(result.say).not.toContain("revenue growth");
+    expect(result.say).toBe(say);
+    expect(result.say).not.toBe("1 missed or cut promise.");
     expect(result.card?.kind).toBe("lines");
     if (result.card?.kind === "lines") {
       expect(result.card.lines).toHaveLength(1);
@@ -327,132 +403,77 @@ describe("runFinnieTurn", () => {
       expect(result.card.lines[0]?.text).toContain("missed");
       expect(result.card.lines[0]?.text).not.toContain("ebitda");
     }
-    expect(llm).toHaveBeenCalledTimes(1);
+    expect(llm).toHaveBeenCalledTimes(2);
   });
 
-  it("sends the previous sentence and tool so a follow-up reuses the symbol", async () => {
+  it("sends the previous sentence to the tool step only", async () => {
+    const sentence = "and its promises";
     llm
-      .mockResolvedValueOnce(model({ tool: "get_promises" }))
       .mockResolvedValueOnce(
-        model({ done: true, say: "PIIND’s promises are the card." }),
-      );
+        model({ calls: [{ tool: "get_promises", args: { symbol: "PIIND" } }] }),
+      )
+      .mockResolvedValueOnce(model({ say: "PIIND’s promises are the card." }));
 
-    const result = await runFinnieTurn("and its promises", "PIIND", {
+    const result = await runFinnieTurn(sentence, "PIIND", {
       sentence: "show me PIIND results",
       tool: "get_results",
     });
 
     expect(result.tools).toEqual(["get_promises"]);
     expect(result.symbol).toBe("PIIND");
+    expect(result.say).toBe("PIIND’s promises are the card.");
     const first = String(llm.mock.calls[0]?.[0].prompt);
     expect(first).toContain("Sentence: and its promises");
     expect(first).toContain("Previous sentence: show me PIIND results");
-    expect(first).toContain("Previous tool: get_results");
-    expect(first).toContain("Focus: PIIND");
-    expect(llm).toHaveBeenCalled();
-    expect(llm.mock.calls.every((call) => call[0].task === "finnie")).toBe(
-      true,
-    );
+    expect(first).toContain("Open company: PIIND");
+    expect(first).not.toContain("Previous tool");
+    const second = String(llm.mock.calls[1]?.[0].prompt);
+    answerPrompt(sentence, second);
+    expect(second).not.toContain("show me PIIND results");
+    expect(second).not.toContain("Open company");
+    expect(second).not.toContain("get_results");
+    expect(llm.mock.calls.every((call) => call[0].tier === "bulk")).toBe(true);
   });
 
-  it("calls get_brief when the model refuses an act question", async () => {
-    const at = Date.now() - 5 * 60 * 1000;
-    const actKey = `${PIIND}|management_change|act-question`;
-    await db
-      .insert(events)
-      .values({
-        eventKey: actKey,
-        isin: PIIND,
-        category: "management_change",
-        firstAt: at,
-        lastAt: at,
-        tier: 1,
-        cardType: "management_change",
-        cardJson: JSON.stringify({
-          title: "CFO resigns",
-          oneLiner: "The chief financial officer resigns.",
-          category: "management_change",
-          tier: 1,
-          priority: 70,
-        }),
-        announcementIdsJson: "[]",
-      })
-      .onConflictDoNothing();
+  it("does not invent a tool when the model returns none", async () => {
+    llm.mockResolvedValue(model({ calls: [] }));
+    for (const sentence of ["what is the weather", "should I buy Reliance"]) {
+      llm.mockClear();
+      llm.mockResolvedValue(model({ calls: [] }));
+      const result = await runFinnieTurn(sentence, null);
+      expect(result.say).toBe(FINNIE_NO_MATCH);
+      expect(result.tools).toEqual([]);
+      expect(result.cards).toEqual([]);
+      expect(result.card).toBeNull();
+      expect(llm).toHaveBeenCalledTimes(1);
+    }
+  });
 
-    llm
-      .mockResolvedValueOnce(model({ done: true, say: FINNIE_DOES_NOT_HAVE }))
-      .mockResolvedValueOnce(
-        model({ done: true, say: "PIIND is the name to act on." }),
-      );
-
+  it("does not substitute get_brief when the model names an unknown tool", async () => {
+    llm.mockResolvedValueOnce(
+      model({ calls: [{ tool: "act_cards", args: { window: "24h" } }] }),
+    );
     const result = await runFinnieTurn(
       "which stocks should i act upon right now?",
       null,
     );
-
-    expect(result.tools).toEqual(["get_brief"]);
-    expect(result.say).not.toBe("PIIND is the name to act on.");
-    expect(result.say).not.toBe(FINNIE_DOES_NOT_HAVE);
-    expect(result.say).toMatch(
-      /^(1 name needs a decision\.|\d+ names need a decision\.)$/,
-    );
-    expect(result.card?.kind).toBe("lines");
-    if (result.card?.kind === "lines") {
-      const line = result.card.lines.find((row) =>
-        row.href.includes("act-question"),
-      );
-      expect(line?.symbol).toBe("PIIND");
-      expect(line?.href.startsWith("/e/")).toBe(true);
-      expect(line?.text.toLowerCase()).toContain("chief financial officer");
-    }
-    const call = llm.mock.calls[0]?.[0];
-    const prompt = String(call?.prompt);
-    const system = String(call?.system);
-    for (const name of FINNIE_TOOLS) expect(prompt).toContain(name);
-    expect(system).toContain('{"tool":"get_brief","args":{}}');
-    expect(system).toContain("should I buy Reliance");
-    expect(system).toContain("get_results, then get_promises, then get_quote");
-    expect(system).toContain("The decision is yours.");
-    expect(system).not.toContain(FINNIE_DOES_NOT_HAVE);
-    expect(prompt).not.toContain(FINNIE_DOES_NOT_HAVE);
-    expect(prompt).not.toContain("whether to buy");
-    expect(system).not.toContain("whether to buy");
+    expect(result.say).toBe(FINNIE_NO_MATCH);
+    expect(result.tools).toEqual([]);
+    expect(result.card).toBeNull();
+    expect(llm).toHaveBeenCalledTimes(1);
   });
 
-  it("calls get_brief when the model names a tool that does not exist", async () => {
+  it("shows the cards with no sentence when the answer step fails", async () => {
     llm
       .mockResolvedValueOnce(
-        model({ tool: "act_cards", args: { window: "24h" } }),
+        model({ calls: [{ tool: "list_portfolio", args: {} }] }),
       )
-      .mockResolvedValueOnce(
-        model({ done: true, say: "PIIND is the name to act on." }),
-      );
+      .mockRejectedValueOnce(new Error("down"));
 
-    const result = await runFinnieTurn(
-      "which stocks should i act upon right now?",
-      null,
-    );
-
-    expect(result.tools).toEqual(["get_brief"]);
-    expect(result.card?.kind).toBe("lines");
-    if (result.card?.kind === "lines") {
-      expect(result.card.lines.some((row) => row.href.startsWith("/e/"))).toBe(
-        true,
-      );
-    }
-    expect(result.say).not.toBe(FINNIE_DOES_NOT_HAVE);
-  });
-
-  it("lists the book when the model refuses a portfolio question", async () => {
-    llm
-      .mockResolvedValueOnce(model({ done: true, say: FINNIE_DOES_NOT_HAVE }))
-      .mockResolvedValueOnce(model({ done: true, say: "Two names." }));
-
-    const result = await runFinnieTurn("what's in my portfolio", null);
+    const result = await runFinnieTurn("whats in my portfolio", null);
 
     expect(result.tools).toEqual(["list_portfolio"]);
-    expect(result.say).toBe("2 names.");
-    expect(result.say).not.toBe("Two names.");
+    expect(result.say).toBe("");
     expect(result.card?.kind).toBe("portfolio");
     if (result.card?.kind === "portfolio") {
       expect(result.card.names.map((row) => row.symbol)).toEqual([
@@ -462,214 +483,117 @@ describe("runFinnieTurn", () => {
     }
   });
 
-  it("shows filings and the price for a buy, and leaves the decision", async () => {
-    const line =
-      "I can only give you the filings and the price. The decision is yours.";
-    for (const sentence of [
-      "should I buy Reliance",
-      "is ITC a buy",
-      "should I sell Voltas",
-    ]) {
-      llm.mockReset();
-      llm.mockResolvedValue(
-        model({ tool: "none", say: "Buy it. Target 1500. I can't do that." }),
-      );
-      const result = await runFinnieTurn(sentence, null);
-      expect(result.tools).toEqual([
-        "get_results",
-        "get_promises",
-        "get_quote",
-      ]);
-      expect(result.say).toBe(line);
-      expect(result.say).toContain("The decision is yours.");
-      expect(result.say).not.toBe("The decision is yours.");
-      expect(
-        result.say.split(/[.!?]+/).filter((part) => part.trim()).length,
-      ).toBeGreaterThan(1);
-      expect(result.say).not.toMatch(
-        /\bbuy\b|don’t buy|don't buy|target|rating/i,
-      );
-      expect(result.say).not.toMatch(/\d|₹/);
-      expect(result.sayAfter).toBe(true);
-      expect(
-        result.cards.map((card) =>
-          card.kind === "reply" ? card.reply.kind : card.kind,
-        ),
-      ).toEqual(["results", "promises", "nse"]);
-      const price = result.cards[2];
-      if (price?.kind === "reply" && price.reply.kind === "nse")
-        expect(price.reply.headline).toContain("₹");
-      expect(result.say).not.toContain("1500");
-      expect(result.say).not.toContain("I can't");
-    }
-  });
-
-  it("shows the results card when asked for shareholding or delivery", async () => {
-    llm.mockResolvedValue(model({ tool: "none", say: "I can't do that." }));
-    const holding = await runFinnieTurn(
-      "what is the shareholding of ITC",
-      null,
-    );
-    expect(holding.tools).toEqual(["get_results"]);
-    expect(holding.say).toBe("Shareholding is not in the filings I have.");
-    expect(holding.symbol).toBe("ITC");
-    expect(holding.cards[0]).toMatchObject({
-      kind: "reply",
-      reply: { kind: "results" },
-    });
-
-    const delivery = await runFinnieTurn("delivery data for ITC", null);
-    expect(delivery.tools).toEqual(["get_results"]);
-    expect(delivery.say).toBe("Delivery is not in the filings I have.");
-    expect(delivery.cards[0]).toMatchObject({
-      kind: "reply",
-      reply: { kind: "results" },
-    });
-  });
-
-  it("shows the index quote when asked if the market is open", async () => {
-    llm.mockResolvedValue(model({ tool: "none", say: FINNIE_DOES_NOT_HAVE }));
-    const result = await runFinnieTurn("is the market open", null);
-    expect(result.tools).toEqual(["get_index"]);
-    expect(result.say).toBe("NSE does not publish whether the market is open.");
-    expect(result.say).not.toMatch(/\d/);
-    const card = result.cards[0];
-    expect(card?.kind).toBe("reply");
-    if (card?.kind === "reply" && card.reply.kind === "nse") {
-      expect(card.reply.headline).toContain("NIFTY 50");
-      expect(card.reply.note.startsWith("NSE")).toBe(true);
-    }
-  });
-
-  it("shows Act lines when asked for news", async () => {
-    llm.mockResolvedValue(model({ tool: "none", say: "I can't do that." }));
-    const result = await runFinnieTurn("any news today", null);
-    expect(result.tools).toEqual(["get_brief"]);
-    expect(result.say).toBe(
-      "I don't have news. Here is what needs a decision.",
-    );
-    expect(result.say).not.toBe("I can't do that.");
-  });
-
-  it("drops a recommendation and keeps the quote the tool returned", async () => {
+  it("runs the tools the model chose for a buy question and keeps that say", async () => {
+    const say = "The filings and the price are below. The decision is yours.";
     llm
-      .mockResolvedValueOnce(
-        model({ tool: "get_quote", args: { symbol: "ITC" } }),
-      )
-      .mockResolvedValueOnce(
-        model({ tool: "none", say: "Buy it. Target 1500." }),
-      );
-    const result = await runFinnieTurn("what is the ITC quote", null);
-    expect(result.tools).toEqual(["get_quote"]);
-    expect(result.say).not.toMatch(/\bbuy\b|target|1500/i);
-    expect(result.say).toContain("ITC");
-    expect(result.card?.kind).toBe("reply");
-  });
-
-  it("does not answer with only a refusal when nothing matches", async () => {
-    llm.mockResolvedValue(model({ tool: "none", say: "I can't do that." }));
-    const result = await runFinnieTurn("what is the weather", null);
-    expect(result.tools).toEqual(["get_brief"]);
-    expect(result.say).not.toBe("I can't do that.");
-    expect(result.say).not.toBe(FINNIE_DOES_NOT_HAVE);
-    expect(result.say.toLowerCase()).not.toContain("can't");
-  });
-
-  it("does not quote the first Act row when two names need a decision", async () => {
-    await db.delete(events);
-    const now = Date.now();
-    await db.insert(events).values([
-      {
-        eventKey: `${PIIND}|management_change|two-a`,
-        isin: PIIND,
-        category: "management_change",
-        firstAt: now - 60_000,
-        lastAt: now - 60_000,
-        tier: 1,
-        cardType: "management_change",
-        cardJson: JSON.stringify({
-          title: "Managing director",
-          oneLiner: "Jayant Balan becomes MD.",
-          category: "management_change",
-          tier: 1,
-          priority: 80,
-        }),
-        announcementIdsJson: "[]",
-      },
-      {
-        eventKey: `${ITC}|management_change|two-b`,
-        isin: ITC,
-        category: "management_change",
-        firstAt: now - 5 * 60_000,
-        lastAt: now - 5 * 60_000,
-        tier: 1,
-        cardType: "management_change",
-        cardJson: JSON.stringify({
-          title: "Finance chief",
-          oneLiner: "The finance chief leaves the board.",
-          category: "management_change",
-          tier: 1,
-          priority: 70,
-        }),
-        announcementIdsJson: "[]",
-      },
-    ]);
-
-    llm
-      .mockResolvedValueOnce(model({ tool: "get_brief", args: {} }))
       .mockResolvedValueOnce(
         model({
-          done: true,
-          say: "Jayant Balan becomes MD. The filing has the names.",
+          calls: [
+            { tool: "get_results", args: { symbol: "ITC" } },
+            { tool: "get_promises", args: { symbol: "ITC" } },
+            { tool: "get_quote", args: { symbol: "ITC" } },
+          ],
         }),
-      );
+      )
+      .mockResolvedValueOnce(model({ say }));
 
-    const result = await runFinnieTurn("which stocks should i act upon", null);
+    const result = await runFinnieTurn("should I buy ITC", null);
 
-    expect(result.tools).toEqual(["get_brief"]);
-    expect(result.say).toBe("2 names need a decision.");
-    expect(result.say.toLowerCase()).not.toMatch(/\bbuy\b|\brecommend/);
-    expect(result.card?.kind).toBe("lines");
-    if (result.card?.kind === "lines") {
-      expect(result.card.lines).toHaveLength(2);
-      expect(result.card.lines.map((line) => line.symbol)).toEqual([
-        "PIIND",
-        "ITC",
-      ]);
-      for (const line of result.card.lines) {
-        expect(line.href.startsWith("/e/")).toBe(true);
-        expect(result.say).not.toBe(line.text);
-      }
-      expect(result.card.lines[0]?.text).toContain("Jayant Balan");
-    }
-    expect(llm).toHaveBeenCalledTimes(1);
-
-    await db.delete(events);
-    llm.mockResolvedValueOnce(
-      model({
-        done: true,
-        say: "Jayant Balan becomes MD. The filing has his profile.",
-      }),
+    expect(result.tools).toEqual(["get_results", "get_promises", "get_quote"]);
+    expect(result.say).toBe(say);
+    expect(result.sayAfter).toBe(false);
+    expect(result.say).not.toMatch(/\bbuy\b|target/i);
+    const quote = result.cards.find(
+      (card) => card.kind === "reply" && card.reply.kind === "nse",
     );
-    const empty = await runFinnieTurn("which stocks should i act upon", null);
-    expect(empty.tools).toEqual(["get_brief"]);
-    expect(empty.say).toBe("Nothing to act on.");
-    expect(empty.card).toBeNull();
+    expect(quote?.kind).toBe("reply");
+    if (quote?.kind === "reply" && quote.reply.kind === "nse")
+      expect(quote.reply.headline).toContain("₹");
+    expect(
+      result.cards.some(
+        (card) => card.kind === "reply" && card.reply.kind === "results",
+      ),
+    ).toBe(false);
   });
 
-  it("requires a tool in one object, including get_brief", () => {
-    const js = z.toJSONSchema(FinnieStep, {
+  it("runs at most four tools", async () => {
+    const say = "Four sets of rows.";
+    llm
+      .mockResolvedValueOnce(
+        model({
+          calls: [
+            { tool: "list_portfolio", args: {} },
+            { tool: "list_unread", args: {} },
+            { tool: "get_upcoming", args: {} },
+            { tool: "missed_promises", args: {} },
+            { tool: "movers", args: { pct: 5 } },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(model({ say }));
+
+    const result = await runFinnieTurn("what is on the desk", null);
+
+    expect(result.tools).toEqual([
+      "list_portfolio",
+      "list_unread",
+      "get_upcoming",
+      "missed_promises",
+    ]);
+    expect(result.tools).not.toContain("movers");
+    expect(result.say).toBe(say);
+  });
+
+  it("asks for tool calls in one object, then a say, and has no phrase router", () => {
+    const calls = z.toJSONSchema(FinnieCalls, {
       target: "draft-7",
       io: "output",
     }) as {
       anyOf?: unknown;
       required?: string[];
-      properties?: { tool?: { enum?: string[]; description?: string } };
+      properties?: { say?: unknown; calls?: unknown };
     };
-    expect(js.anyOf).toBeUndefined();
-    expect(js.required).toContain("tool");
-    expect(js.properties?.tool?.enum).toEqual([...FINNIE_TOOLS, "none"]);
-    expect(js.properties?.tool?.description).toContain("get_brief");
-    expect(js.properties?.tool?.description).toContain("not a buy");
+    expect(calls.anyOf).toBeUndefined();
+    expect(calls.required).toContain("calls");
+    expect(calls.properties?.say).toBeUndefined();
+    const enums = stringEnums(calls);
+    expect(enums).toContainEqual([...FINNIE_TOOLS]);
+    expect(enums.some((items) => items.includes("none"))).toBe(false);
+
+    const say = z.toJSONSchema(FinnieSay, {
+      target: "draft-7",
+      io: "output",
+    }) as {
+      anyOf?: unknown;
+      required?: string[];
+      properties?: { say?: unknown; tool?: unknown };
+    };
+    expect(say.anyOf).toBeUndefined();
+    expect(say.required).toContain("say");
+    expect(say.properties?.tool).toBeUndefined();
+
+    const src = readFileSync("src/lib/finnieTurn.ts", "utf8");
+    expect(src).not.toContain("names need a decision");
+    expect(src).not.toContain("Nothing to act on");
+    expect(src).not.toContain("does not have that");
+    expect(src).not.toContain("coveredTool");
+    expect(src).not.toContain("scriptFor");
+    expect(src).not.toContain("FINNIE_DECISION_LINE");
   });
 });
+
+function stringEnums(node: unknown, found: string[][] = []): string[][] {
+  if (!node || typeof node !== "object") return found;
+  if (Array.isArray(node)) {
+    for (const item of node) stringEnums(item, found);
+    return found;
+  }
+  const rec = node as Record<string, unknown>;
+  if (
+    Array.isArray(rec.enum) &&
+    rec.enum.every((item) => typeof item === "string")
+  )
+    found.push(rec.enum as string[]);
+  for (const value of Object.values(rec)) stringEnums(value, found);
+  return found;
+}

@@ -34,9 +34,8 @@ interface Turn {
 }
 
 /**
- * Chat only. A sentence goes to Finnie. Finnie picks a tool.
- * The thread shows one line, then the card. A buy or a sell shows the
- * cards first, then the line that leaves the decision with the user.
+ * Chat only. A sentence goes to Finnie. Finnie calls tools, then answers
+ * from what they returned. The bubble sits above those cards.
  */
 export function Desk({
   initialSymbol = null,

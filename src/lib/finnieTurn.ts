@@ -311,6 +311,8 @@ function quiet(say: string): FinnieTurnResult {
 function fallbackSay(last: ToolOutcome | null): string {
   if (!last) return FINNIE_MODEL_DOWN;
   const fact = last.fact;
+  const listed = listBubble(fact);
+  if (listed) return listed;
   const symbol = typeof fact.symbol === "string" ? fact.symbol : null;
   const status = typeof fact.status === "string" ? fact.status : null;
   if (status === "already_in" && symbol)
@@ -319,20 +321,10 @@ function fallbackSay(last: ToolOutcome | null): string {
   if (status === "removed" && symbol) return `Removed ${symbol}.`;
   if (status === "not_in" && symbol)
     return `${symbol} is not in the portfolio.`;
-  if (status === "listed" && typeof fact.count === "number")
-    return bookCountLine(fact.count);
   if (status === "none" && fact.topic === "results") return NO_RESULTS;
   if (status === "none" && fact.topic === "promises") return NO_PROMISES;
-  if (status === "none" && fact.topic === "missed")
-    return "No missed or cut promise in the book.";
-  if (status === "none" && fact.topic === "unread") return "Nothing unread.";
-  if (status === "none" && fact.topic === "upcoming")
-    return "Nothing is coming up.";
-  if (status === "none" && fact.topic === "movers")
-    return "No name in the book moved that far.";
   if (status === "none" && fact.topic === "management" && symbol)
     return `No management change on file for ${symbol}.`;
-  if (status === "brief") return briefLine(fact);
   if (status === "marked" && typeof fact.count === "number")
     return markedLine(fact.count);
   if (status === "none" && symbol) return `Nothing is on file for ${symbol}.`;
@@ -356,6 +348,15 @@ function clip(text: string): string {
   return text.length <= 3500 ? text : `${text.slice(0, 3500)}…`;
 }
 
+const LIST_BUBBLE = new Set<string>([
+  "get_brief",
+  "list_portfolio",
+  "list_unread",
+  "get_upcoming",
+  "missed_promises",
+  "movers",
+]);
+
 function fixedSay(tool: string, last: ToolOutcome): string | null {
   if (tool === "compare" && last.card?.kind === "compare") {
     const line = last.fact.line;
@@ -363,6 +364,7 @@ function fixedSay(tool: string, last: ToolOutcome): string | null {
   }
   if (tool === "mark_read" && typeof last.fact.count === "number")
     return markedLine(last.fact.count);
+  if (LIST_BUBBLE.has(tool)) return listBubble(last.fact);
   return null;
 }
 
@@ -371,11 +373,61 @@ function markedLine(count: number): string {
   return count === 1 ? "Marked 1 read." : `Marked ${count} read.`;
 }
 
-function briefLine(fact: Record<string, unknown>): string {
-  const act = Array.isArray(fact.act) ? fact.act.length : 0;
-  const watch = typeof fact.watch === "number" ? fact.watch : 0;
-  const filed = typeof fact.filedAway === "number" ? fact.filedAway : 0;
-  return `${act} to act on, ${watch} to watch, ${filed} filed away.`;
+/** A list tool speaks a count. It does not quote the first row. */
+function listBubble(fact: Record<string, unknown>): string | null {
+  const status = typeof fact.status === "string" ? fact.status : "";
+  const topic = typeof fact.topic === "string" ? fact.topic : "";
+  if (status === "brief")
+    return namesNeed(Array.isArray(fact.act) ? fact.act.length : 0);
+  if (status === "listed" && typeof fact.count === "number")
+    return bookCountLine(fact.count);
+  const count = typeof fact.count === "number" ? fact.count : 0;
+  if (status === "unread" || (status === "none" && topic === "unread"))
+    return countLine(
+      count,
+      "Nothing unread.",
+      "1 unread.",
+      (n) => `${n} unread.`,
+    );
+  if (status === "upcoming" || (status === "none" && topic === "upcoming"))
+    return countLine(
+      count,
+      "Nothing is coming up.",
+      "1 coming up.",
+      (n) => `${n} coming up.`,
+    );
+  if (status === "missed" || (status === "none" && topic === "missed"))
+    return countLine(
+      count,
+      "No missed or cut promise in the book.",
+      "1 missed or cut promise.",
+      (n) => `${n} missed or cut promises.`,
+    );
+  if (status === "movers" || (status === "none" && topic === "movers"))
+    return countLine(
+      count,
+      "No name in the book moved that far.",
+      "1 name moved.",
+      (n) => `${n} names moved.`,
+    );
+  return null;
+}
+
+function namesNeed(count: number): string {
+  if (count <= 0) return "Nothing to act on.";
+  if (count === 1) return "1 name needs a decision.";
+  return `${count} names need a decision.`;
+}
+
+function countLine(
+  count: number,
+  empty: string,
+  one: string,
+  many: (n: number) => string,
+): string {
+  if (count <= 0) return empty;
+  if (count === 1) return one;
+  return many(count);
 }
 
 function cleanPrior(prior: FinniePrior | null | undefined): FinniePrior | null {

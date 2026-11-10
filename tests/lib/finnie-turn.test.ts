@@ -139,13 +139,14 @@ describe("runFinnieTurn", () => {
     llm
       .mockResolvedValueOnce(model({ tool: "list_portfolio" }))
       .mockResolvedValueOnce(
-        model({ done: true, say: "Two names are in the book." }),
+        model({ done: true, say: "ITC Limited is already in the book." }),
       );
 
     const result = await runFinnieTurn("whats in my portfolio", null);
 
     expect(result.tools).toEqual(["list_portfolio"]);
-    expect(result.say).toBe("Two names are in the book.");
+    expect(result.say).toBe("2 names.");
+    expect(result.say).not.toContain("ITC Limited");
     expect(result.card?.kind).toBe("portfolio");
     if (result.card?.kind === "portfolio") {
       expect(result.card.names.map((row) => row.symbol)).toEqual([
@@ -236,13 +237,16 @@ describe("runFinnieTurn", () => {
         model({ tool: "get_brief", args: { window: "24h" } }),
       )
       .mockResolvedValueOnce(
-        model({ done: true, say: "1 to act on, 0 to watch, 1 filed away." }),
+        model({
+          done: true,
+          say: "The chief financial officer resigns. The filing has the names.",
+        }),
       );
 
     const result = await runFinnieTurn("what should I act on", null);
 
     expect(result.tools).toEqual(["get_brief"]);
-    expect(result.say).toBe("1 to act on, 0 to watch, 1 filed away.");
+    expect(result.say).toBe("1 name needs a decision.");
     expect(result.card?.kind).toBe("lines");
     if (result.card?.kind === "lines") {
       expect(result.card.lines.map((line) => line.symbol)).toEqual(["PIIND"]);
@@ -253,11 +257,8 @@ describe("runFinnieTurn", () => {
         "chief financial officer",
       );
     }
-    const follow = String(llm.mock.calls[1]?.[0].prompt);
-    expect(follow).toContain('"watch":0');
-    expect(follow).toContain('"filedAway":1');
-    expect(follow).toContain("PIIND");
-    expect(follow).not.toContain("ITC");
+    expect(result.say).not.toMatch(/chief financial officer/i);
+    expect(llm).toHaveBeenCalledTimes(1);
     expect(llm.mock.calls[0]?.[0].prompt).toContain("get_brief");
   });
 
@@ -303,12 +304,17 @@ describe("runFinnieTurn", () => {
     llm
       .mockResolvedValueOnce(model({ tool: "missed_promises" }))
       .mockResolvedValueOnce(
-        model({ done: true, say: "One missed promise is on the card." }),
+        model({
+          done: true,
+          say: "PIIND revenue growth 12%, FY27, missed.",
+        }),
       );
 
     const result = await runFinnieTurn("which promises were missed", null);
 
     expect(result.tools).toEqual(["missed_promises"]);
+    expect(result.say).toBe("1 missed or cut promise.");
+    expect(result.say).not.toContain("revenue growth");
     expect(result.card?.kind).toBe("lines");
     if (result.card?.kind === "lines") {
       expect(result.card.lines).toHaveLength(1);
@@ -321,11 +327,7 @@ describe("runFinnieTurn", () => {
       expect(result.card.lines[0]?.text).toContain("missed");
       expect(result.card.lines[0]?.text).not.toContain("ebitda");
     }
-    const follow = String(llm.mock.calls[1]?.[0].prompt);
-    expect(follow).toContain("revenue growth");
-    expect(follow).not.toContain("unverifiable");
-    expect(follow).not.toContain("ebitda_margin");
-    expect(follow).not.toContain("order_inflow");
+    expect(llm).toHaveBeenCalledTimes(1);
   });
 
   it("sends the previous sentence and tool so a follow-up reuses the symbol", async () => {
@@ -389,8 +391,11 @@ describe("runFinnieTurn", () => {
     );
 
     expect(result.tools).toEqual(["get_brief"]);
-    expect(result.say).toBe("PIIND is the name to act on.");
+    expect(result.say).not.toBe("PIIND is the name to act on.");
     expect(result.say).not.toBe(FINNIE_DOES_NOT_HAVE);
+    expect(result.say).toMatch(
+      /^(1 name needs a decision\.|\d+ names need a decision\.)$/,
+    );
     expect(result.card?.kind).toBe("lines");
     if (result.card?.kind === "lines") {
       const line = result.card.lines.find((row) =>
@@ -446,7 +451,8 @@ describe("runFinnieTurn", () => {
     const result = await runFinnieTurn("what's in my portfolio", null);
 
     expect(result.tools).toEqual(["list_portfolio"]);
-    expect(result.say).toBe("Two names.");
+    expect(result.say).toBe("2 names.");
+    expect(result.say).not.toBe("Two names.");
     expect(result.card?.kind).toBe("portfolio");
     if (result.card?.kind === "portfolio") {
       expect(result.card.names.map((row) => row.symbol)).toEqual([
@@ -567,6 +573,88 @@ describe("runFinnieTurn", () => {
     expect(result.say).not.toBe("I can't do that.");
     expect(result.say).not.toBe(FINNIE_DOES_NOT_HAVE);
     expect(result.say.toLowerCase()).not.toContain("can't");
+  });
+
+  it("does not quote the first Act row when two names need a decision", async () => {
+    await db.delete(events);
+    const now = Date.now();
+    await db.insert(events).values([
+      {
+        eventKey: `${PIIND}|management_change|two-a`,
+        isin: PIIND,
+        category: "management_change",
+        firstAt: now - 60_000,
+        lastAt: now - 60_000,
+        tier: 1,
+        cardType: "management_change",
+        cardJson: JSON.stringify({
+          title: "Managing director",
+          oneLiner: "Jayant Balan becomes MD.",
+          category: "management_change",
+          tier: 1,
+          priority: 80,
+        }),
+        announcementIdsJson: "[]",
+      },
+      {
+        eventKey: `${ITC}|management_change|two-b`,
+        isin: ITC,
+        category: "management_change",
+        firstAt: now - 5 * 60_000,
+        lastAt: now - 5 * 60_000,
+        tier: 1,
+        cardType: "management_change",
+        cardJson: JSON.stringify({
+          title: "Finance chief",
+          oneLiner: "The finance chief leaves the board.",
+          category: "management_change",
+          tier: 1,
+          priority: 70,
+        }),
+        announcementIdsJson: "[]",
+      },
+    ]);
+
+    llm
+      .mockResolvedValueOnce(model({ tool: "get_brief", args: {} }))
+      .mockResolvedValueOnce(
+        model({
+          done: true,
+          say: "Jayant Balan becomes MD. The filing has the names.",
+        }),
+      );
+
+    const result = await runFinnieTurn("which stocks should i act upon", null);
+
+    expect(result.tools).toEqual(["get_brief"]);
+    expect(result.say).toBe("2 names need a decision.");
+    expect(result.say.toLowerCase()).not.toMatch(/\bbuy\b|\brecommend/);
+    expect(result.card?.kind).toBe("lines");
+    if (result.card?.kind === "lines") {
+      expect(result.card.lines).toHaveLength(2);
+      expect(result.card.lines.map((line) => line.symbol)).toEqual([
+        "PIIND",
+        "ITC",
+      ]);
+      for (const line of result.card.lines) {
+        expect(line.href.startsWith("/e/")).toBe(true);
+        expect(result.say).not.toBe(line.text);
+      }
+      expect(result.card.lines[0]?.text).toContain("Jayant Balan");
+    }
+    expect(llm).toHaveBeenCalledTimes(1);
+
+    await db.delete(events);
+    llm.mockResolvedValueOnce(
+      model({
+        done: true,
+        say: "Jayant Balan becomes MD. The filing has his profile.",
+      }),
+    );
+    const empty = await runFinnieTurn("which stocks should i act upon", null);
+    expect(empty.tools).toEqual(["get_brief"]);
+    expect(empty.say).toBe("Nothing to act on.");
+    expect(empty.card).toBeNull();
   });
 
   it("requires a tool in one object, including get_brief", () => {

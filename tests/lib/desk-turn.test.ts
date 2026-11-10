@@ -326,6 +326,8 @@ describe("desk markup", () => {
       }),
     );
     expect(html).toContain(FINNIE_GREETING);
+    expect(html).toContain("New chat");
+    expect(html).toContain('class="new-chat"');
     expect(html).not.toContain("Ask for the results, the promises, or a rule.");
     expect(html).not.toContain("Ask when you want to.");
     expect(html).toContain('data-composer=""');

@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
   type ChatLogTurn,
   chainFromLog,
+  clearChatLog,
   loadChatLog,
   saveChatLog,
 } from "@/lib/chatLog";
@@ -49,7 +50,7 @@ interface Turn {
 
 /**
  * Chat only. The greeting stays first. The turns under it are stored on
- * this device and sent with the next sentence.
+ * this device and sent with the next sentence. New chat drops that thread.
  */
 export function Desk({
   initialSymbol = null,
@@ -67,6 +68,7 @@ export function Desk({
   const inputId = useId();
   const endRef = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
+  const epoch = useRef(0);
   const turnsRef = useRef<Turn[]>([]);
   const [symbol, setSymbol] = useState<string | null>(initialSymbol);
   const [draft, setDraft] = useState("");
@@ -108,10 +110,21 @@ export function Desk({
     );
   }
 
+  function newChat() {
+    epoch.current += 1;
+    clearChatLog(window.localStorage);
+    seq.current = 0;
+    setSymbol(initialSymbol);
+    setDraft("");
+    setBusy(false);
+    setTurns([]);
+  }
+
   async function submit(text: string) {
     const question = text.trim() || hint.submit;
     if (!question || busy || !ready) return;
     const memory = chainFromLog(storedTurns(turnsRef.current));
+    const ticket = epoch.current;
     setDraft("");
     const id = ++seq.current;
     setTurns((prev) =>
@@ -120,6 +133,7 @@ export function Desk({
     setBusy(true);
     try {
       const res = await onTurn(question, symbol, memory);
+      if (ticket !== epoch.current) return;
       setSymbol(res.symbol);
       const cards = res.cards.length ? res.cards : res.card ? [res.card] : [];
       patch(id, {
@@ -133,6 +147,7 @@ export function Desk({
         sayAfter: res.sayAfter,
       });
     } catch {
+      if (ticket !== epoch.current) return;
       patch(id, {
         kind: "finnie",
         say: FINNIE_MODEL_DOWN,
@@ -144,12 +159,21 @@ export function Desk({
         sayAfter: false,
       });
     } finally {
-      setBusy(false);
+      if (ticket === epoch.current) setBusy(false);
     }
   }
 
   return (
     <>
+      <header className="gutter pt-4">
+        <div className="flex items-center gap-3">
+          <span className="live-dot" aria-hidden="true" />
+          <p className="eyebrow text-ink">Chat</p>
+          <button type="button" className="new-chat" onClick={newChat}>
+            New chat
+          </button>
+        </div>
+      </header>
       <section className="pb-4" aria-label="Chat">
         <div
           className="chat-log gutter mt-4"

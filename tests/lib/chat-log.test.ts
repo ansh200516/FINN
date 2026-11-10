@@ -4,6 +4,7 @@ import {
   CHAT_LOG_KEY,
   type ChatLogTurn,
   chainFromLog,
+  clearChatLog,
   loadChatLog,
   resultsShown,
   saveChatLog,
@@ -140,6 +141,23 @@ describe("chat log", () => {
     });
   });
 
+  it("does not load a thread saved under the previous key", () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      "finnie.chat.v1",
+      JSON.stringify({ turns: [turn(1, { say: "old thread" })] }),
+    );
+    expect(CHAT_LOG_KEY).toBe("finn-chat-v2");
+    expect(loadChatLog(storage)).toEqual([]);
+    saveChatLog(storage, [turn(4, { say: "new thread" })]);
+    expect(loadChatLog(storage).map((row) => row.say)).toEqual(["new thread"]);
+    expect(storage.getItem("finnie.chat.v1")).toContain("old thread");
+    clearChatLog(storage);
+    expect(loadChatLog(storage)).toEqual([]);
+    expect(storage.getItem(CHAT_LOG_KEY)).toBeNull();
+    expect(storage.getItem("finnie.chat.v1")).toContain("old thread");
+  });
+
   it("returns nothing for a missing or broken log", () => {
     const storage = memoryStorage();
     expect(loadChatLog(storage)).toEqual([]);
@@ -156,7 +174,9 @@ describe("chat log", () => {
     const desk = readFileSync("src/ui/Desk.tsx", "utf8");
     expect(desk).toContain("loadChatLog(window.localStorage)");
     expect(desk).toContain("saveChatLog(window.localStorage");
+    expect(desk).toContain("clearChatLog(window.localStorage)");
     expect(desk).toContain("chainFromLog(storedTurns(turnsRef.current))");
     expect(desk).toContain("{FINNIE_GREETING}");
+    expect(desk).toContain("New chat");
   });
 });

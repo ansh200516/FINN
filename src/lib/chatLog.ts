@@ -1,6 +1,7 @@
 /**
  * The chat the user can still see after a refresh or a trip to Brief.
  * One demo user, so one localStorage key. The greeting is not stored.
+ * finn-chat-v2 starts empty: finnie.chat.v1 is never read.
  */
 import type { ResultsCard } from "@/engine/types";
 import type { CompanyReply } from "@/lib/companyTurn";
@@ -15,7 +16,7 @@ import {
   type FinniePerson,
 } from "@/lib/finnieTypes";
 
-export const CHAT_LOG_KEY = "finnie.chat.v1";
+export const CHAT_LOG_KEY = "finn-chat-v2";
 
 const QUESTION_CAP = 500;
 const SAY_CAP = 4_000;
@@ -50,6 +51,14 @@ export function saveChatLog(
     storage.setItem(CHAT_LOG_KEY, JSON.stringify({ turns: capLog(turns) }));
   } catch {
     // a full disk should not drop the reply already on screen
+  }
+}
+
+export function clearChatLog(storage: Pick<Storage, "removeItem">): void {
+  try {
+    storage.removeItem(CHAT_LOG_KEY);
+  } catch {
+    // clearing is local; the greeting is already on screen
   }
 }
 

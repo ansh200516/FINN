@@ -16,6 +16,29 @@ vi.mock("@/engine/llm/gateway", async (importOriginal) => {
   return { ...actual, callStructured: vi.fn() };
 });
 
+vi.mock("@/engine/sources/nse-mcp", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/engine/sources/nse-mcp")>();
+  return {
+    ...actual,
+    answerNse: vi.fn(
+      async (ask: { kind: string; symbol?: string; indexName?: string }) => {
+        if (ask.kind === "index") {
+          return {
+            headline: `${ask.indexName ?? "NIFTY 50"} 25,044.65, up 0.23%.`,
+            note: "NSE · 09 Nov 2026 15:30",
+          };
+        }
+        const symbol = ask.symbol ?? "NSE";
+        return {
+          headline: `${symbol} ₹ 1,324.40, up 0.03%.`,
+          note: "NSE · 09 Nov 2026 16:00",
+        };
+      },
+    ),
+  };
+});
+
 import { db, getDb } from "@/db/client";
 import { companies, events, guidance, llmLedger, users } from "@/db/schema";
 import {
@@ -383,6 +406,10 @@ describe("runFinnieTurn", () => {
     for (const name of FINNIE_TOOLS) expect(prompt).toContain(name);
     expect(system).toContain('{"tool":"get_brief","args":{}}');
     expect(system).toContain("should I buy Reliance");
+    expect(system).toContain("get_results, then get_promises, then get_quote");
+    expect(system).toContain("The decision is yours.");
+    expect(system).not.toContain(FINNIE_DOES_NOT_HAVE);
+    expect(prompt).not.toContain(FINNIE_DOES_NOT_HAVE);
     expect(prompt).not.toContain("whether to buy");
     expect(system).not.toContain("whether to buy");
   });
@@ -429,23 +456,117 @@ describe("runFinnieTurn", () => {
     }
   });
 
-  it("answers a buy question in one sentence with no card and no target", async () => {
-    llm.mockResolvedValue(
-      model({
-        tool: "get_quote",
-        args: { symbol: "RELIANCE" },
-        say: "Target 1500.",
-      }),
+  it("shows filings and the price for a buy, and leaves the decision", async () => {
+    const line =
+      "I can only give you the filings and the price. The decision is yours.";
+    for (const sentence of [
+      "should I buy Reliance",
+      "is ITC a buy",
+      "should I sell Voltas",
+    ]) {
+      llm.mockReset();
+      llm.mockResolvedValue(
+        model({ tool: "none", say: "Buy it. Target 1500. I can't do that." }),
+      );
+      const result = await runFinnieTurn(sentence, null);
+      expect(result.tools).toEqual([
+        "get_results",
+        "get_promises",
+        "get_quote",
+      ]);
+      expect(result.say).toBe(line);
+      expect(result.say).toContain("The decision is yours.");
+      expect(result.say).not.toBe("The decision is yours.");
+      expect(
+        result.say.split(/[.!?]+/).filter((part) => part.trim()).length,
+      ).toBeGreaterThan(1);
+      expect(result.say).not.toMatch(
+        /\bbuy\b|don’t buy|don't buy|target|rating/i,
+      );
+      expect(result.say).not.toMatch(/\d|₹/);
+      expect(result.sayAfter).toBe(true);
+      expect(
+        result.cards.map((card) =>
+          card.kind === "reply" ? card.reply.kind : card.kind,
+        ),
+      ).toEqual(["results", "promises", "nse"]);
+      const price = result.cards[2];
+      if (price?.kind === "reply" && price.reply.kind === "nse")
+        expect(price.reply.headline).toContain("₹");
+      expect(result.say).not.toContain("1500");
+      expect(result.say).not.toContain("I can't");
+    }
+  });
+
+  it("shows the results card when asked for shareholding or delivery", async () => {
+    llm.mockResolvedValue(model({ tool: "none", say: "I can't do that." }));
+    const holding = await runFinnieTurn(
+      "what is the shareholding of ITC",
+      null,
     );
+    expect(holding.tools).toEqual(["get_results"]);
+    expect(holding.say).toBe("Shareholding is not in the filings I have.");
+    expect(holding.symbol).toBe("ITC");
+    expect(holding.cards[0]).toMatchObject({
+      kind: "reply",
+      reply: { kind: "results" },
+    });
 
-    const result = await runFinnieTurn("should I buy Reliance", null);
+    const delivery = await runFinnieTurn("delivery data for ITC", null);
+    expect(delivery.tools).toEqual(["get_results"]);
+    expect(delivery.say).toBe("Delivery is not in the filings I have.");
+    expect(delivery.cards[0]).toMatchObject({
+      kind: "reply",
+      reply: { kind: "results" },
+    });
+  });
 
-    expect(result.tools).toEqual([]);
-    expect(result.card).toBeNull();
-    expect(result.href).toBeNull();
-    expect(result.say).toBe(FINNIE_DOES_NOT_HAVE);
-    expect(result.say).not.toMatch(/\d|target|₹/i);
-    expect(llm).not.toHaveBeenCalled();
+  it("shows the index quote when asked if the market is open", async () => {
+    llm.mockResolvedValue(model({ tool: "none", say: FINNIE_DOES_NOT_HAVE }));
+    const result = await runFinnieTurn("is the market open", null);
+    expect(result.tools).toEqual(["get_index"]);
+    expect(result.say).toBe("NSE does not publish whether the market is open.");
+    expect(result.say).not.toMatch(/\d/);
+    const card = result.cards[0];
+    expect(card?.kind).toBe("reply");
+    if (card?.kind === "reply" && card.reply.kind === "nse") {
+      expect(card.reply.headline).toContain("NIFTY 50");
+      expect(card.reply.note.startsWith("NSE")).toBe(true);
+    }
+  });
+
+  it("shows Act lines when asked for news", async () => {
+    llm.mockResolvedValue(model({ tool: "none", say: "I can't do that." }));
+    const result = await runFinnieTurn("any news today", null);
+    expect(result.tools).toEqual(["get_brief"]);
+    expect(result.say).toBe(
+      "I don't have news. Here is what needs a decision.",
+    );
+    expect(result.say).not.toBe("I can't do that.");
+  });
+
+  it("drops a recommendation and keeps the quote the tool returned", async () => {
+    llm
+      .mockResolvedValueOnce(
+        model({ tool: "get_quote", args: { symbol: "ITC" } }),
+      )
+      .mockResolvedValueOnce(
+        model({ tool: "none", say: "Buy it. Target 1500." }),
+      );
+    const result = await runFinnieTurn("what is the ITC quote", null);
+    expect(result.tools).toEqual(["get_quote"]);
+    expect(result.say).not.toMatch(/\bbuy\b|target|1500/i);
+    expect(result.say).toContain("ITC");
+    expect(result.card?.kind).toBe("reply");
+  });
+
+  it("does not answer with only a refusal when nothing matches", async () => {
+    llm.mockResolvedValue(model({ tool: "none", say: "I can't do that." }));
+    const result = await runFinnieTurn("what is the weather", null);
+    expect(result.tools).toEqual(["get_brief"]);
+    expect(result.say).not.toBe("I can't do that.");
+    expect(result.say).not.toBe(FINNIE_DOES_NOT_HAVE);
+    expect(result.say.toLowerCase()).not.toContain("can't");
   });
 
   it("requires a tool in one object, including get_brief", () => {

@@ -13,7 +13,7 @@ import {
 } from "@/lib/deskTurn";
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
 import { FINNIE_GREETING } from "@/ui/composer";
-import { BookNames, Desk } from "@/ui/Desk";
+import { BookNames, Desk, FinnieAnswer } from "@/ui/Desk";
 
 const book: DeskCompany[] = [
   { symbol: "ITC", name: "ITC Limited", aliases: [] },
@@ -349,6 +349,45 @@ describe("desk markup", () => {
     expect(html).not.toContain("The figures");
     expect(html).not.toContain("From the filings");
     expect(html).not.toContain("Promise ledger");
+  });
+
+  it("puts the decision line after the filings and the price", () => {
+    const line =
+      "I can only give you the filings and the price. The decision is yours.";
+    const html = renderToStaticMarkup(
+      createElement(FinnieAnswer, {
+        say: line,
+        sayAfter: true,
+        href: "/c/RELIANCE",
+        link: "Open RELIANCE",
+        cards: [
+          {
+            kind: "reply",
+            symbol: "RELIANCE",
+            reply: { kind: "nse", headline: "CARD-RESULTS", note: "filings" },
+          },
+          {
+            kind: "reply",
+            symbol: "RELIANCE",
+            reply: { kind: "nse", headline: "CARD-PROMISES", note: "filings" },
+          },
+          {
+            kind: "reply",
+            symbol: "RELIANCE",
+            reply: { kind: "nse", headline: "CARD-PRICE", note: "NSE" },
+          },
+        ],
+      }),
+    );
+    const results = html.indexOf("CARD-RESULTS");
+    const promises = html.indexOf("CARD-PROMISES");
+    const price = html.indexOf("CARD-PRICE");
+    const decision = html.indexOf("The decision is yours.");
+    expect(results).toBeGreaterThan(-1);
+    expect(results).toBeLessThan(promises);
+    expect(promises).toBeLessThan(price);
+    expect(price).toBeLessThan(html.indexOf("Open RELIANCE"));
+    expect(html.indexOf("Open RELIANCE")).toBeLessThan(decision);
   });
 
   it("draws the book as one card of symbol and name links", () => {

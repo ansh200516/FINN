@@ -29,6 +29,9 @@ export type FinnieTool = (typeof FINNIE_TOOLS)[number];
 export const FINNIE_OUT_OF_CALLS = "Finnie is out of calls until 13:30 IST";
 export const FINNIE_MODEL_DOWN = "Finnie could not reach the model.";
 export const FINNIE_DOES_NOT_HAVE = "Finnie does not have that.";
+/** Last line after the results, the promises, and the price. Two sentences. */
+export const FINNIE_DECISION_LINE =
+  "I can only give you the filings and the price. The decision is yours.";
 
 export const MAX_TOOL_CALLS = 4;
 
@@ -103,6 +106,10 @@ export interface FinnieTurnResult {
   say: string;
   tools: string[];
   card: FinnieCard | null;
+  /** Cards from this turn, in tool order. */
+  cards: FinnieCard[];
+  /** Cards first, then `say`. Used when the decision is left to the user. */
+  sayAfter: boolean;
   href: string | null;
   link: string | null;
   symbol: string | null;

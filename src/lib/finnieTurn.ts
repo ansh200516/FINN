@@ -14,10 +14,12 @@ import { NO_PROMISES, NO_RESULTS } from "@/lib/companyTurn";
 import { bookCountLine } from "@/lib/deskTurn";
 import { executeTool } from "@/lib/finnieTools";
 import {
+  FINNIE_DECISION_LINE,
   FINNIE_DOES_NOT_HAVE,
   FINNIE_MODEL_DOWN,
   FINNIE_OUT_OF_CALLS,
   FINNIE_TOOLS,
+  type FinnieCard,
   type FinniePrior,
   type FinnieTool,
   type FinnieTurnResult,
@@ -32,11 +34,14 @@ const SYSTEM = [
   "You are Finnie, a research desk.",
   "Set tool to the one tool that answers the sentence, or none to finish.",
   "say is one sentence and may use only facts a tool returned. Leave say empty when tool is not none.",
-  "Do not invent a figure, a quote, or a company.",
+  "Do not invent a figure, a quote, or a company. Do not recommend.",
   "Act means the brief’s Act cards. It is not a buy or a sell.",
   `Example: “which stocks should I act upon right now?” → {"tool":"get_brief","args":{}}`,
-  `Example: “should I buy Reliance?” → {"tool":"none","say":"${FINNIE_DOES_NOT_HAVE}"}`,
-  "News, a target price, shareholding, delivery data, and whether the market is open use that same none reply. Do not name a price.",
+  `Example: “should I buy Reliance?” → get_results, then get_promises, then get_quote. Then {"tool":"none","say":"${FINNIE_DECISION_LINE}"}`,
+  "That question uses 3 calls. The cap is 4. Do not say buy, do not say do not buy, do not name a target price, and do not give a rating.",
+  "Shareholding or delivery is get_results, then one line that it is not in the filings.",
+  "Whether the market is open is get_index. News is get_brief, the Act lines.",
+  "If the sentence is not a perfect tool match, call the closest tool and show that card. Do not answer with only a refusal.",
 ].join(" ");
 
 const TOOL_LIST = [
@@ -89,7 +94,7 @@ export const FinnieStep = z.object({
   tool: z
     .enum(STEP_TOOLS)
     .describe(
-      "get_brief is the Act list: act, act on, act upon, and the brief. It is not a buy or a sell. none finishes, or refuses a buy or a sell, a target price, news, shareholding, delivery data, or whether the market is open.",
+      "get_brief is the Act list: act, act on, act upon, and the brief. It is not a buy or a sell. A buy or a sell is get_results, then get_promises, then get_quote. none finishes. It does not refuse.",
     ),
   args: Args,
   say: z.string().optional(),
@@ -109,13 +114,16 @@ export async function runFinnieTurn(
 ): Promise<FinnieTurnResult> {
   const text = sentence.trim().slice(0, 500);
   if (!text) return quiet("Name a company.");
-  if (isGap(text)) return quiet(FINNIE_DOES_NOT_HAVE);
   const open = focusSymbol(focus);
   const earlier = cleanPrior(prior);
+  const script = scriptFor(text, open);
+  if (script) return runScript(script, text, open);
+
   if (await modelAtSoftCap("bulk")) return quiet(FINNIE_OUT_OF_CALLS);
 
   const tools: string[] = [];
   const notes: string[] = [];
+  const cards: FinnieCard[] = [];
   let last: ToolOutcome | null = null;
 
   for (let i = 0; i < MAX_TOOL_CALLS; i++) {
@@ -125,35 +133,20 @@ export async function runFinnieTurn(
         return quiet(
           step === "capped" ? FINNIE_OUT_OF_CALLS : FINNIE_MODEL_DOWN,
         );
-      return present(fallbackSay(last), tools, last);
+      return present(fallbackSay(last), tools, last, cards);
     }
-    const next = chooseCall(step, text, tools);
-    if (next.kind === "say") return present(next.say, tools, last);
-    if (next.kind === "stop") {
-      if (!tools.length) return quiet(stepSay(step) || FINNIE_DOES_NOT_HAVE);
-      return present(fallbackSay(last), tools, last);
-    }
+    let next = chooseCall(step, text, tools, notes);
+    if (next.kind === "stop" && !tools.length)
+      next = { kind: "call", tool: "get_brief", args: {} };
+    if (next.kind === "say") return present(next.say, tools, last, cards);
+    if (next.kind === "stop")
+      return present(fallbackSay(last), tools, last, cards);
     tools.push(next.tool);
-    try {
-      last = await executeTool(
-        next.tool,
-        argsForTool(next.tool, text, next.args),
-        open,
-        Boolean(earlier),
-      );
-    } catch {
-      last = {
-        fact: { error: "That did not run." },
-        card: null,
-        symbol: null,
-        href: null,
-        link: null,
-        book: null,
-      };
-    }
+    last = await runTool(next.tool, text, next.args, open, Boolean(earlier));
+    if (last.card) cards.push(last.card);
     notes.push(`${next.tool}: ${clip(JSON.stringify(last.fact))}`);
     const fixed = fixedSay(next.tool, last);
-    if (fixed) return present(fixed, tools, last);
+    if (fixed) return present(fixed, tools, last, cards);
   }
 
   const closing = await decide(text, open, earlier, notes, true);
@@ -162,10 +155,10 @@ export async function runFinnieTurn(
     closing !== "capped" &&
     "done" in closing &&
     closing.say &&
-    !isRefusal(closing.say)
+    usableSay(closing.say, notes, text)
   )
-    return present(closing.say, tools, last);
-  return present(fallbackSay(last), tools, last);
+    return present(closing.say, tools, last, cards);
+  return present(fallbackSay(last), tools, last, cards);
 }
 
 async function decide(
@@ -195,7 +188,7 @@ async function callTier(tier: LlmTier, prompt: string) {
     schema: FinnieStep,
     prompt,
     system: SYSTEM,
-    promptVersion: "3",
+    promptVersion: "4",
     temperature: 0,
     maxTokens: 512,
   });
@@ -239,7 +232,8 @@ function promptFor(
     prior ? `Previous sentence: ${prior.sentence}` : null,
     prior ? `Previous tool: ${prior.tool ?? "none"}` : null,
     `Sentence: ${sentence}`,
-    "Act, act on, and act upon are get_brief. A buy or a sell, such as should I buy RELIANCE, is none.",
+    "Act, act on, and act upon are get_brief.",
+    `A buy or a sell, such as should I buy Reliance, is get_results, then get_promises, then get_quote. Then finish with exactly: ${FINNIE_DECISION_LINE}`,
     `Focus: ${focus ?? "none"}`,
     "",
     "Tools:",
@@ -255,7 +249,8 @@ function promptFor(
     "Call list_portfolio only when the user asked which names are in the portfolio.",
     "When a tool has answered the sentence, finish. Do not list the book after an add or a remove.",
     "A follow-up such as “and its promises” or “remove that one” uses Focus, the company from the previous turn. Pass that symbol.",
-    `A buy or a sell, a target price, news, shareholding, delivery data, and whether the market is open are not tools. Return {"tool":"none","say":"${FINNIE_DOES_NOT_HAVE}"} and call no tool.`,
+    "Do not recommend. Do not invent a figure. Shareholding or delivery is get_results. Whether the market is open is get_index. News is get_brief.",
+    "If nothing matches exactly, call the closest tool. Do not finish with a refusal and no card.",
     "compare returns the card. Do not rank the two companies.",
     "mark_read is confirmed with the count the tool returned.",
   ]
@@ -282,11 +277,16 @@ function present(
   say: string,
   tools: string[],
   last: ToolOutcome | null,
+  cards: FinnieCard[] = [],
+  sayAfter = false,
 ): FinnieTurnResult {
+  const all = cards.length ? cards : last?.card ? [last.card] : [];
   return {
     say: oneLine(say),
     tools,
-    card: last?.card ?? null,
+    card: all.at(-1) ?? null,
+    cards: all,
+    sayAfter,
     href: last?.href ?? null,
     link: last?.link ?? null,
     symbol: last?.symbol ?? null,
@@ -299,6 +299,8 @@ function quiet(say: string): FinnieTurnResult {
     say,
     tools: [],
     card: null,
+    cards: [],
+    sayAfter: false,
     href: null,
     link: null,
     symbol: null,
@@ -388,27 +390,29 @@ function cleanPrior(prior: FinniePrior | null | undefined): FinniePrior | null {
   return { sentence, tool };
 }
 
-function stepSay(step: Step): string {
-  return "done" in step ? step.say : "";
-}
-
-function chooseCall(step: Step, sentence: string, ran: string[]): Call {
-  if (!ran.length && isGap(sentence))
-    return { kind: "say", say: FINNIE_DOES_NOT_HAVE };
+function chooseCall(
+  step: Step,
+  sentence: string,
+  ran: string[],
+  notes: string[],
+): Call {
   if ("tool" in step) {
     const known = knownTool(step.tool);
     if (known) return { kind: "call", tool: known, args: step.args };
     const covered = coveredTool(sentence);
     if (covered && !ran.includes(covered))
       return { kind: "call", tool: covered, args: {} };
+    if (!ran.length) return { kind: "call", tool: "get_brief", args: {} };
     return { kind: "stop" };
   }
-  if (!ran.length && (isRefusal(step.say) || !step.say.trim())) {
+  const unusable = !step.say.trim() || !usableSay(step.say, notes, sentence);
+  if (unusable || !ran.length) {
     const covered = coveredTool(sentence);
-    if (covered) return { kind: "call", tool: covered, args: {} };
-  }
-  if (!step.say.trim() || (ran.length > 0 && isRefusal(step.say)))
+    if (covered && !ran.includes(covered))
+      return { kind: "call", tool: covered, args: {} };
+    if (!ran.length) return { kind: "call", tool: "get_brief", args: {} };
     return { kind: "stop" };
+  }
   return { kind: "say", say: step.say };
 }
 
@@ -421,31 +425,42 @@ function normAsk(raw: string): string {
     .trim();
 }
 
-/** Buy, sell, a target, news, shareholding, delivery, or whether the market is open. Act is not this. */
-function isGap(sentence: string): boolean {
-  const n = normAsk(sentence);
-  if (!n) return false;
-  if (/\b(price target|target price)\b/.test(n)) return true;
-  if (/\bshareholding\b/.test(n)) return true;
-  if (
-    /\bdelivery\b/.test(n) &&
-    /\b(data|volume|percent|percentage|qty|quantity)\b/.test(n)
-  )
-    return true;
-  if (/\bmarket\b/.test(n) && /\bopen\b/.test(n)) return true;
-  if (/\bnews\b/.test(n)) return true;
-  const trade =
-    /\b(buy|sell|short|accumulate)\b/.test(n) || /\ba hold\b/.test(n);
-  const asks =
-    /\b(should|shall|ought|recommend|worth)\b/.test(n) ||
-    /\b(a buy|a sell)\b/.test(n);
-  return trade && asks;
-}
-
 function isRefusal(say: string): boolean {
   const n = normAsk(say);
   if (!n) return false;
-  return n === "finnie does not have that" || n.includes("does not have that");
+  if (n === normAsk(FINNIE_DOES_NOT_HAVE) || n.includes("does not have that"))
+    return true;
+  return (
+    /\bi can't\b/.test(n) || /\bi cannot\b/.test(n) || /\bi can not\b/.test(n)
+  );
+}
+
+function isRecommendation(say: string): boolean {
+  const n = normAsk(say);
+  if (!n) return false;
+  if (/\b(buy|sell|short|purchase|accumulate|rating)\b/.test(n)) return true;
+  if (/\b(a hold|don't buy|do not buy|dont buy)\b/.test(n)) return true;
+  return /\b(target price|price target|outperform|underperform|overweight|underweight)\b/.test(
+    n,
+  );
+}
+
+function usableSay(say: string, notes: string[], sentence: string): boolean {
+  if (isRefusal(say) || isRecommendation(say)) return false;
+  return !inventedNumber(say, notes, sentence);
+}
+
+function inventedNumber(
+  say: string,
+  notes: string[],
+  sentence: string,
+): boolean {
+  const nums = say.match(/\d[\d,]*(?:\.\d+)?/g) ?? [];
+  const blob = `${notes.join("\n")} ${sentence}`;
+  return nums.some((raw) => {
+    const plain = raw.replace(/,/g, "");
+    return !blob.includes(raw) && !blob.includes(plain);
+  });
 }
 
 function knownTool(name: string): FinnieTool | null {
@@ -456,7 +471,7 @@ function knownTool(name: string): FinnieTool | null {
 
 function coveredTool(sentence: string): FinnieTool | null {
   const n = normAsk(sentence);
-  if (!n || isGap(sentence)) return null;
+  if (!n) return null;
   if (isPortfolioList(n)) return "list_portfolio";
   if (/\b(add|put)\b/.test(n) && /\b(portfolio|book)\b/.test(n))
     return "add_to_portfolio";
@@ -535,5 +550,286 @@ function readArgs(value: unknown): ToolArgs {
 function focusSymbol(focus: string | null): string | null {
   if (!focus) return null;
   const symbol = focus.trim().toUpperCase();
+  return /^[A-Z0-9&.-]{1,20}$/.test(symbol) ? symbol : null;
+}
+
+const SHAREHOLDING_LINE = "Shareholding is not in the filings I have.";
+const DELIVERY_LINE = "Delivery is not in the filings I have.";
+const MARKET_LINE = "NSE does not publish whether the market is open.";
+const NEWS_LINE = "I don't have news. Here is what needs a decision.";
+const PRICE_LINE = "I can only give you the price.";
+
+const SKIP = new Set([
+  "a",
+  "an",
+  "the",
+  "i",
+  "me",
+  "my",
+  "we",
+  "our",
+  "you",
+  "your",
+  "should",
+  "shall",
+  "ought",
+  "would",
+  "could",
+  "can",
+  "do",
+  "does",
+  "did",
+  "is",
+  "are",
+  "am",
+  "be",
+  "been",
+  "to",
+  "of",
+  "for",
+  "in",
+  "on",
+  "at",
+  "and",
+  "or",
+  "please",
+  "now",
+  "today",
+  "right",
+  "time",
+  "good",
+  "bad",
+  "stock",
+  "stocks",
+  "share",
+  "shares",
+  "company",
+  "name",
+  "what",
+  "whats",
+  "show",
+  "get",
+  "tell",
+  "about",
+  "how",
+  "worth",
+  "recommend",
+  "recommendation",
+  "buy",
+  "sell",
+  "short",
+  "purchase",
+  "accumulate",
+  "hold",
+  "holding",
+  "holdings",
+  "it",
+  "its",
+  "this",
+  "that",
+  "there",
+  "market",
+  "open",
+  "closed",
+  "nse",
+  "news",
+  "latest",
+  "any",
+  "some",
+  "price",
+  "target",
+  "shareholding",
+  "delivery",
+  "data",
+  "volume",
+  "percent",
+  "percentage",
+  "qty",
+  "quantity",
+  "pattern",
+  "promoter",
+  "fii",
+  "dii",
+  "industries",
+  "limited",
+  "ltd",
+  "corp",
+  "co",
+  "plc",
+  "from",
+  "with",
+  "into",
+]);
+
+interface Script {
+  steps: Array<{ tool: FinnieTool; args: ToolArgs }>;
+  say: string;
+  sayAfter: boolean;
+}
+
+function scriptFor(sentence: string, focus: string | null): Script | null {
+  const n = normAsk(sentence);
+  if (!n) return null;
+  const args = symbolArgs(sentence, focus);
+  if (isDecision(n)) {
+    return {
+      steps: [
+        { tool: "get_results", args },
+        { tool: "get_promises", args },
+        { tool: "get_quote", args },
+      ],
+      say: FINNIE_DECISION_LINE,
+      sayAfter: true,
+    };
+  }
+  if (isTarget(n))
+    return {
+      steps: [{ tool: "get_quote", args }],
+      say: PRICE_LINE,
+      sayAfter: false,
+    };
+  if (isShareholding(n))
+    return {
+      steps: [{ tool: "get_results", args }],
+      say: SHAREHOLDING_LINE,
+      sayAfter: false,
+    };
+  if (isDelivery(n))
+    return {
+      steps: [{ tool: "get_results", args }],
+      say: DELIVERY_LINE,
+      sayAfter: false,
+    };
+  if (isMarketOpen(n))
+    return {
+      steps: [{ tool: "get_index", args: { name: marketIndex(n) } }],
+      say: MARKET_LINE,
+      sayAfter: false,
+    };
+  if (/\bnews\b/.test(n))
+    return {
+      steps: [{ tool: "get_brief", args: {} }],
+      say: NEWS_LINE,
+      sayAfter: false,
+    };
+  return null;
+}
+
+async function runScript(
+  script: Script,
+  sentence: string,
+  focus: string | null,
+): Promise<FinnieTurnResult> {
+  const tools: string[] = [];
+  const cards: FinnieCard[] = [];
+  let last: ToolOutcome | null = null;
+  for (const step of script.steps) {
+    if (tools.length >= MAX_TOOL_CALLS) break;
+    tools.push(step.tool);
+    last = await runTool(step.tool, sentence, step.args, focus, false);
+    const shown = shownCard(step.tool, last);
+    if (shown) cards.push(shown);
+  }
+  return present(script.say, tools, last, cards, script.sayAfter);
+}
+
+async function runTool(
+  tool: FinnieTool,
+  sentence: string,
+  args: ToolArgs,
+  focus: string | null,
+  carry: boolean,
+): Promise<ToolOutcome> {
+  try {
+    return await executeTool(
+      tool,
+      argsForTool(tool, sentence, args),
+      focus,
+      carry,
+    );
+  } catch {
+    return {
+      fact: { error: "That did not run." },
+      card: null,
+      symbol: null,
+      href: null,
+      link: null,
+      book: null,
+    };
+  }
+}
+
+function shownCard(tool: string, last: ToolOutcome): FinnieCard | null {
+  if (last.card) return last.card;
+  const message = typeof last.fact.error === "string" ? last.fact.error : null;
+  if (message && !last.symbol)
+    return { kind: "reply", symbol: "", reply: { kind: "error", message } };
+  const symbol = last.symbol ?? "";
+  if (tool === "get_results")
+    return { kind: "reply", symbol, reply: { kind: "results", card: null } };
+  if (tool === "get_promises")
+    return { kind: "reply", symbol, reply: { kind: "promises", rows: [] } };
+  if ((tool === "get_quote" || tool === "get_index") && message)
+    return { kind: "reply", symbol, reply: { kind: "error", message } };
+  return null;
+}
+
+function isDecision(n: string): boolean {
+  const trade =
+    /\b(buy|sell|short|purchase|accumulate)\b/.test(n) ||
+    /\b(a buy|a sell|a hold)\b/.test(n) ||
+    /\bhold\b/.test(n);
+  if (!trade) return false;
+  if (
+    /\bact\b/.test(n) &&
+    !/\b(buy|sell|short|purchase|accumulate)\b/.test(n) &&
+    !/\b(a buy|a sell)\b/.test(n)
+  )
+    return false;
+  return (
+    /\b(should|shall|ought|would|could|can|do|does|recommend|worth|is|are)\b/.test(
+      n,
+    ) || /\b(a buy|a sell|a hold)\b/.test(n)
+  );
+}
+
+function isTarget(n: string): boolean {
+  return /\b(price target|target price)\b/.test(n);
+}
+
+function isShareholding(n: string): boolean {
+  return /\bshareholding\b/.test(n) || /\bshare holding\b/.test(n);
+}
+
+function isDelivery(n: string): boolean {
+  return /\bdelivery\b/.test(n);
+}
+
+function isMarketOpen(n: string): boolean {
+  if (!/\bopen\b/.test(n)) return false;
+  return /\b(market|nse|nifty|sensex)\b/.test(n);
+}
+
+function marketIndex(n: string): string {
+  if (/\bbank nifty\b|\bnifty bank\b/.test(n)) return "NIFTY BANK";
+  if (/\bnifty it\b/.test(n)) return "NIFTY IT";
+  if (/\bindia vix\b/.test(n)) return "INDIA VIX";
+  return "NIFTY 50";
+}
+
+function symbolArgs(sentence: string, focus: string | null): ToolArgs {
+  const symbol = extractSymbol(sentence) ?? focus;
+  return symbol ? { symbol } : {};
+}
+
+function extractSymbol(sentence: string): string | null {
+  const tokens = normAsk(sentence)
+    .split(" ")
+    .filter(
+      (token) => token.length >= 2 && !SKIP.has(token) && !/^\d+$/.test(token),
+    );
+  const raw = tokens.at(-1);
+  if (!raw) return null;
+  const symbol = raw.toUpperCase();
   return /^[A-Z0-9&.-]{1,20}$/.test(symbol) ? symbol : null;
 }

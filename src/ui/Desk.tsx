@@ -21,9 +21,10 @@ type Shown =
   | {
       kind: "finnie";
       say: string;
-      card: FinnieCard | null;
+      cards: FinnieCard[];
       href: string | null;
       link: string | null;
+      sayAfter: boolean;
     };
 
 interface Turn {
@@ -34,7 +35,8 @@ interface Turn {
 
 /**
  * Chat only. A sentence goes to Finnie. Finnie picks a tool.
- * The thread shows one line, then the card that tool returned.
+ * The thread shows one line, then the card. A buy or a sell shows the
+ * cards first, then the line that leaves the decision with the user.
  */
 export function Desk({
   initialSymbol = null,
@@ -85,20 +87,23 @@ export function Desk({
         tool: res.tools.at(-1) ?? null,
       };
       setSymbol(res.symbol);
+      const cards = res.cards.length ? res.cards : res.card ? [res.card] : [];
       patch(id, {
         kind: "finnie",
         say: res.say,
-        card: res.card,
+        cards,
         href: res.href,
         link: res.link,
+        sayAfter: res.sayAfter,
       });
     } catch {
       patch(id, {
         kind: "finnie",
         say: FINNIE_MODEL_DOWN,
-        card: null,
+        cards: [],
         href: null,
         link: null,
+        sayAfter: false,
       });
     } finally {
       setBusy(false);
@@ -190,11 +195,12 @@ function TurnBody({ turn }: { turn: Turn }) {
     );
   }
   return (
-    <AgentTurn
-      text={shown.say}
+    <FinnieAnswer
+      say={shown.say}
+      cards={shown.cards}
       href={shown.href}
       link={shown.link}
-      result={cardNode(shown.card)}
+      sayAfter={shown.sayAfter}
     />
   );
 }
@@ -290,22 +296,45 @@ function ManagementCard({
   );
 }
 
-function AgentTurn({
-  text,
-  result = null,
+export function FinnieAnswer({
+  say,
+  cards,
   href = null,
   link = null,
+  sayAfter = false,
 }: {
-  text: string | null;
-  result?: ReactNode;
+  say: string;
+  cards: FinnieCard[];
   href?: string | null;
   link?: string | null;
+  sayAfter?: boolean;
 }) {
+  const blocks = cards.map((card, index) => {
+    const node = cardNode(card);
+    if (!node) return null;
+    return (
+      <div className="thread-result" key={`${card.kind}-${index}`}>
+        {node}
+      </div>
+    );
+  });
+  const bubble = say ? <div className="bubble-agent">{say}</div> : null;
+  const jump = <CardLink href={href ?? null} label={link ?? null} />;
   return (
-    <div className="flex min-w-0 flex-col items-start gap-2">
-      {text ? <div className="bubble-agent">{text}</div> : null}
-      {result ? <div className="thread-result">{result}</div> : null}
-      <CardLink href={href} label={link} />
+    <div className="flex min-w-0 flex-col items-start gap-2" data-answer="">
+      {sayAfter ? (
+        <>
+          {blocks}
+          {jump}
+          {bubble}
+        </>
+      ) : (
+        <>
+          {bubble}
+          {blocks}
+          {jump}
+        </>
+      )}
     </div>
   );
 }

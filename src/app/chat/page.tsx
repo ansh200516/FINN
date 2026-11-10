@@ -19,6 +19,7 @@ export default async function ChatPage() {
       </header>
       <Desk
         companies={facts.companies}
+        portfolio={facts.portfolio}
         act={facts.act}
         watch={facts.watch}
         filedAway={facts.filedAway}

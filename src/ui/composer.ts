@@ -1,46 +1,22 @@
 /**
- * Composer modes. Name and Book keep the examples already used for
- * that scope. The field types one, pauses, deletes it, and types the
- * next. An empty send uses the line that finished, or the first line
- * while a line is still moving.
+ * Composer hints. One rotating set of examples, typed into the
+ * placeholder. An empty send uses the line that finished, or the first
+ * line while a line is still moving. The hint is never the input value.
  */
-export type ComposerMode = "ask" | "price" | "alerts" | "actions";
-export type ComposerScope = "name" | "book";
-
 export const FINNIE_GREETING =
   "Hey, I\u2019m Finnie. Ask me for a result, a promise, a price, or a rule.";
 
-export const COMPOSER_MODES: Array<{ id: ComposerMode; label: string }> = [
-  { id: "ask", label: "Ask" },
-  { id: "price", label: "Price" },
-  { id: "alerts", label: "Alerts" },
-  { id: "actions", label: "Actions" },
+export const COMPOSER_EXAMPLES: readonly string[] = [
+  "reliance results",
+  "reliance promises",
+  "whats in my portfolio",
+  "reliance price",
+  "set a price alert to 4%",
 ];
 
-const EXAMPLES: Record<
-  ComposerMode,
-  Record<ComposerScope, readonly string[]>
-> = {
-  ask: {
-    name: ["reliance results", "reliance promises", "reliance guidance"],
-    book: ["what did they promise", "what did management promise"],
-  },
-  price: {
-    name: ["reliance price", "reliance quote"],
-    book: ["nifty", "bank nifty"],
-  },
-  alerts: {
-    name: ["always tell me about results", "set a price alert to 4%"],
-    book: [
-      "set a book price alert to 4%",
-      "notify me about results for the book",
-    ],
-  },
-  actions: {
-    name: ["reliance dividends", "reliance bonus or split"],
-    book: ["corporate actions for reliance", "dividends for reliance"],
-  },
-};
+export function composerExamples(): readonly string[] {
+  return COMPOSER_EXAMPLES;
+}
 
 export type GhostPhase = "typing" | "holding" | "deleting";
 
@@ -48,20 +24,6 @@ export interface GhostState {
   index: number;
   shown: string;
   phase: GhostPhase;
-}
-
-export function composerExamples(
-  mode: ComposerMode,
-  scope: ComposerScope,
-): readonly string[] {
-  return EXAMPLES[mode][scope];
-}
-
-export function composerExample(
-  mode: ComposerMode,
-  scope: ComposerScope,
-): string {
-  return composerExamples(mode, scope)[0] ?? "";
 }
 
 /** The line an empty send should use. A partial line falls back to the first. */
@@ -82,14 +44,20 @@ export function ghostDelay(state: GhostState): number {
   return 42;
 }
 
+/** Placeholders never carry a bracket. A caret painted as text leaked "]". */
+export function plainHint(raw: string): string {
+  return raw.replace(/[[\]]/g, "");
+}
+
 export function advanceGhost(
   state: GhostState,
   examples: readonly string[],
 ): GhostState {
-  const count = examples.length;
+  const clean = examples.map(plainHint);
+  const count = clean.length;
   if (count === 0) return { index: 0, shown: "", phase: "typing" };
   const index = ((state.index % count) + count) % count;
-  const example = examples[index] ?? "";
+  const example = clean[index] ?? "";
   if (state.phase === "typing") {
     if (state.shown.length < example.length) {
       return {
@@ -115,14 +83,13 @@ export function fieldHint(input: {
   paused: boolean;
   examples: readonly string[];
   shown: string;
-}): { placeholder: string; ghost: string | null; submit: string } {
-  const first = input.examples[0] ?? "";
-  const showGhost = input.animate && !input.paused;
+}): { placeholder: string; submit: string } {
+  const examples = input.examples.map(plainHint);
+  const first = examples[0] ?? "";
+  const shown = plainHint(input.shown);
+  const typing = input.animate && !input.paused;
   return {
-    placeholder: showGhost ? "" : first,
-    ghost: showGhost ? input.shown : null,
-    submit: input.animate
-      ? exampleForEmptySend(input.examples, input.shown)
-      : first,
+    placeholder: typing ? shown : first,
+    submit: input.animate ? exampleForEmptySend(examples, shown) : first,
   };
 }

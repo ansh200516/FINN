@@ -914,20 +914,27 @@ export async function getCompanyBySymbol(
 
 /** Symbols the desk can name. No prices, no filings. */
 export async function listCompanyNames(): Promise<
-  Array<{ symbol: string; name: string; aliases: string[] }>
+  Array<{ isin: string; symbol: string; name: string; aliases: string[] }>
 > {
   const rows = await db
     .select({
+      isin: t.companies.isin,
       symbol: t.companies.nseSymbol,
       name: t.companies.name,
       aliasesJson: t.companies.aliasesJson,
     })
     .from(t.companies);
-  const out: Array<{ symbol: string; name: string; aliases: string[] }> = [];
+  const out: Array<{
+    isin: string;
+    symbol: string;
+    name: string;
+    aliases: string[];
+  }> = [];
   for (const r of rows) {
     const symbol = r.symbol.trim().toUpperCase();
     if (!symbol) continue;
     out.push({
+      isin: r.isin,
       symbol,
       name: r.name.trim(),
       aliases: parseJsonColumn(StringArray, r.aliasesJson, [])

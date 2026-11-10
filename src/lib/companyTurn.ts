@@ -130,7 +130,7 @@ const CATEGORY_ALIAS = new Map<string, Category>([
 ]);
 
 const BOOK =
-  /\b(?:my portfolio|the portfolio|our portfolio|(?:the|a) book|whole book|the whole book|everything i hold)\b/;
+  /\b(?:my portfolio|the portfolio|our portfolio|(?:my|the|a) book|whole book|the whole book|everything i hold)\b/;
 
 const PRICE_RES = [
   /^(?:please\s+)?set\s+(?:a\s+)?price\s+alert\s+to\s+(\d+(?:\.\d+)?)\s*(?:%|percent)(?!\w)(.*)$/,
@@ -403,7 +403,7 @@ function commandCore(text: string): string {
 function stripBook(text: string): string {
   return text
     .replace(
-      /\b(?:for|on|across|in|over)\s+(?:my portfolio|the portfolio|our portfolio|the book|a book|the whole book|my whole book)\b/g,
+      /\b(?:for|on|across|in|over)\s+(?:my portfolio|the portfolio|our portfolio|(?:my|the|a) book|the whole book|my whole book)\b/g,
       " ",
     )
     .replace(BOOK, " ")

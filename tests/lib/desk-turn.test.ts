@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   assumptionLine,
+  bookCountLine,
   contextLine,
   type DeskCompany,
   formatLines,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/deskTurn";
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
 import { FINNIE_GREETING } from "@/ui/composer";
-import { Desk } from "@/ui/Desk";
+import { BookNames, Desk } from "@/ui/Desk";
 
 const book: DeskCompany[] = [
   { symbol: "ITC", name: "ITC Limited", aliases: [] },
@@ -239,12 +240,45 @@ describe("parseDeskTurn", () => {
       symbol: null,
     });
   });
+
+  it("lists the book for a portfolio question, even when a name is in focus", () => {
+    for (const sentence of [
+      "whats in my portfolio",
+      "what's in my portfolio",
+      "What’s in my portfolio?",
+      "my book",
+      "which companies",
+      "what do I hold",
+      "list my names",
+    ]) {
+      expect(parseDeskTurn(sentence, book, "RELIANCE")).toEqual({
+        kind: "book",
+      });
+      expect(parseDeskTurn(sentence, book, null)).toEqual({ kind: "book" });
+    }
+    expect(parseDeskTurn("results", book, null)).toEqual({
+      kind: "need-company",
+    });
+    expect(parseDeskTurn("reliance results", book, null)).toMatchObject({
+      kind: "card",
+      symbol: "RELIANCE",
+      text: "results",
+    });
+    expect(
+      parseDeskTurn("set price alert to 4% for my portfolio", book, "ITC"),
+    ).toMatchObject({ kind: "rule", scope: "book", symbol: null });
+    expect(
+      parseDeskTurn("set price alert to 4% for my book", book, "ITC"),
+    ).toMatchObject({ kind: "rule", scope: "book", symbol: null });
+  });
 });
 
 describe("desk copy", () => {
   it("answers the brief in one block, not a stack of cards", () => {
     expect(contextLine("ITC")).toBe("On ITC.");
-    expect(NAME_THE_COMPANY).toBe("Name the company.");
+    expect(NAME_THE_COMPANY).toBe("Which name? Try Reliance.");
+    expect(bookCountLine(2)).toBe("2 names.");
+    expect(bookCountLine(1)).toBe("1 name.");
     const text = formatLines((n) => `${n} to act on.`, "Nothing to act on.", [
       { symbol: "ITC", sentence: "Margin held." },
       { symbol: "TCS", sentence: "A management change." },
@@ -308,12 +342,16 @@ describe("desk markup", () => {
     expect(html).not.toContain("Ask when you want to.");
     expect(html).toContain('data-composer=""');
     expect(html).toContain('placeholder="reliance results"');
-    expect(html).toContain("Ask");
-    expect(html).toContain("Price");
-    expect(html).toContain("Alerts");
-    expect(html).toContain("Actions");
-    expect(html).toContain("Name");
-    expect(html).toContain("Book");
+    expect(html).toContain('aria-label="Send"');
+    expect(html).not.toContain("mode-btn");
+    expect(html).not.toContain("scope-btn");
+    expect(html).not.toContain(">Price<");
+    expect(html).not.toContain(">Alerts<");
+    expect(html).not.toContain(">Actions<");
+    expect(html).not.toContain(">Name<");
+    expect(html).not.toContain(">Book<");
+    expect(html).not.toContain("reliance results]");
+    expect(html).not.toContain('value="reliance');
     expect(html).not.toContain('data-card=""');
     expect(html).not.toContain("One.");
     expect(html).not.toContain("Fourth stays off the tape.");
@@ -323,5 +361,31 @@ describe("desk markup", () => {
     expect(html).not.toContain("The figures");
     expect(html).not.toContain("From the filings");
     expect(html).not.toContain("Promise ledger");
+  });
+
+  it("draws the book as one card of symbol and name links", () => {
+    const html = renderToStaticMarkup(
+      createElement(BookNames, {
+        names: [
+          {
+            symbol: "ITC",
+            name: "ITC Limited",
+            aliases: [],
+          },
+          {
+            symbol: "RELIANCE",
+            name: "Reliance Industries Limited",
+            aliases: [],
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('data-book=""');
+    expect(html).toContain('href="/c/ITC"');
+    expect(html).toContain('href="/c/RELIANCE"');
+    expect(html).toContain("ITC Limited");
+    expect(html).toContain("Reliance Industries Limited");
+    expect(html).not.toContain("Name the company.");
+    expect(html).not.toContain("]");
   });
 });

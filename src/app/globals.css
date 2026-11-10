@@ -844,6 +844,41 @@
     text-decoration-color: rgba(34, 211, 238, 0.35);
     text-underline-offset: 3px;
   }
+  .book-names {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .book-name {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-height: 36px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    color: inherit;
+    text-decoration: none;
+  }
+  .book-names li:last-child .book-name {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  .book-name .symbol {
+    flex: 0 0 6.5rem;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.04em;
+  }
+  .book-co {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 18px;
+    color: #e4e4e7;
+  }
   .agent-status {
     display: flex;
     align-items: center;
@@ -888,7 +923,7 @@
     bottom: calc(var(--bar-h) + env(safe-area-inset-bottom) + 8px);
   }
   .chat-log {
-    padding-bottom: 176px;
+    padding-bottom: 128px;
   }
   .composer-box {
     display: flex;
@@ -909,111 +944,6 @@
     position: relative;
     min-width: 0;
     flex: 1 1 0;
-  }
-  .composer-input.is-ghosting {
-    caret-color: transparent;
-  }
-  .composer-ghost {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    padding-inline: 12px;
-    color: var(--ink-3);
-    font-family: inherit;
-    font-size: 16px;
-    font-weight: 400;
-    line-height: 1.2;
-    pointer-events: none;
-    overflow: hidden;
-    white-space: nowrap;
-    user-select: none;
-  }
-  .composer-caret {
-    display: inline-block;
-    width: 1px;
-    height: 1.05em;
-    margin-left: 1px;
-    background: currentColor;
-    animation: composer-caret 1s steps(1) infinite;
-  }
-  .composer-tools {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 4px;
-    min-width: 0;
-    max-width: 100%;
-    padding: 0 6px 6px;
-  }
-  .composer-modes,
-  .composer-scopes {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    margin: 0;
-    border: 0;
-    padding: 0;
-    min-inline-size: 0;
-  }
-  .composer-modes legend,
-  .composer-scopes legend {
-    padding: 0;
-  }
-  .composer-modes {
-    flex: 1 1 0;
-    gap: 2px;
-    min-width: 0;
-    padding: 2px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.03);
-  }
-  .composer-scopes {
-    flex: 0 0 auto;
-    gap: 2px;
-  }
-  .composer-split {
-    display: block;
-    width: 1px;
-    height: 16px;
-    flex: 0 0 1px;
-    background: rgba(255, 255, 255, 0.12);
-  }
-  .mode-btn,
-  .scope-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    color: #71717a;
-    font-weight: 500;
-  }
-  .mode-btn {
-    flex: 1 1 0;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-    min-height: 44px;
-    padding: 4px 2px 3px;
-    font-size: 11px;
-    line-height: 13px;
-    letter-spacing: 0;
-  }
-  .mode-btn[aria-pressed="true"] {
-    background: #0e3c44;
-    color: #67e8f9;
-    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.35);
-  }
-  .scope-btn {
-    gap: 4px;
-    min-height: 32px;
-    padding: 4px 8px;
-    font-size: 12px;
-    line-height: 16px;
-  }
-  .scope-btn[aria-pressed="true"] {
-    background: rgba(255, 255, 255, 0.1);
-    color: #f4f4f5;
   }
   .composer-box:focus-within {
     border-color: rgba(255, 255, 255, 0.14);
@@ -1116,17 +1046,6 @@
   }
 }
 
-@keyframes composer-caret {
-  0%,
-  45% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   * {
     /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion override must beat every component rule */
@@ -1136,10 +1055,6 @@
   }
   .load-spin-ring {
     /* biome-ignore lint/complexity/noImportantStyles: hold one frame; a 1ms loop would still spin */
-    animation: none !important;
-  }
-  .composer-caret {
-    /* biome-ignore lint/complexity/noImportantStyles: a 1ms blink would still flicker */
     animation: none !important;
   }
 }

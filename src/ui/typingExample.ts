@@ -1,40 +1,25 @@
 import { useEffect, useState } from "react";
 import {
   advanceGhost,
-  type ComposerMode,
-  type ComposerScope,
-  composerExamples,
+  COMPOSER_EXAMPLES,
   fieldHint,
   type GhostState,
   ghostDelay,
 } from "@/ui/composer";
 
 /**
- * Types the selected mode's examples. Typing stops while the field has
- * the user's text. `prefers-reduced-motion` leaves the first example
- * as a static placeholder.
+ * Types the example questions into the placeholder. Typing stops while
+ * the field has the user's text. `prefers-reduced-motion` leaves the
+ * first example as a static placeholder. The input value is never set.
  */
-export function useTypingExample(
-  mode: ComposerMode,
-  scope: ComposerScope,
-  paused: boolean,
-) {
-  const examples = composerExamples(mode, scope);
-  const key = `${mode}:${scope}`;
-  const [cycle, setCycle] = useState(key);
+export function useTypingExample(paused: boolean) {
+  const examples = COMPOSER_EXAMPLES;
   const [ghost, setGhost] = useState<GhostState>({
     index: 0,
     shown: "",
     phase: "typing",
   });
   const [animate, setAnimate] = useState(false);
-
-  let active = ghost;
-  if (cycle !== key) {
-    active = { index: 0, shown: "", phase: "typing" };
-    setCycle(key);
-    setGhost(active);
-  }
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -51,17 +36,17 @@ export function useTypingExample(
       setAnimate(false);
       return;
     }
-    const delay = ghostDelay(active);
+    const delay = ghostDelay(ghost);
     const id = window.setTimeout(() => {
-      setGhost(advanceGhost(active, examples));
+      setGhost((current) => advanceGhost(current, examples));
     }, delay);
     return () => window.clearTimeout(id);
-  }, [active, animate, examples, paused]);
+  }, [ghost, animate, paused]);
 
   return fieldHint({
     animate,
     paused,
     examples,
-    shown: active.shown,
+    shown: ghost.shown,
   });
 }

@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  BarChart3,
-  Lightbulb,
-  Loader2,
-  Scale,
-  Search,
-  Send,
-  Sparkles,
-  TrendingUp,
-} from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
@@ -22,6 +13,7 @@ import {
 import {
   type AssumptionWhy,
   assumptionLine,
+  bookCountLine,
   contextLine,
   type DeskCompany,
   type DeskLine,
@@ -31,12 +23,7 @@ import {
   nothingOnFile,
   parseDeskTurn,
 } from "@/lib/deskTurn";
-import {
-  COMPOSER_MODES,
-  type ComposerMode,
-  type ComposerScope,
-  FINNIE_GREETING,
-} from "@/ui/composer";
+import { FINNIE_GREETING } from "@/ui/composer";
 import { useTypingExample } from "@/ui/typingExample";
 import { ASK_WAIT_SLOW_MS, askFailureCopy, askWaitCopy } from "./ask/status";
 import { askFiling } from "./askClient";
@@ -61,7 +48,8 @@ type Shown =
       href: string | null;
       link: string | null;
     }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  | { kind: "book"; text: string; names: DeskCompany[] };
 
 interface Turn {
   id: number;
@@ -76,6 +64,7 @@ interface Turn {
  */
 export function Desk({
   companies,
+  portfolio = [],
   act = [],
   watch = [],
   filedAway = 0,
@@ -85,6 +74,8 @@ export function Desk({
   onTurn,
 }: {
   companies: DeskCompany[];
+  /** Demo user's book. Listing questions draw this, and do not call a model. */
+  portfolio?: DeskCompany[];
   act?: DeskLine[];
   watch?: DeskLine[];
   filedAway?: number;
@@ -103,10 +94,8 @@ export function Desk({
   const slowTimer = useRef<number | null>(null);
   const [symbol, setSymbol] = useState<string | null>(initialSymbol);
   const [draft, setDraft] = useState("");
-  const [mode, setMode] = useState<ComposerMode>("ask");
-  const [scope, setScope] = useState<ComposerScope>("name");
   const [busy, setBusy] = useState(false);
-  const hint = useTypingExample(mode, scope, draft.length > 0);
+  const hint = useTypingExample(draft.length > 0);
   const [turns, setTurns] = useState<Turn[]>([]);
   const named =
     companies.find((c) => c.symbol === symbol)?.name ??
@@ -234,18 +223,23 @@ export function Desk({
   async function submit(text: string) {
     const question = text.trim() || hint.submit;
     if (!question || busy) return;
-    const focus = scope === "name" ? symbol : null;
-    let parsed = parseDeskTurn(question, companies, focus);
-    if (
-      parsed.kind === "rule" &&
-      (scope === "book" || parsed.scope === "book")
-    ) {
-      parsed = { ...parsed, scope: "book", symbol: null };
-    }
+    const parsed = parseDeskTurn(question, companies, symbol);
     if (parsed.kind === "empty") return;
     setDraft("");
     const next = nextSymbol(parsed, symbol);
     if (next !== undefined) setSymbol(next);
+
+    if (parsed.kind === "book") {
+      const names = [...portfolio].sort((a, b) =>
+        a.symbol.localeCompare(b.symbol),
+      );
+      push(
+        question,
+        { kind: "book", text: bookCountLine(names.length), names },
+        next ?? symbol,
+      );
+      return;
+    }
 
     if (parsed.kind === "vague") {
       await answerVague(question, parsed);
@@ -351,8 +345,6 @@ export function Desk({
 
       <form
         data-composer=""
-        data-mode={mode}
-        data-scope={scope}
         className="composer-dock"
         onSubmit={(event) => {
           event.preventDefault();
@@ -377,14 +369,8 @@ export function Desk({
                 autoCapitalize="off"
                 autoCorrect="off"
                 disabled={busy}
-                className={`composer-input h-11 w-full bg-transparent px-3 text-[16px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70 ${hint.ghost !== null ? "is-ghosting" : ""}`}
+                className="composer-input h-11 w-full bg-transparent px-3 text-[16px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
               />
-              {hint.ghost !== null ? (
-                <span className="composer-ghost" aria-hidden="true">
-                  {hint.ghost}
-                  <span className="composer-caret" />
-                </span>
-              ) : null}
             </div>
             <button
               type="submit"
@@ -394,51 +380,6 @@ export function Desk({
             >
               <Send size={16} strokeWidth={1.75} aria-hidden="true" />
             </button>
-          </div>
-          <div className="composer-tools">
-            <fieldset className="composer-modes">
-              <legend className="sr-only">Mode</legend>
-              {COMPOSER_MODES.map((item) => {
-                const Icon = MODE_ICON[item.id];
-                const on = mode === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-pressed={on}
-                    className="mode-btn"
-                    onClick={() => setMode(item.id)}
-                  >
-                    <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </fieldset>
-            <span className="composer-split" aria-hidden="true" />
-            <fieldset className="composer-scopes">
-              <legend className="sr-only">Scope</legend>
-              <button
-                type="button"
-                aria-pressed={scope === "name"}
-                aria-label="Name, this company"
-                className="scope-btn"
-                onClick={() => setScope("name")}
-              >
-                <Scale size={14} strokeWidth={1.75} aria-hidden="true" />
-                Name
-              </button>
-              <button
-                type="button"
-                aria-pressed={scope === "book"}
-                aria-label="Book, the portfolio"
-                className="scope-btn"
-                onClick={() => setScope("book")}
-              >
-                <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />
-                Book
-              </button>
-            </fieldset>
           </div>
         </div>
       </form>
@@ -489,13 +430,6 @@ function lineHref(parsed: DeskParse): { href: string; label: string } | null {
     return { href: "/brief", label: "The brief" };
   return null;
 }
-
-const MODE_ICON = {
-  ask: Search,
-  price: TrendingUp,
-  alerts: Lightbulb,
-  actions: BarChart3,
-} as const;
 
 function lineFor(
   parsed: DeskParse,
@@ -559,6 +493,14 @@ function TurnBody({ turn }: { turn: Turn }) {
   }
   if (shown.kind === "line") {
     return <AgentTurn text={shown.text} href={shown.href} link={shown.link} />;
+  }
+  if (shown.kind === "book") {
+    return (
+      <AgentTurn
+        text={shown.text}
+        result={shown.names.length ? <BookNames names={shown.names} /> : null}
+      />
+    );
   }
   if (shown.kind === "ask") {
     return (
@@ -656,6 +598,24 @@ function AgentTurn({
       {result ? <div className="thread-result">{result}</div> : null}
       <CardLink href={href ?? null} label={link ?? null} />
     </div>
+  );
+}
+
+export function BookNames({ names }: { names: DeskCompany[] }) {
+  return (
+    <ul className="book-names" data-book="">
+      {names.map((company) => (
+        <li key={company.symbol}>
+          <Link
+            href={`/c/${encodeURIComponent(company.symbol)}`}
+            className="book-name"
+          >
+            <span className="symbol">{company.symbol}</span>
+            <span className="book-co">{company.name}</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -22,6 +22,7 @@ import {
 
 export interface DeskFacts {
   companies: DeskCompany[];
+  portfolio: DeskCompany[];
   act: DeskLine[];
   watch: DeskLine[];
   filedAway: number;
@@ -61,7 +62,17 @@ export async function loadDeskFacts(now = Date.now()): Promise<DeskFacts> {
     ...new Set([...brief.tier1, ...brief.tier2].map((e) => e.isin)),
   ];
   const ledgers = tallyByIsin(await guidanceVerdictGroups(filingIsins));
-  const companies = await namesPromise;
+  const named = await namesPromise;
+  const held = new Set(isins);
+  const companies = named.map(({ symbol, name, aliases }) => ({
+    symbol,
+    name,
+    aliases,
+  }));
+  const portfolio = named
+    .filter((c) => held.has(c.isin))
+    .map(({ symbol, name, aliases }) => ({ symbol, name, aliases }))
+    .sort((a, b) => a.symbol.localeCompare(b.symbol));
 
   const rows: Array<DeskLine & { decision: "act" | "watch"; rank: number }> =
     [];
@@ -100,6 +111,7 @@ export async function loadDeskFacts(now = Date.now()): Promise<DeskFacts> {
 
   return {
     companies,
+    portfolio,
     act: rows
       .filter((r) => r.decision === "act")
       .map(({ symbol, sentence }) => ({ symbol, sentence })),

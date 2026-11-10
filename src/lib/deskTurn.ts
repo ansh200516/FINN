@@ -1,6 +1,6 @@
 /**
- * The desk turn. A sentence names a company, asks for one card, or
- * changes a tripwire. Rules run before any model call.
+ * Name and card parsing kept for tests. The chat turn does not use it.
+ * Finnie chooses a tool.
  */
 import { parseCompanyTurn } from "@/lib/companyTurn";
 import { classifyLiveAsk } from "@/lib/nseLive";
@@ -32,8 +32,7 @@ export type DeskParse =
   | { kind: "card"; symbol: string; text: string }
   | { kind: "live"; text: string; symbol: string | null }
   | { kind: "ask"; symbol: string; question: string }
-  | { kind: "vague"; symbol: string | null; named: boolean }
-  | { kind: "book" };
+  | { kind: "vague"; symbol: string | null; named: boolean };
 
 export const NAME_THE_COMPANY = "Which name? Try Reliance.";
 
@@ -251,43 +250,6 @@ export function formatLines(
     .join(" ");
 }
 
-function askText(raw: string): string {
-  return norm(raw).replace(/'/g, "");
-}
-
-/** "portfolio", "book", or "my names" names the whole book. */
-export function sentenceForcesBook(raw: string): boolean {
-  const n = askText(raw);
-  return (
-    /\bportfolio\b/.test(n) || /\bbook\b/.test(n) || /\bmy names\b/.test(n)
-  );
-}
-
-/** A question about the holdings, not one company and not a rule. */
-export function isPortfolioAsk(raw: string): boolean {
-  const n = askText(raw);
-  if (!n) return false;
-  if (
-    /^(?:please\s+)?(?:show(?:\s+me)?|list|tell me|give me|open|what(?:s| is)|whats)\s+(?:me\s+)?(?:all\s+)?(?:of\s+)?(?:the\s+|my\s+|our\s+)?(?:portfolio|book|names|companies|holdings)$/.test(
-      n,
-    )
-  )
-    return true;
-  if (/^(?:my|the|our)\s+(?:portfolio|book|names|holdings|companies)$/.test(n))
-    return true;
-  if (/^what do i (?:hold|own)$/.test(n)) return true;
-  if (/^what(?:s| is) in (?:my|the|our) (?:portfolio|book)$/.test(n))
-    return true;
-  if (/^(?:which|what) (?:companies|names)(?: do i (?:hold|own))?$/.test(n))
-    return true;
-  return (
-    n === "my book" ||
-    n === "my names" ||
-    n === "my portfolio" ||
-    n === "list my names"
-  );
-}
-
 export function parseDeskTurn(
   raw: string,
   companies: DeskCompany[],
@@ -295,20 +257,19 @@ export function parseDeskTurn(
 ): DeskParse {
   const text = raw.trim();
   if (!text) return { kind: "empty" };
-  const aboutBook = sentenceForcesBook(text) || isPortfolioAsk(text);
-  const hit = aboutBook ? null : findCompany(text, companies);
+  const hit = findCompany(text, companies);
   const rest = hit ? chooseRest(text, hit.start, hit.end) : text;
-  const intent = parseCompanyTurn(aboutBook ? text : rest);
+  const intent = parseCompanyTurn(rest);
   if (intent.kind === "rejected")
     return { kind: "rejected", sentence: intent.sentence };
-  if (!aboutBook && (isPhrase(rest, BRIEF) || (!hit && isPhrase(text, BRIEF))))
+  if (isPhrase(rest, BRIEF) || (!hit && isPhrase(text, BRIEF)))
     return { kind: "brief" };
-  if (!aboutBook && (isPhrase(rest, WATCH) || (!hit && isPhrase(text, WATCH))))
+  if (isPhrase(rest, WATCH) || (!hit && isPhrase(text, WATCH)))
     return { kind: "watch" };
-  if (!aboutBook && hit && (rest === "" || CONTEXT_ONLY.test(rest)))
+  if (hit && (rest === "" || CONTEXT_ONLY.test(rest)))
     return { kind: "context", symbol: hit.symbol };
 
-  if (!aboutBook && isVagueAsk(hit ? rest : text)) {
+  if (isVagueAsk(hit ? rest : text)) {
     return {
       kind: "vague",
       symbol: hit?.symbol ?? (active ? active.trim().toUpperCase() : null),
@@ -316,16 +277,14 @@ export function parseDeskTurn(
     };
   }
 
-  const peeled = aboutBook ? null : peelStatus(rest);
-  const spoken = peeled ?? (aboutBook ? text : rest);
+  const peeled = peelStatus(rest);
+  const spoken = peeled ?? rest;
   const spokenIntent = peeled ? parseCompanyTurn(spoken) : intent;
-  const symbol = aboutBook
-    ? null
-    : (hit?.symbol ?? (active ? active.trim().toUpperCase() : null));
+  const symbol = hit?.symbol ?? (active ? active.trim().toUpperCase() : null);
 
   if (spokenIntent.kind === "rule") {
     const scope: "symbol" | "book" =
-      aboutBook || spokenIntent.scope === "book" || !symbol ? "book" : "symbol";
+      spokenIntent.scope === "book" || !symbol ? "book" : "symbol";
     return {
       kind: "rule",
       symbol: scope === "symbol" ? symbol : null,
@@ -333,7 +292,6 @@ export function parseDeskTurn(
       text: spoken,
     };
   }
-  if (aboutBook) return { kind: "book" };
   if (spokenIntent.kind === "live") {
     const focus = hit?.symbol ?? (active ? active.trim().toUpperCase() : null);
     const live = classifyLiveAsk(spoken, focus);

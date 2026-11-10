@@ -269,7 +269,6 @@ describe("company thread markup", () => {
   it("opens on Finnie's greeting and the composer, with no filings menu", () => {
     const html = renderToStaticMarkup(
       createElement(Desk, {
-        companies: [{ symbol: "ITC", name: "ITC Limited", aliases: [] }],
         initialSymbol: "ITC",
         initialName: "ITC Limited",
         onTurn: () => Promise.reject(new Error("no turn")),

@@ -4,108 +4,52 @@ import { Loader2, Send } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
-  type AskChip,
-  type CompanyReply,
-  NO_PROMISES,
-  NO_RESULTS,
-  presentAsk,
-} from "@/lib/companyTurn";
-import {
-  type AssumptionWhy,
-  assumptionLine,
-  bookCountLine,
-  contextLine,
-  type DeskCompany,
-  type DeskLine,
-  type DeskParse,
-  formatLines,
-  NAME_THE_COMPANY,
-  nothingOnFile,
-  parseDeskTurn,
-} from "@/lib/deskTurn";
+  FINNIE_MODEL_DOWN,
+  type FinnieCard,
+  type FinnieTurnResult,
+} from "@/lib/finnieTypes";
 import { FINNIE_GREETING } from "@/ui/composer";
 import { useTypingExample } from "@/ui/typingExample";
-import { ASK_WAIT_SLOW_MS, askFailureCopy, askWaitCopy } from "./ask/status";
-import { askFiling } from "./askClient";
-import { AskAnswer, ReplyBody } from "./CompanyConversation";
-import { cardHref, cardLead, cardLinkLabel } from "./cardHref";
+import { ReplyBody } from "./CompanyConversation";
 
 type Shown =
-  | { kind: "pending"; ask: boolean; slow: boolean }
-  | { kind: "line"; text: string; href: string | null; link: string | null }
+  | { kind: "pending" }
   | {
-      kind: "reply";
-      reply: CompanyReply;
-      symbol: string;
-      lead: string | null;
+      kind: "finnie";
+      say: string;
+      card: FinnieCard | null;
       href: string | null;
       link: string | null;
-    }
-  | {
-      kind: "ask";
-      text: string;
-      chips: AskChip[];
-      href: string | null;
-      link: string | null;
-    }
-  | { kind: "error"; message: string }
-  | { kind: "book"; text: string; names: DeskCompany[] };
+    };
 
 interface Turn {
   id: number;
   question: string;
-  symbol: string | null;
   shown: Shown;
 }
 
 /**
- * Chat only. The brief and the company page are not this thread.
- * A sentence returns one card in the thread, then a link to the full page.
+ * Chat only. A sentence goes to Finnie. Finnie picks a tool.
+ * The thread shows one line, then the card that tool returned.
  */
 export function Desk({
-  companies,
-  portfolio = [],
-  act = [],
-  watch = [],
-  filedAway = 0,
-  checked = null,
   initialSymbol = null,
   initialName = null,
   onTurn,
 }: {
-  companies: DeskCompany[];
-  /** Demo user's book. Listing questions draw this, and do not call a model. */
-  portfolio?: DeskCompany[];
-  act?: DeskLine[];
-  watch?: DeskLine[];
-  filedAway?: number;
-  checked?: string | null;
   initialSymbol?: string | null;
   initialName?: string | null;
-  onTurn: (
-    symbol: string | null,
-    text: string,
-    scope: "symbol" | "book" | null,
-  ) => Promise<CompanyReply>;
+  onTurn: (sentence: string, focus: string | null) => Promise<FinnieTurnResult>;
 }) {
   const inputId = useId();
   const endRef = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
-  const slowTimer = useRef<number | null>(null);
   const [symbol, setSymbol] = useState<string | null>(initialSymbol);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const hint = useTypingExample(draft.length > 0);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const named =
-    companies.find((c) => c.symbol === symbol)?.name ??
-    (symbol && symbol === initialSymbol ? initialName : null);
-
-  useEffect(() => {
-    return () => {
-      if (slowTimer.current) window.clearTimeout(slowTimer.current);
-    };
-  }, []);
+  const named = symbol && symbol === initialSymbol ? initialName : null;
 
   useEffect(() => {
     if (!turns.length) return;
@@ -114,201 +58,36 @@ export function Desk({
 
   function patch(id: number, next: Shown) {
     setTurns((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, shown: next } : t)),
+      prev.map((turn) => (turn.id === id ? { ...turn, shown: next } : turn)),
     );
-  }
-
-  function push(question: string, shownTurn: Shown, nextSymbol: string | null) {
-    const id = ++seq.current;
-    setTurns((prev) => [
-      ...prev,
-      { id, question, symbol: nextSymbol, shown: shownTurn },
-    ]);
-    return id;
-  }
-
-  async function landAsk(id: number, name: string, question: string) {
-    const res = await askFiling(name, question);
-    if (!res.ok) {
-      patch(id, {
-        kind: "error",
-        message: askFailureCopy({ status: res.status, error: res.error }),
-      });
-      return;
-    }
-    const view = presentAsk({
-      answer: res.answer ?? "",
-      notInFilings: Boolean(res.notInFilings),
-      citations: res.citations ?? [],
-    });
-    const href = name ? `/c/${encodeURIComponent(name)}` : null;
-    patch(id, {
-      kind: "ask",
-      text: view.text,
-      chips: view.chips,
-      href,
-      link: href && name ? `Open ${name}` : null,
-    });
-  }
-
-  async function answerVague(
-    question: string,
-    parsed: Extract<DeskParse, { kind: "vague" }>,
-  ) {
-    const picked = parsed.symbol ?? act[0]?.symbol ?? watch[0]?.symbol ?? null;
-    const why: AssumptionWhy = parsed.named
-      ? "named"
-      : parsed.symbol
-        ? "open"
-        : "brief";
-    if (!picked) {
-      push(
-        question,
-        {
-          kind: "line",
-          text: "Name a company. Nothing specific is on the brief.",
-          href: "/brief",
-          link: "The brief",
-        },
-        symbol,
-      );
-      return;
-    }
-    setSymbol(picked);
-    const id = push(
-      question,
-      { kind: "pending", ask: false, slow: false },
-      picked,
-    );
-    setBusy(true);
-    try {
-      const results = await onTurn(picked, "results", null);
-      if (results.kind === "results" && results.card) {
-        patch(
-          id,
-          replyShown(results, picked, assumptionLine(picked, why, "results")),
-        );
-        return;
-      }
-      if (results.kind !== "results") {
-        patch(id, replyShown(results, picked, null));
-        return;
-      }
-      const promises = await onTurn(picked, "promises", null);
-      if (promises.kind === "promises" && promises.rows.length) {
-        patch(
-          id,
-          replyShown(promises, picked, assumptionLine(picked, why, "promises")),
-        );
-        return;
-      }
-      patch(id, {
-        kind: "line",
-        text: nothingOnFile(picked, why),
-        href: `/c/${encodeURIComponent(picked)}`,
-        link: `Open ${picked}`,
-      });
-    } catch (e) {
-      patch(id, {
-        kind: "error",
-        message: askFailureCopy({
-          error: e instanceof Error ? e.message : null,
-        }),
-      });
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function submit(text: string) {
     const question = text.trim() || hint.submit;
     if (!question || busy) return;
-    const parsed = parseDeskTurn(question, companies, symbol);
-    if (parsed.kind === "empty") return;
     setDraft("");
-    const next = nextSymbol(parsed, symbol);
-    if (next !== undefined) setSymbol(next);
-
-    if (parsed.kind === "book") {
-      const names = [...portfolio].sort((a, b) =>
-        a.symbol.localeCompare(b.symbol),
-      );
-      push(
-        question,
-        { kind: "book", text: bookCountLine(names.length), names },
-        next ?? symbol,
-      );
-      return;
-    }
-
-    if (parsed.kind === "vague") {
-      await answerVague(question, parsed);
-      return;
-    }
-
-    if (
-      parsed.kind === "context" ||
-      parsed.kind === "brief" ||
-      parsed.kind === "watch" ||
-      parsed.kind === "need-company" ||
-      parsed.kind === "rejected"
-    ) {
-      const jump = lineHref(parsed);
-      push(
-        question,
-        {
-          kind: "line",
-          text: lineFor(parsed, question, act, watch, filedAway, checked),
-          href: jump?.href ?? null,
-          link: jump?.label ?? null,
-        },
-        next ?? symbol,
-      );
-      return;
-    }
-
-    const asking = parsed.kind === "ask";
-    const shownSymbol =
-      "symbol" in parsed && parsed.symbol ? parsed.symbol : (next ?? symbol);
-    const id = push(
-      question,
-      { kind: "pending", ask: asking, slow: false },
-      shownSymbol,
-    );
+    const id = ++seq.current;
+    setTurns((prev) => [...prev, { id, question, shown: { kind: "pending" } }]);
     setBusy(true);
-    if (asking) {
-      slowTimer.current = window.setTimeout(() => {
-        setTurns((prev) =>
-          prev.map((t) =>
-            t.id === id && t.shown.kind === "pending"
-              ? { ...t, shown: { kind: "pending", ask: true, slow: true } }
-              : t,
-          ),
-        );
-      }, ASK_WAIT_SLOW_MS);
-    }
     try {
-      if (parsed.kind === "ask") {
-        await landAsk(id, parsed.symbol, parsed.question);
-        return;
-      }
-      const ruleScope = parsed.kind === "rule" ? parsed.scope : null;
-      const target = parsed.kind === "rule" ? parsed.symbol : parsed.symbol;
-      const reply = await onTurn(target, parsed.text, ruleScope);
-      if (reply.kind === "ask") {
-        await landAsk(id, target ?? "", question);
-        return;
-      }
-      patch(id, replyShown(reply, target ?? symbol ?? "", cardLead(reply)));
-    } catch (e) {
+      const res = await onTurn(question, symbol);
+      if (res.symbol) setSymbol(res.symbol);
       patch(id, {
-        kind: "error",
-        message: askFailureCopy({
-          error: e instanceof Error ? e.message : null,
-        }),
+        kind: "finnie",
+        say: res.say,
+        card: res.card,
+        href: res.href,
+        link: res.link,
+      });
+    } catch {
+      patch(id, {
+        kind: "finnie",
+        say: FINNIE_MODEL_DOWN,
+        card: null,
+        href: null,
+        link: null,
       });
     } finally {
-      if (slowTimer.current) window.clearTimeout(slowTimer.current);
       setBusy(false);
     }
   }
@@ -387,188 +166,31 @@ export function Desk({
   );
 }
 
-function replyShown(
-  reply: CompanyReply,
-  symbol: string,
-  lead: string | null,
-): Shown {
-  const href = cardHref(reply, symbol);
-  return {
-    kind: "reply",
-    reply,
-    symbol,
-    lead,
-    href,
-    link: href ? cardLinkLabel(href, symbol) : null,
-  };
-}
-
-function nextSymbol(
-  parsed: DeskParse,
-  current: string | null,
-): string | null | undefined {
-  if (parsed.kind === "vague") return parsed.symbol ?? current;
-  if (parsed.kind === "live") return parsed.symbol ?? current;
-  if (
-    parsed.kind === "context" ||
-    parsed.kind === "card" ||
-    parsed.kind === "ask"
-  )
-    return parsed.symbol;
-  if (parsed.kind === "rule") return parsed.symbol ?? current;
-  return undefined;
-}
-
-function lineHref(parsed: DeskParse): { href: string; label: string } | null {
-  if (parsed.kind === "context") {
-    return {
-      href: `/c/${encodeURIComponent(parsed.symbol)}`,
-      label: `Open ${parsed.symbol}`,
-    };
-  }
-  if (parsed.kind === "brief" || parsed.kind === "watch")
-    return { href: "/brief", label: "The brief" };
-  return null;
-}
-
-function lineFor(
-  parsed: DeskParse,
-  question: string,
-  act: DeskLine[],
-  watch: DeskLine[],
-  filedAway: number,
-  checked: string | null,
-): string {
-  const body = localLine(parsed, act, watch, filedAway, checked);
-  if (parsed.kind === "brief" && /\bpromise/.test(question.toLowerCase()))
-    return `Promises are scored per company. ${body}`;
-  return body;
-}
-
-function localLine(
-  parsed: DeskParse,
-  act: DeskLine[],
-  watch: DeskLine[],
-  filedAway: number,
-  checked: string | null,
-): string {
-  if (parsed.kind === "context") return contextLine(parsed.symbol);
-  if (parsed.kind === "need-company") return NAME_THE_COMPANY;
-  if (parsed.kind === "rejected") return parsed.sentence;
-  if (parsed.kind === "brief") {
-    const body = formatLines(
-      (n) => `${n} to act on.`,
-      "Nothing to act on.",
-      act,
-    );
-    const extra = [filedAway ? `${filedAway} filed away` : null, checked]
-      .filter(Boolean)
-      .join(" · ");
-    return extra ? `${body} ${extra}` : body;
-  }
-  if (parsed.kind === "watch")
-    return formatLines((n) => `${n} to watch.`, "Nothing to watch.", watch);
-  return NAME_THE_COMPANY;
-}
-
 function TurnBody({ turn }: { turn: Turn }) {
   const shown = turn.shown;
   if (shown.kind === "pending") {
     return (
       <p className="agent-status">
         <Loader2 className="animate-spin" size={14} aria-hidden="true" />
-        <span>
-          {shown.ask
-            ? askWaitCopy(
-                turn.symbol ?? "the company",
-                shown.slow ? ASK_WAIT_SLOW_MS : 0,
-              )
-            : "Looking."}
-        </span>
+        <span>Looking.</span>
       </p>
     );
   }
-  if (shown.kind === "error") {
-    return <AgentTurn text={shown.message} tone="error" />;
-  }
-  if (shown.kind === "line") {
-    return <AgentTurn text={shown.text} href={shown.href} link={shown.link} />;
-  }
-  if (shown.kind === "book") {
-    return (
-      <AgentTurn
-        text={shown.text}
-        result={shown.names.length ? <BookNames names={shown.names} /> : null}
-      />
-    );
-  }
-  if (shown.kind === "ask") {
-    return (
-      <AgentTurn
-        text={shown.text}
-        href={shown.href}
-        link={shown.link}
-        result={
-          shown.chips.length ? <AskAnswer text="" chips={shown.chips} /> : null
-        }
-      />
-    );
-  }
-  if (shown.kind === "reply") {
-    const prose = shown.lead ?? replyProse(shown.reply);
-    return (
-      <AgentTurn
-        text={prose}
-        href={shown.href}
-        link={shown.link}
-        tone={shown.reply.kind === "error" ? "error" : "agent"}
-        result={replyResult(shown.reply, shown.symbol)}
-      />
-    );
-  }
-  return null;
+  return (
+    <AgentTurn
+      text={shown.say}
+      href={shown.href}
+      link={shown.link}
+      result={cardNode(shown.card)}
+    />
+  );
 }
 
-/** The one sentence above a structured result. Null when the result is the sentence. */
-function replyProse(reply: CompanyReply): string | null {
-  switch (reply.kind) {
-    case "rule":
-    case "rejected":
-      return reply.sentence;
-    case "error":
-      return reply.message;
-    case "results":
-      return reply.card ? null : NO_RESULTS;
-    case "promises":
-      return reply.rows.length ? null : NO_PROMISES;
-    case "nse":
-      return reply.headline;
-    case "reading":
-      return reply.block.verdict || reply.block.title;
-    default:
-      return null;
-  }
-}
-
-function replyResult(reply: CompanyReply, symbol: string) {
-  switch (reply.kind) {
-    case "results":
-      return reply.card ? <ReplyBody reply={reply} symbol={symbol} /> : null;
-    case "promises":
-      return reply.rows.length ? (
-        <ReplyBody reply={reply} symbol={symbol} />
-      ) : null;
-    case "reading":
-      return <ReplyBody reply={reply} symbol={symbol} />;
-    case "nse":
-      return (
-        <div data-source="NSE">
-          <p className="receipt">{reply.note}</p>
-        </div>
-      );
-    default:
-      return null;
-  }
+function cardNode(card: FinnieCard | null): ReactNode {
+  if (!card) return null;
+  if (card.kind === "portfolio")
+    return card.names.length ? <BookNames names={card.names} /> : null;
+  return <ReplyBody reply={card.reply} symbol={card.symbol} />;
 }
 
 function AgentTurn({
@@ -576,32 +198,26 @@ function AgentTurn({
   result = null,
   href = null,
   link = null,
-  tone = "agent",
 }: {
   text: string | null;
   result?: ReactNode;
   href?: string | null;
   link?: string | null;
-  tone?: "agent" | "error";
 }) {
   return (
     <div className="flex min-w-0 flex-col items-start gap-2">
-      {text ? (
-        <div
-          className={
-            tone === "error" ? "bubble-agent bubble-error" : "bubble-agent"
-          }
-        >
-          {text}
-        </div>
-      ) : null}
+      {text ? <div className="bubble-agent">{text}</div> : null}
       {result ? <div className="thread-result">{result}</div> : null}
-      <CardLink href={href ?? null} label={link ?? null} />
+      <CardLink href={href} label={link} />
     </div>
   );
 }
 
-export function BookNames({ names }: { names: DeskCompany[] }) {
+export function BookNames({
+  names,
+}: {
+  names: Array<{ symbol: string; name: string; aliases: string[] }>;
+}) {
   return (
     <ul className="book-names" data-book="">
       {names.map((company) => (

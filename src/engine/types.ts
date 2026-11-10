@@ -443,6 +443,7 @@ export const LLM_TASKS = [
   "narrative_vs_numbers",
   "bull_bear",
   "ask",
+  "finnie",
   "smoke",
 ] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];

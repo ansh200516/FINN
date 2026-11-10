@@ -241,20 +241,19 @@ describe("parseDeskTurn", () => {
     });
   });
 
-  it("lists the book for a portfolio question, even when a name is in focus", () => {
+  it("does not list the book just because the sentence says portfolio", () => {
     for (const sentence of [
       "whats in my portfolio",
       "what's in my portfolio",
       "What’s in my portfolio?",
       "my book",
+      "add PIIND to my portfolio",
       "which companies",
       "what do I hold",
       "list my names",
     ]) {
-      expect(parseDeskTurn(sentence, book, "RELIANCE")).toEqual({
-        kind: "book",
-      });
-      expect(parseDeskTurn(sentence, book, null)).toEqual({ kind: "book" });
+      expect(parseDeskTurn(sentence, book, "RELIANCE").kind).not.toBe("book");
+      expect(parseDeskTurn(sentence, book, null).kind).not.toBe("book");
     }
     expect(parseDeskTurn("results", book, null)).toEqual({
       kind: "need-company",
@@ -321,19 +320,8 @@ function amberBook(): DeskCompany[] {
 
 describe("desk markup", () => {
   it("opens on Finnie's greeting and a composer, not the filings", () => {
-    const act = ["One.", "Two.", "Three.", "Fourth stays off the tape."].map(
-      (sentence, i) => ({
-        symbol: `N${i}`,
-        sentence,
-      }),
-    );
     const html = renderToStaticMarkup(
       createElement(Desk, {
-        act,
-        watch: [{ symbol: "ITC", sentence: "Results filed." }],
-        filedAway: 14,
-        checked: "checked NSE 15:04 IST",
-        companies: book,
         onTurn: () => Promise.reject(new Error("no turn")),
       }),
     );

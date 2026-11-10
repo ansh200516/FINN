@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { deskTurn } from "@/app/c/[symbol]/actions";
-import { loadDeskFacts } from "@/lib/deskFacts";
 import { Desk } from "@/ui/Desk";
+import { finnieTurn } from "./actions";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export const metadata: Metadata = { title: "Chat" };
 
-export default async function ChatPage() {
-  const facts = await loadDeskFacts();
+export default function ChatPage() {
   return (
     <main className="flex-1">
       <header className="gutter pt-4">
@@ -17,15 +16,7 @@ export default async function ChatPage() {
           <p className="eyebrow text-ink">Chat</p>
         </div>
       </header>
-      <Desk
-        companies={facts.companies}
-        portfolio={facts.portfolio}
-        act={facts.act}
-        watch={facts.watch}
-        filedAway={facts.filedAway}
-        checked={facts.checked}
-        onTurn={deskTurn}
-      />
+      <Desk onTurn={finnieTurn} />
     </main>
   );
 }

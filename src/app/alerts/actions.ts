@@ -172,6 +172,7 @@ export async function saveTripwires(
   }
   revalidatePath("/alerts");
   revalidatePath("/");
+  revalidatePath("/brief");
   // the brief's anomaly strip uses the saved thresholds
   await invalidateBrief();
   return { ok: true, savedAt: now };

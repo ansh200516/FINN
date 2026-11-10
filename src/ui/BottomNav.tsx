@@ -55,9 +55,10 @@ function Glyph({ name }: { name: string }) {
 
 const TABS = [
   {
-    href: "/",
+    href: "/brief",
     label: "Brief",
-    match: (p: string) => p === "/" || p.startsWith("/e/"),
+    match: (p: string) =>
+      p === "/brief" || p.startsWith("/brief/") || p.startsWith("/e/"),
   },
   {
     href: "/c",

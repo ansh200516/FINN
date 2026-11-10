@@ -14,7 +14,7 @@ export default function NotFound() {
       </header>
       <div className="gutter mt-5 flex flex-wrap gap-2">
         <Link
-          href="/"
+          href="/brief"
           className="hit inline-flex items-center rounded-[var(--r-chip)] bg-ink px-4 text-bg small font-medium"
         >
           Back to the brief

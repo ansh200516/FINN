@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /**
- * Eyebrow (mono caps) · serif dateline sentence · deck line.
+ * Eyebrow (mono caps) · sans dateline sentence · deck line.
  * The dateline is the editor's verdict, ≤ 8 words; the deck is mono meta.
  */
 export function Dateline({

@@ -28,7 +28,7 @@ export function WindowScrubber({
         {PRESETS.map((p) => (
           <a
             key={p.key}
-            href={`/?w=${p.key}`}
+            href={`/brief?w=${p.key}`}
             aria-current={active === p.key ? "true" : undefined}
             className="no-callout"
           >
@@ -36,7 +36,7 @@ export function WindowScrubber({
           </a>
         ))}
         <a
-          href="/?w=close"
+          href="/brief?w=close"
           aria-current={window.preset === "close" ? "true" : undefined}
           className="no-callout"
         >
@@ -53,7 +53,7 @@ export function WindowScrubber({
             : "Custom range"}
         </summary>
         <form
-          action="/"
+          action="/brief"
           method="get"
           className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2 items-end"
         >

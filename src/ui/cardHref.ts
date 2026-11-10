@@ -24,7 +24,7 @@ export function cardHref(reply: CompanyReply, symbol: string): string | null {
 export function cardLinkLabel(href: string, symbol: string): string {
   if (href.startsWith("/alerts")) return "Alerts";
   if (href.startsWith("/e/")) return "The filing";
-  if (href === "/" || href.startsWith("/?")) return "The brief";
+  if (href === "/brief" || href.startsWith("/brief?")) return "The brief";
   if (href.includes("#ledger")) return "Promise ledger";
   if (href.includes("#results")) return "Full results";
   if (href.includes("#reading-")) return "From the filings";

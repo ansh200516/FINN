@@ -95,7 +95,21 @@ describe("classifyLiveAsk", () => {
     expect(
       classifyLiveAsk("compare nifty and bank nifty on 6 october 2026", null),
     ).toBeNull();
-    expect(classifyLiveAsk("infy dividend", "ITC")).toBeNull();
+    expect(classifyLiveAsk("infy dividend", "ITC")).toEqual({
+      kind: "actions",
+      symbol: "INFY",
+      scope: "all",
+    });
+    expect(classifyLiveAsk("reliance dividends", null)).toEqual({
+      kind: "actions",
+      symbol: "RELIANCE",
+      scope: "all",
+    });
+    expect(classifyLiveAsk("dividends", "RELIANCE")).toEqual({
+      kind: "actions",
+      symbol: "RELIANCE",
+      scope: "all",
+    });
     expect(classifyLiveAsk("reliance price", null)?.kind).toBe("quote");
   });
 });

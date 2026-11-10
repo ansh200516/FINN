@@ -1,6 +1,15 @@
 "use client";
 
-import { Loader2, Send } from "lucide-react";
+import {
+  BarChart3,
+  Lightbulb,
+  Loader2,
+  Scale,
+  Search,
+  Send,
+  Sparkles,
+  TrendingUp,
+} from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
@@ -23,6 +32,12 @@ import {
   nothingOnFile,
   parseDeskTurn,
 } from "@/lib/deskTurn";
+import {
+  COMPOSER_MODES,
+  type ComposerMode,
+  type ComposerScope,
+  composerExample,
+} from "@/ui/composer";
 import { ASK_WAIT_SLOW_MS, askFailureCopy, askWaitCopy } from "./ask/status";
 import { askFiling } from "./askClient";
 import { AskAnswer, ReplyBody } from "./CompanyConversation";
@@ -88,7 +103,10 @@ export function Desk({
   const slowTimer = useRef<number | null>(null);
   const [symbol, setSymbol] = useState<string | null>(initialSymbol);
   const [draft, setDraft] = useState("");
+  const [mode, setMode] = useState<ComposerMode>("ask");
+  const [scope, setScope] = useState<ComposerScope>("name");
   const [busy, setBusy] = useState(false);
+  const example = composerExample(mode, scope);
   const [turns, setTurns] = useState<Turn[]>([]);
   const named =
     companies.find((c) => c.symbol === symbol)?.name ??
@@ -160,7 +178,7 @@ export function Desk({
         {
           kind: "line",
           text: "Name a company. Nothing specific is on the brief.",
-          href: "/",
+          href: "/brief",
           link: "The brief",
         },
         symbol,
@@ -214,9 +232,16 @@ export function Desk({
   }
 
   async function submit(text: string) {
-    const question = text.trim();
+    const question = text.trim() || example;
     if (!question || busy) return;
-    const parsed = parseDeskTurn(question, companies, symbol);
+    const focus = scope === "name" ? symbol : null;
+    let parsed = parseDeskTurn(question, companies, focus);
+    if (
+      parsed.kind === "rule" &&
+      (scope === "book" || parsed.scope === "book")
+    ) {
+      parsed = { ...parsed, scope: "book", symbol: null };
+    }
     if (parsed.kind === "empty") return;
     setDraft("");
     const next = nextSymbol(parsed, symbol);
@@ -239,7 +264,7 @@ export function Desk({
         question,
         {
           kind: "line",
-          text: localLine(parsed, act, watch, filedAway, checked),
+          text: lineFor(parsed, question, act, watch, filedAway, checked),
           href: jump?.href ?? null,
           link: jump?.label ?? null,
         },
@@ -249,12 +274,12 @@ export function Desk({
     }
 
     const asking = parsed.kind === "ask";
-    const focus =
+    const shownSymbol =
       "symbol" in parsed && parsed.symbol ? parsed.symbol : (next ?? symbol);
     const id = push(
       question,
       { kind: "pending", ask: asking, slow: false },
-      focus,
+      shownSymbol,
     );
     setBusy(true);
     if (asking) {
@@ -273,9 +298,9 @@ export function Desk({
         await landAsk(id, parsed.symbol, parsed.question);
         return;
       }
-      const scope = parsed.kind === "rule" ? parsed.scope : null;
+      const ruleScope = parsed.kind === "rule" ? parsed.scope : null;
       const target = parsed.kind === "rule" ? parsed.symbol : parsed.symbol;
-      const reply = await onTurn(target, parsed.text, scope);
+      const reply = await onTurn(target, parsed.text, ruleScope);
       if (reply.kind === "ask") {
         await landAsk(id, target ?? "", question);
         return;
@@ -298,7 +323,7 @@ export function Desk({
     <>
       <section className="pb-4" aria-label="Chat">
         <div
-          className="gutter mt-4 pb-20"
+          className="chat-log gutter mt-4"
           role="log"
           aria-live="polite"
           aria-relevant="additions"
@@ -327,6 +352,8 @@ export function Desk({
 
       <form
         data-composer=""
+        data-mode={mode}
+        data-scope={scope}
         className="composer-dock"
         onSubmit={(event) => {
           event.preventDefault();
@@ -334,31 +361,78 @@ export function Desk({
         }}
       >
         <div className="composer-box">
-          <label className="sr-only" htmlFor={inputId}>
-            {symbol ? `Ask ${symbol}` : "Ask"}
-          </label>
-          {symbol ? <span className="ticker-chip">{symbol}</span> : null}
-          <input
-            id={inputId}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder={symbol ? `Ask ${symbol}` : "Ask"}
-            maxLength={500}
-            enterKeyHint="send"
-            autoComplete="off"
-            autoCapitalize="off"
-            autoCorrect="off"
-            disabled={busy}
-            className="h-11 min-w-0 flex-1 bg-transparent px-3 text-[16px] font-light text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
-          />
-          <button
-            type="submit"
-            disabled={busy || !draft.trim()}
-            className="composer-send"
-            aria-label="Send"
-          >
-            <Send size={16} strokeWidth={1.75} aria-hidden="true" />
-          </button>
+          <div className="composer-field">
+            <label className="sr-only" htmlFor={inputId}>
+              {example}
+            </label>
+            {symbol ? <span className="ticker-chip">{symbol}</span> : null}
+            <input
+              id={inputId}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder={example}
+              maxLength={500}
+              enterKeyHint="send"
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              disabled={busy}
+              className="h-11 min-w-0 flex-1 bg-transparent px-3 text-[16px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
+            />
+            <button
+              type="submit"
+              disabled={busy}
+              className="composer-send"
+              aria-label="Send"
+            >
+              <Send size={16} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="composer-tools">
+            <fieldset className="composer-modes">
+              <legend className="sr-only">Mode</legend>
+              {COMPOSER_MODES.map((item) => {
+                const Icon = MODE_ICON[item.id];
+                const on = mode === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={on}
+                    className="mode-btn"
+                    onClick={() => setMode(item.id)}
+                  >
+                    <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </fieldset>
+            <span className="composer-split" aria-hidden="true" />
+            <fieldset className="composer-scopes">
+              <legend className="sr-only">Scope</legend>
+              <button
+                type="button"
+                aria-pressed={scope === "name"}
+                aria-label="Name, this company"
+                className="scope-btn"
+                onClick={() => setScope("name")}
+              >
+                <Scale size={14} strokeWidth={1.75} aria-hidden="true" />
+                Name
+              </button>
+              <button
+                type="button"
+                aria-pressed={scope === "book"}
+                aria-label="Book, the portfolio"
+                className="scope-btn"
+                onClick={() => setScope("book")}
+              >
+                <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />
+                Book
+              </button>
+            </fieldset>
+          </div>
         </div>
       </form>
     </>
@@ -405,8 +479,29 @@ function lineHref(parsed: DeskParse): { href: string; label: string } | null {
     };
   }
   if (parsed.kind === "brief" || parsed.kind === "watch")
-    return { href: "/", label: "The brief" };
+    return { href: "/brief", label: "The brief" };
   return null;
+}
+
+const MODE_ICON = {
+  ask: Search,
+  price: TrendingUp,
+  alerts: Lightbulb,
+  actions: BarChart3,
+} as const;
+
+function lineFor(
+  parsed: DeskParse,
+  question: string,
+  act: DeskLine[],
+  watch: DeskLine[],
+  filedAway: number,
+  checked: string | null,
+): string {
+  const body = localLine(parsed, act, watch, filedAway, checked);
+  if (parsed.kind === "brief" && /\bpromise/.test(question.toLowerCase()))
+    return `Promises are scored per company. ${body}`;
+  return body;
 }
 
 function localLine(

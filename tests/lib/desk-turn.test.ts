@@ -214,6 +214,25 @@ describe("parseDeskTurn", () => {
     expect(parseDeskTurn("corporate actions", book, null)).toEqual({
       kind: "need-company",
     });
+    expect(parseDeskTurn("reliance dividends", book, null)).toEqual({
+      kind: "live",
+      text: "dividends",
+      symbol: "RELIANCE",
+    });
+    expect(parseDeskTurn("what did they promise", book, "ITC")).toEqual({
+      kind: "card",
+      symbol: "ITC",
+      text: "what did they promise",
+    });
+    expect(parseDeskTurn("what did they promise", book, null)).toEqual({
+      kind: "brief",
+    });
+    expect(parseDeskTurn("set a book price alert to 4%", book, "ITC")).toEqual({
+      kind: "rule",
+      scope: "book",
+      symbol: null,
+      text: "set a book price alert to 4%",
+    });
     expect(parseDeskTurn("nifty on 6 october 2026", book, "ITC")).toEqual({
       kind: "live",
       text: "nifty on 6 october 2026",
@@ -286,6 +305,13 @@ describe("desk markup", () => {
     );
     expect(html).toContain(COMPANY_EMPTY);
     expect(html).toContain('data-composer=""');
+    expect(html).toContain('placeholder="reliance results"');
+    expect(html).toContain("Ask");
+    expect(html).toContain("Price");
+    expect(html).toContain("Alerts");
+    expect(html).toContain("Actions");
+    expect(html).toContain("Name");
+    expect(html).toContain("Book");
     expect(html).not.toContain('data-card=""');
     expect(html).not.toContain("One.");
     expect(html).not.toContain("Fourth stays off the tape.");

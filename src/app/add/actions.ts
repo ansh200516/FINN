@@ -27,6 +27,7 @@ export async function startResearch(
   const r = await startResearchJob(symbol, { portfolio: opts.portfolio });
   if (r.ok && opts.portfolio) {
     revalidatePath("/");
+    revalidatePath("/brief");
     revalidatePath("/c");
     await invalidateBrief();
   }
@@ -139,6 +140,7 @@ async function addToPortfolioRow(
       .where(eq(users.id, DEMO_USER_ID));
   }
   revalidatePath("/");
+  revalidatePath("/brief");
   revalidatePath("/c");
   return { ok: true, symbol, isin, name, created, alreadyInPortfolio };
 }
@@ -169,6 +171,7 @@ export async function removeFromPortfolio(
       .where(eq(companies.isin, isin));
   }
   revalidatePath("/");
+  revalidatePath("/brief");
   revalidatePath("/c");
   return { ok: true };
 }

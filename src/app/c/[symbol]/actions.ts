@@ -178,6 +178,7 @@ async function saveRule(
   try {
     revalidatePath("/alerts");
     revalidatePath("/");
+    revalidatePath("/brief");
     await invalidateBrief();
   } catch {
     // The row is saved. The brief cache expires on its own.

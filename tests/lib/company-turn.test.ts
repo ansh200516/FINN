@@ -123,6 +123,14 @@ describe("parseCompanyTurn", () => {
       scope: "book",
       rule: { kind: "price_move", params: { pct: 4 } },
     });
+    expect(parseCompanyTurn("set a book price alert to 4%")).toEqual({
+      kind: "rule",
+      scope: "book",
+      rule: { kind: "price_move", params: { pct: 4 } },
+    });
+    expect(parseCompanyTurn("what did they promise")).toEqual({
+      kind: "promises",
+    });
     expect(
       parseCompanyTurn("always tell me about litigation for the book"),
     ).toEqual({

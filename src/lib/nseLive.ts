@@ -131,10 +131,10 @@ const MONTH_NUM: Record<string, number> = {
 };
 
 const ALL_TAIL =
-  /^(?:please\s+)?(?:(?:what are|what's|whats|show(?:\s+me)?|list|were there(?:\s+any)?|any)\s+)?(?:the\s+)?(?:recent\s+|latest\s+)?(?:corporate actions?|splits?\s+bonuses?(?:\s+or\s+dividends?)?)(?:\s+(?:for|of|on)\s+([a-z0-9&.-]{1,20}))?$/;
+  /^(?:please\s+)?(?:(?:what are|what's|whats|show(?:\s+me)?|list|were there(?:\s+any)?|any)\s+)?(?:the\s+)?(?:recent\s+|latest\s+)?(?:corporate actions?|splits?\s+bonuses?(?:\s+or\s+dividends?)?|dividends?)(?:\s+(?:for|of|on)\s+([a-z0-9&.-]{1,20}))?$/;
 
 const ALL_LEAD =
-  /^(?:please\s+)?([a-z0-9&.-]{1,20})\s+(?:corporate actions?|splits?\s+bonuses?(?:\s+or\s+dividends?)?)$/;
+  /^(?:please\s+)?([a-z0-9&.-]{1,20})\s+(?:corporate actions?|splits?\s+bonuses?(?:\s+or\s+dividends?)?|dividends?)$/;
 
 const CAP_TAIL =
   /^(?:please\s+)?(?:(?:any|check(?:\s+for)?|were there(?:\s+any)?|show(?:\s+me)?)\s+)?(?:the\s+)?(?:splits?(?:\s+or\s+bonuses?)?|bonuses?(?:\s+or\s+splits?)?|splits?\s+and\s+bonuses?|ex-?dates?|ex\s+dates?)(?:\s+(?:for|of|on)\s+([a-z0-9&.-]{1,20}))?(?:\s+too)?$/;

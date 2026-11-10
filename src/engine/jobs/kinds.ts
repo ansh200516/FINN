@@ -971,7 +971,7 @@ export function digestJobSteps(): JobStepDef<JobParams>[] {
               title: `${edition} edition · ${formatIst(now, "EEE d MMM")}`,
               body: `${b.counts.needsYou} need${b.counts.needsYou === 1 ? "s" : ""} you, ${worth} worth knowing, ${b.counts.filedAway} filed away · ${b.window.label.toLowerCase()}${b.window.widened ? " (widened)" : ""}.`,
               because: "Daily edition after the close",
-              href: "/",
+              href: "/brief",
             }),
             firedAt: now,
             deliveredViaJson: JSON.stringify({ inbox: "sent" }),

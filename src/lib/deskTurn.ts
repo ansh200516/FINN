@@ -50,6 +50,13 @@ const BRIEF = new Set([
   "what is on",
 ]);
 
+const OPEN_PROMISES = new Set([
+  "what did they promise",
+  "what did management promise",
+  "what'd they promise",
+  "what they promised",
+]);
+
 const WATCH = new Set([
   "what should i watch",
   "what's to watch",
@@ -293,6 +300,7 @@ export function parseDeskTurn(
       return { kind: "live", text: spoken, symbol: null };
     return { kind: "need-company" };
   }
+  if (!symbol && isPhrase(spoken, OPEN_PROMISES)) return { kind: "brief" };
   if (!symbol) return { kind: "need-company" };
   if (spokenIntent.kind === "ask")
     return { kind: "ask", symbol, question: text };

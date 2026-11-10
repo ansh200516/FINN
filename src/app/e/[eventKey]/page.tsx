@@ -135,7 +135,7 @@ export default async function EventPage({
     <main className="flex-1 pb-8">
       <nav className="gutter pt-3">
         <Link
-          href="/"
+          href="/brief"
           className="hit inline-flex items-center gap-1 receipt text-accent -ml-1 pl-1"
         >
           ← Brief

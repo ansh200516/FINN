@@ -34,8 +34,8 @@ interface Turn {
 }
 
 /**
- * Chat only. A sentence goes to Finnie. Finnie calls tools, then answers
- * from what they returned. The bubble sits above those cards.
+ * Chat only. A sentence goes to Finnie with the book already loaded.
+ * The bubble is Finnie's answer. The holdings card shows when showList is set.
  */
 export function Desk({
   initialSymbol = null,

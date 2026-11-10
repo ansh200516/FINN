@@ -3,14 +3,18 @@
 import { Loader2, Send } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { NO_RESULTS } from "@/lib/companyTurn";
 import {
   FINNIE_MODEL_DOWN,
   type FinnieCard,
+  type FinnieLine,
+  type FinniePrior,
   type FinnieTurnResult,
 } from "@/lib/finnieTypes";
 import { FINNIE_GREETING } from "@/ui/composer";
 import { useTypingExample } from "@/ui/typingExample";
 import { ReplyBody } from "./CompanyConversation";
+import { ResultsGrid } from "./ResultsGrid";
 
 type Shown =
   | { kind: "pending" }
@@ -39,11 +43,16 @@ export function Desk({
 }: {
   initialSymbol?: string | null;
   initialName?: string | null;
-  onTurn: (sentence: string, focus: string | null) => Promise<FinnieTurnResult>;
+  onTurn: (
+    sentence: string,
+    focus: string | null,
+    prior?: FinniePrior | null,
+  ) => Promise<FinnieTurnResult>;
 }) {
   const inputId = useId();
   const endRef = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
+  const prior = useRef<FinniePrior | null>(null);
   const [symbol, setSymbol] = useState<string | null>(initialSymbol);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -70,8 +79,12 @@ export function Desk({
     setTurns((prev) => [...prev, { id, question, shown: { kind: "pending" } }]);
     setBusy(true);
     try {
-      const res = await onTurn(question, symbol);
-      if (res.symbol) setSymbol(res.symbol);
+      const res = await onTurn(question, symbol, prior.current);
+      prior.current = {
+        sentence: question,
+        tool: res.tools.at(-1) ?? null,
+      };
+      setSymbol(res.symbol);
       patch(id, {
         kind: "finnie",
         say: res.say,
@@ -190,7 +203,91 @@ function cardNode(card: FinnieCard | null): ReactNode {
   if (!card) return null;
   if (card.kind === "portfolio")
     return card.names.length ? <BookNames names={card.names} /> : null;
+  if (card.kind === "lines")
+    return card.lines.length ? <FactLines lines={card.lines} /> : null;
+  if (card.kind === "compare") return <CompareCard card={card} />;
+  if (card.kind === "management") return <ManagementCard card={card} />;
   return <ReplyBody reply={card.reply} symbol={card.symbol} />;
+}
+
+function FactLines({ lines }: { lines: FinnieLine[] }) {
+  return (
+    <ul className="book-names fact-lines" data-lines="">
+      {lines.map((line, index) => (
+        <li key={`${line.href}-${line.symbol}-${index}`}>
+          <Link href={line.href} className="book-name">
+            <span className="symbol">{line.symbol}</span>
+            <span className="book-co">{line.text}</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CompareCard({
+  card,
+}: {
+  card: Extract<FinnieCard, { kind: "compare" }>;
+}) {
+  return (
+    <div className="flex flex-col gap-4" data-compare="">
+      <CompareSide symbol={card.a.symbol} results={card.a.card} />
+      <CompareSide symbol={card.b.symbol} results={card.b.card} />
+    </div>
+  );
+}
+
+function CompareSide({
+  symbol,
+  results,
+}: {
+  symbol: string;
+  results: Extract<FinnieCard, { kind: "compare" }>["a"]["card"];
+}) {
+  const period = results?.fiscalLabel ?? results?.periodEnd ?? null;
+  return (
+    <div>
+      <Link
+        href={`/c/${encodeURIComponent(symbol)}#results`}
+        className="book-name"
+      >
+        <span className="symbol">{symbol}</span>
+        {period ? <span className="book-co">{period}</span> : null}
+      </Link>
+      {results ? (
+        <ResultsGrid card={results} showMeta={false} compactMeta withSpark />
+      ) : (
+        <p className="small text-ink">{NO_RESULTS}</p>
+      )}
+    </div>
+  );
+}
+
+function ManagementCard({
+  card,
+}: {
+  card: Extract<FinnieCard, { kind: "management" }>;
+}) {
+  if (!card.people.length) return null;
+  return (
+    <ul className="m-0 list-none p-0" data-management="">
+      {card.people.map((person) => (
+        <li
+          key={`${person.person}-${person.role ?? ""}-${person.action ?? ""}`}
+          className="border-b border-rule py-2 last:border-b-0"
+        >
+          <p className="small text-ink">{person.person}</p>
+          <p className="receipt mt-0.5">
+            {[person.action, person.role].filter(Boolean).join(" · ")}
+          </p>
+          {person.excerpt ? (
+            <p className="small mt-1 text-ink-2">{person.excerpt}</p>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function AgentTurn({

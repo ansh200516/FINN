@@ -1399,12 +1399,16 @@ const AlertPayload = z
 export async function getInbox(
   userId = DEMO_USER_ID,
   limit = 60,
+  opts?: { unread?: boolean },
 ): Promise<InboxItem[]> {
+  const where = opts?.unread
+    ? and(eq(t.alerts.userId, userId), isNull(t.alerts.readAt))
+    : eq(t.alerts.userId, userId);
   const rows = await db
     .select({ a: t.alerts, c: t.companies })
     .from(t.alerts)
     .leftJoin(t.companies, eq(t.alerts.isin, t.companies.isin))
-    .where(eq(t.alerts.userId, userId))
+    .where(where)
     .orderBy(desc(t.alerts.firedAt))
     .limit(limit);
   return rows.map(({ a, c }) => {

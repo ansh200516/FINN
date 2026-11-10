@@ -863,6 +863,14 @@
     border-bottom: 0;
     padding-bottom: 0;
   }
+  .fact-lines .book-name {
+    align-items: flex-start;
+  }
+  .fact-lines .book-co {
+    overflow: visible;
+    text-overflow: unset;
+    white-space: normal;
+  }
   .book-name .symbol {
     flex: 0 0 6.5rem;
     font-family: var(--font-mono);

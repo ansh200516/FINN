@@ -16,7 +16,7 @@ vi.mock("@/engine/llm/gateway", async (importOriginal) => {
 });
 
 import { db, getDb } from "@/db/client";
-import { companies, llmLedger, users } from "@/db/schema";
+import { companies, events, guidance, llmLedger, users } from "@/db/schema";
 import {
   callStructured,
   dailyCap,
@@ -160,5 +160,167 @@ describe("runFinnieTurn", () => {
     } finally {
       await db.delete(llmLedger).where(eq(llmLedger.model, name));
     }
+  });
+
+  it("returns Act lines and the watch and filed-away counts from the brief", async () => {
+    const at = Date.now() - 5 * 60 * 1000;
+    const actKey = `${PIIND}|management_change|chat`;
+    await db.insert(events).values([
+      {
+        eventKey: actKey,
+        isin: PIIND,
+        category: "management_change",
+        firstAt: at,
+        lastAt: at,
+        tier: 1,
+        cardType: "management_change",
+        cardJson: JSON.stringify({
+          title: "CFO resigns",
+          oneLiner: "The chief financial officer resigns.",
+          category: "management_change",
+          tier: 1,
+          priority: 70,
+        }),
+        announcementIdsJson: "[]",
+      },
+      {
+        eventKey: `${PIIND}|unclassified|chat`,
+        isin: PIIND,
+        category: "unclassified",
+        firstAt: at,
+        lastAt: at,
+        tier: 3,
+        cardType: "routine",
+        cardJson: JSON.stringify({
+          title: "Routine filing",
+          oneLiner: "A routine filing.",
+          category: "unclassified",
+          tier: 3,
+          priority: 1,
+        }),
+        announcementIdsJson: "[]",
+      },
+    ]);
+
+    llm
+      .mockResolvedValueOnce(
+        model({ tool: "get_brief", args: { window: "24h" } }),
+      )
+      .mockResolvedValueOnce(
+        model({ done: true, say: "1 to act on, 0 to watch, 1 filed away." }),
+      );
+
+    const result = await runFinnieTurn("what should I act on", null);
+
+    expect(result.tools).toEqual(["get_brief"]);
+    expect(result.say).toBe("1 to act on, 0 to watch, 1 filed away.");
+    expect(result.card?.kind).toBe("lines");
+    if (result.card?.kind === "lines") {
+      expect(result.card.lines.map((line) => line.symbol)).toEqual(["PIIND"]);
+      expect(result.card.lines[0]?.href).toBe(
+        `/e/${encodeURIComponent(actKey)}`,
+      );
+      expect(result.card.lines[0]?.text.toLowerCase()).toContain(
+        "chief financial officer",
+      );
+    }
+    const follow = String(llm.mock.calls[1]?.[0].prompt);
+    expect(follow).toContain('"watch":0');
+    expect(follow).toContain('"filedAway":1');
+    expect(follow).toContain("PIIND");
+    expect(follow).not.toContain("ITC");
+    expect(llm.mock.calls[0]?.[0].prompt).toContain("get_brief");
+  });
+
+  it("lists missed and cut promises and leaves unverifiable rows out", async () => {
+    await db.insert(guidance).values([
+      {
+        id: "g-miss-piind",
+        isin: PIIND,
+        docId: "doc-miss-piind",
+        quote: "We expect revenue growth of 12 percent.",
+        metric: "revenue_growth",
+        direction: "up",
+        low: 12,
+        high: 12,
+        unit: "%",
+        horizon: "FY27",
+        status: "settled",
+        verdict: "missed",
+        evidenceJson: "{}",
+      },
+      {
+        id: "g-old-piind",
+        isin: PIIND,
+        docId: "doc-old-piind",
+        quote: "Order inflow should rise.",
+        metric: "order_inflow",
+        status: "superseded",
+        verdict: "missed",
+        evidenceJson: "{}",
+      },
+      {
+        id: "g-unver-itc",
+        isin: ITC,
+        docId: "doc-unver-itc",
+        quote: "Margins should hold.",
+        metric: "ebitda_margin",
+        status: "open",
+        verdict: "unverifiable",
+        evidenceJson: "{}",
+      },
+    ]);
+
+    llm
+      .mockResolvedValueOnce(model({ tool: "missed_promises" }))
+      .mockResolvedValueOnce(
+        model({ done: true, say: "One missed promise is on the card." }),
+      );
+
+    const result = await runFinnieTurn("which promises were missed", null);
+
+    expect(result.tools).toEqual(["missed_promises"]);
+    expect(result.card?.kind).toBe("lines");
+    if (result.card?.kind === "lines") {
+      expect(result.card.lines).toHaveLength(1);
+      expect(result.card.lines[0]).toMatchObject({
+        symbol: "PIIND",
+        href: "/c/PIIND",
+      });
+      expect(result.card.lines[0]?.text).toContain("revenue growth");
+      expect(result.card.lines[0]?.text).toContain("12%");
+      expect(result.card.lines[0]?.text).toContain("missed");
+      expect(result.card.lines[0]?.text).not.toContain("ebitda");
+    }
+    const follow = String(llm.mock.calls[1]?.[0].prompt);
+    expect(follow).toContain("revenue growth");
+    expect(follow).not.toContain("unverifiable");
+    expect(follow).not.toContain("ebitda_margin");
+    expect(follow).not.toContain("order_inflow");
+  });
+
+  it("sends the previous sentence and tool so a follow-up reuses the symbol", async () => {
+    llm
+      .mockResolvedValueOnce(model({ tool: "get_promises" }))
+      .mockResolvedValueOnce(
+        model({ done: true, say: "PIIND’s promises are the card." }),
+      );
+
+    const result = await runFinnieTurn("and its promises", "PIIND", {
+      sentence: "show me PIIND results",
+      tool: "get_results",
+    });
+
+    expect(result.tools).toEqual(["get_promises"]);
+    expect(result.symbol).toBe("PIIND");
+    const first = String(llm.mock.calls[0]?.[0].prompt);
+    expect(first).toContain("Sentence: and its promises");
+    expect(first).toContain("Previous sentence: show me PIIND results");
+    expect(first).toContain("Previous tool: get_results");
+    expect(first).toContain("Focus: PIIND");
+    expect(llm).toHaveBeenCalled();
+    expect(llm.mock.calls.every((call) => call[0].task === "finnie")).toBe(
+      true,
+    );
   });
 });

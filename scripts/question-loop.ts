@@ -373,6 +373,11 @@ function quoteStrings(value: unknown, into: string[]): void {
   }
 }
 
+/** Quoted spans are management text. A "target" inside them is not a rating. */
+function stripQuotes(say: string): string {
+  return say.replace(/[“"][^“"]{8,}[”"]/g, " ");
+}
+
 /** A management quote copied from the tool payload is not the model's advice. */
 function withoutPayloadQuotes(
   say: string,
@@ -395,7 +400,7 @@ export function givesAdvice(
   say: string,
   facts: Array<{ data: unknown }> = [],
 ): boolean {
-  const text = withoutPayloadQuotes(say, facts).toLowerCase();
+  const text = stripQuotes(withoutPayloadQuotes(say, facts)).toLowerCase();
   const explicit =
     /\b(you should (buy|sell)|i recommend (a |you )?(buy|sell|put)|strong (buy|sell)|target price (is|of|at) \d|price target (is|of|at) \d|buy the (stock|shares)|sell the (stock|shares)|go long|go short)\b/;
   const hedged =

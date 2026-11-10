@@ -19,6 +19,7 @@ import {
   matchCompanyName,
   mentionsToken,
 } from "@/lib/companyMatch";
+import { repairSay } from "@/lib/finnieSay";
 import { executeTool } from "@/lib/finnieTools";
 import {
   FINNIE_CHAIN_CAP,
@@ -291,13 +292,18 @@ export async function runFinnieTurn(
       }
       say = dropUngroundedSentences(say, text, facts);
     }
+    say = repairSay(say, facts);
+    if (ungroundedNumbers(say, text, facts).length) {
+      const kept = dropUngroundedSentences(say, text, facts);
+      if (kept) say = kept;
+    }
   } catch (error) {
     if (error instanceof LlmBudgetExhausted)
       return present(FINNIE_OUT_OF_CALLS, ran, open);
     return present(FINNIE_MODEL_DOWN, ran, open);
   }
   if (!say) return present(FINNIE_NO_MATCH, ran, open);
-  return present(say, ran, open);
+  return ensureCompanyLinks(present(say, ran, open), named);
 }
 
 const RETRY_PAUSE_MS = 2_500;
@@ -471,6 +477,42 @@ function formatThread(memory: FinnieMemory[]): string {
     if (turn.say) lines.push(`Finnie: ${turn.say}`);
   }
   return lines.join("\n");
+}
+
+function linksCompany(href: string, symbol: string): boolean {
+  const page = `/c/${encodeURIComponent(symbol)}`;
+  return (
+    href === page ||
+    href.startsWith(`${page}/`) ||
+    href.startsWith(`${page}#`) ||
+    href.startsWith(`${page}?`)
+  );
+}
+
+/** A company named in the sentence keeps a /c/ page even when a tool errors. */
+function ensureCompanyLinks(
+  result: FinnieTurnResult,
+  symbols: string[],
+): FinnieTurnResult {
+  if (!symbols.length) return result;
+  const links = [...result.links];
+  let href = result.href;
+  let symbol = result.symbol;
+  for (const company of symbols) {
+    const page = `/c/${encodeURIComponent(company)}`;
+    const hrefs = [href, ...links.map((link) => link.href), ...result.pages];
+    const has = hrefs.some(
+      (item) => typeof item === "string" && linksCompany(item, company),
+    );
+    if (!has && links.length < LINK_CAP) {
+      links.push({ href: page, label: company });
+    }
+    if (!href) href = page;
+  }
+  if (symbols.length === 1 && symbols[0] && symbol !== symbols[0]) {
+    symbol = symbols[0];
+  }
+  return { ...result, links, href, symbol };
 }
 
 function present(

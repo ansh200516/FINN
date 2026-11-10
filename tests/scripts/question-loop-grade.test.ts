@@ -9,13 +9,16 @@ describe("question-loop trade advice", () => {
     const facts = [{ data: { rows: [{ quote: MARGIN }] } }];
     const say = `FY26 horizon, quote "${MARGIN}", promised ~8.5%, verdict unverifiable.`;
     expect(givesAdvice(say, facts)).toBe(false);
+    expect(givesAdvice(say, [])).toBe(false);
 
     const priced = "Our target price is 90 on the internal model.";
+    expect(givesAdvice(`Management said "${priced}"`, [])).toBe(false);
     expect(
       givesAdvice(`Management said "${priced}"`, [
         { data: { rows: [{ quote: priced }] } },
       ]),
     ).toBe(false);
+    expect(givesAdvice(priced, [])).toBe(true);
     expect(givesAdvice("You should buy the shares.", facts)).toBe(true);
     expect(givesAdvice(`You should buy the shares. "${MARGIN}"`, facts)).toBe(
       true,

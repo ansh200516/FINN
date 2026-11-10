@@ -21,6 +21,7 @@ vi.mock("@/engine/llm/gateway", async (importOriginal) => {
 import { db, getDb } from "@/db/client";
 import {
   companies,
+  events,
   guidance,
   llmLedger,
   resultsQuarters,
@@ -269,7 +270,11 @@ describe("runFinnieTurn", () => {
       expect(kept?.quote).toContain("eleven percent");
       expect(kept?.delivered).toContain("11");
       expect(second).not.toContain("SUPERSEDED_MARKER");
-      expect(result.say).toBe(say);
+      expect(result.say).toContain(say);
+      expect(result.say).toContain("Q3 FY25");
+      expect(result.say).toContain("Q4 FY25");
+      expect(result.say).toContain("Q1 FY26");
+      expect(result.say).toContain("Q2 FY26");
       expect(result.say).not.toContain("the results are Q2");
       expect(result.tools).toEqual(["get_results", "get_promises"]);
       expect(result.pages).toEqual(["/c/RELIANCE", "/c/RELIANCE"]);
@@ -658,6 +663,150 @@ describe("runFinnieTurn", () => {
       expect(hrefs).toContain("/c/VOLTAS");
     } finally {
       await db.delete(companies).where(eq(companies.isin, voltas));
+      await db.delete(companies).where(eq(companies.isin, airtel));
+    }
+  });
+
+  it("drops an invented book total and keeps the sentence without it", async () => {
+    const invented =
+      "Over the last 7 days, the book filed 38 total items, with 13 in the brief and 25 filed away. Those that deserve attention are on the brief.";
+    llm.mockResolvedValueOnce(
+      model({ calls: [{ tool: "get_brief", args: { window: "7d" } }] }),
+    );
+    llm.mockResolvedValueOnce(model({ say: invented }));
+    llm.mockResolvedValueOnce(model({ say: invented }));
+    const result = await runFinnieTurn(
+      "What did the book file over the last 7 days, and which of those deserve attention?",
+      null,
+    );
+    expect(result.say).not.toContain("38");
+    expect(result.say.length).toBeGreaterThan(20);
+  });
+
+  it("loads Gujarat Fluorochemicals quarters when the plan says GUJFLUORO", async () => {
+    const fluoro = "INE09N301011";
+    const sentence =
+      "Gujarat Fluorochemicals across four quarters: revenue, EBITDA, profit before tax, profit after tax, both comparisons.";
+    const ends = ["2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"];
+    await db.insert(companies).values({
+      isin: fluoro,
+      nseSymbol: "FLUOROCHEM",
+      name: "Gujarat Fluorochemicals Limited",
+      aliasesJson: "[]",
+      inPortfolio: true,
+      isAdhoc: false,
+    });
+    await db.insert(resultsQuarters).values(
+      ends.map((periodEnd, i) => ({
+        isin: fluoro,
+        periodEnd,
+        basis: "consolidated",
+        source: "xbrl",
+        revenue: (100 + i * 10) * CR,
+        pat: 10 * CR,
+        checksJson: "{}",
+        updatedAt: Date.now(),
+      })),
+    );
+    try {
+      llm.mockResolvedValueOnce(
+        model({
+          calls: [
+            { tool: "get_results", args: { symbol: "GUJFLUORO", quarters: 4 } },
+          ],
+        }),
+      );
+      llm.mockResolvedValueOnce(
+        model({
+          calls: [
+            { tool: "get_results", args: { symbol: "GUJFLUORO", quarters: 4 } },
+          ],
+        }),
+      );
+      llm.mockResolvedValueOnce(
+        model({ say: "GUJFLUORO is not an NSE-listed equity symbol." }),
+      );
+      const result = await runFinnieTurn(sentence, "INOXWIND");
+      const facts = factsOf(String(llm.mock.calls.at(-1)?.[0].prompt));
+      const quarters = (
+        facts[0]?.data as { quarters?: Array<{ period: string }> }
+      ).quarters;
+      expect(quarters?.length).toBeGreaterThanOrEqual(4);
+      for (const quarter of quarters ?? []) {
+        expect(result.say).toContain(quarter.period);
+      }
+      expect(result.say).not.toMatch(/is not an NSE-listed/i);
+      expect(result.symbol).toBe("FLUOROCHEM");
+      const hrefs = [
+        result.href,
+        ...result.links.map((link) => link.href),
+        ...result.pages,
+      ];
+      expect(hrefs).toContain("/c/FLUOROCHEM");
+    } finally {
+      await db.delete(resultsQuarters).where(eq(resultsQuarters.isin, fluoro));
+      await db.delete(companies).where(eq(companies.isin, fluoro));
+    }
+  });
+
+  it("judges an Airtel filing that sits outside the last 24 hours", async () => {
+    const airtel = "INE397D01024";
+    const filed = Date.now() - 5 * 86_400_000;
+    await db.insert(companies).values({
+      isin: airtel,
+      nseSymbol: "BHARTIARTL",
+      name: "Bharti Airtel Limited",
+      aliasesJson: "[]",
+      inPortfolio: true,
+      isAdhoc: false,
+    });
+    await db.insert(events).values({
+      eventKey: "airtel-board",
+      isin: airtel,
+      category: "results",
+      firstAt: filed,
+      lastAt: filed,
+      tier: 1,
+      cardType: "results",
+      cardJson: JSON.stringify({
+        title: "Outcome of Board Meeting",
+        oneLiner: "Outcome of Board Meeting filed.",
+        priority: 80,
+      }),
+      announcementIdsJson: "[]",
+      updatedAt: Date.now(),
+    });
+    try {
+      llm.mockResolvedValueOnce(
+        model({
+          calls: [
+            {
+              tool: "get_brief",
+              args: { symbol: "BHARTIARTL", window: "24h" },
+            },
+          ],
+        }),
+      );
+      llm.mockResolvedValueOnce(
+        model({ say: "There is no filing in the window." }),
+      );
+      const result = await runFinnieTurn(
+        "A board meeting notice just for Airtel. Does that earn a card, or one line? Say which.",
+        null,
+      );
+      const facts = factsOf(String(llm.mock.calls.at(-1)?.[0].prompt));
+      const filings = (facts[0]?.data as { filings?: unknown[] }).filings ?? [];
+      expect(filings.length).toBeGreaterThan(0);
+      expect(result.say).toMatch(/\b(a card|one line)\b/i);
+      expect(result.say).not.toMatch(/no filing/i);
+      const hrefs = [
+        result.href,
+        ...result.links.map((link) => link.href),
+        ...result.pages,
+      ];
+      expect(hrefs).toContain("/c/BHARTIARTL");
+    } finally {
+      await db.delete(events).where(eq(events.isin, airtel));
       await db.delete(companies).where(eq(companies.isin, airtel));
     }
   });

@@ -941,13 +941,21 @@ async function briefFor(
   ];
   const ledgers = tallyByIsin(await guidanceVerdictGroups(filingIsinsOf(view)));
   let filings = only ? attentionFilings(view, only, ledgers) : [];
-  if (only && preset === "auto") {
+  let windowPreset = view.window.preset;
+  let windowLabel = view.window.label;
+  // A named company with nothing in the asked window still has the filing.
+  // The book can be busy in 24h while that company's board notice is older.
+  if (only && (preset === "auto" || filings.length === 0) && preset !== "30d") {
     const wider = await loadBrief("30d", isins, thresholds, now);
     const wideLedgers = tallyByIsin(
       await guidanceVerdictGroups(filingIsinsOf(wider)),
     );
     const wideFilings = attentionFilings(wider, only, wideLedgers);
-    if (wideFilings.length > filings.length) filings = wideFilings;
+    if (wideFilings.length > filings.length) {
+      filings = wideFilings;
+      windowPreset = wider.window.preset;
+      windowLabel = wider.window.label;
+    }
   }
   const act: FinnieLine[] = [];
   let watch = 0;
@@ -982,8 +990,8 @@ async function briefFor(
   const outcome = linesOutcome(
     {
       status: "brief",
-      window: view.window.preset,
-      label: view.window.label,
+      window: windowPreset,
+      label: windowLabel,
       ...(only ? { symbol: only, filings } : {}),
       act: act.map((line) => ({
         symbol: line.symbol,

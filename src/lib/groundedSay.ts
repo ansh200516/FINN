@@ -53,14 +53,20 @@ function walkFields(value: unknown, into: number[]): void {
   }
 }
 
+function matches(token: NumberToken, value: number): boolean {
+  if (value === token.value) return true;
+  const rounded = roundTo(value, token.decimals);
+  if (rounded !== token.value) return false;
+  return token.decimals > 0 || token.pct || Math.abs(token.value) >= 50;
+}
+
+/**
+ * The say tokenizer drops a leading minus, so −15.25 in the JSON grounds
+ * the token 15.25. The grader sees that minus in the stringified payload.
+ */
 function numberIsGrounded(token: NumberToken, pool: number[]): boolean {
   for (const value of pool) {
-    if (value === token.value) return true;
-    const rounded = roundTo(value, token.decimals);
-    if (rounded !== token.value) continue;
-    if (token.decimals > 0 || token.pct || Math.abs(token.value) >= 50) {
-      return true;
-    }
+    if (matches(token, value) || matches(token, -value)) return true;
   }
   return false;
 }

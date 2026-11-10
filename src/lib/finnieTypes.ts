@@ -58,10 +58,16 @@ export interface ToolArgs {
   };
 }
 
-/** The previous turn, so “and its promises” can keep that company. */
-export interface FinniePrior {
-  sentence: string;
-  tool: string | null;
+/** Turns kept on this device. The demo has one user. */
+export const FINNIE_LOG_CAP = 30;
+/** Prior turns sent with the latest sentence. */
+export const FINNIE_CHAIN_CAP = 8;
+
+/** One earlier turn. `results` lists symbols whose results card was drawn. */
+export interface FinnieMemory {
+  user: string;
+  say: string;
+  results: string[];
 }
 
 export type BookChange = "added" | "already_in" | "removed";

@@ -3,12 +3,19 @@
 import { Loader2, Send } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import {
+  type ChatLogTurn,
+  chainFromLog,
+  loadChatLog,
+  saveChatLog,
+} from "@/lib/chatLog";
 import { NO_RESULTS } from "@/lib/companyTurn";
 import {
+  FINNIE_LOG_CAP,
   FINNIE_MODEL_DOWN,
   type FinnieCard,
   type FinnieLine,
-  type FinniePrior,
+  type FinnieMemory,
   type FinnieTurnResult,
 } from "@/lib/finnieTypes";
 import { FINNIE_GREETING } from "@/ui/composer";
@@ -36,8 +43,8 @@ interface Turn {
 }
 
 /**
- * Chat only. A sentence goes to Finnie with the book already loaded.
- * The bubble is Finnie's answer. Cards are the ones the model chose.
+ * Chat only. The greeting stays first. The turns under it are stored on
+ * this device and sent with the next sentence.
  */
 export function Desk({
   initialSymbol = null,
@@ -49,19 +56,41 @@ export function Desk({
   onTurn: (
     sentence: string,
     focus: string | null,
-    prior?: FinniePrior | null,
+    prior?: FinnieMemory[] | null,
   ) => Promise<FinnieTurnResult>;
 }) {
   const inputId = useId();
   const endRef = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
-  const prior = useRef<FinniePrior | null>(null);
+  const turnsRef = useRef<Turn[]>([]);
   const [symbol, setSymbol] = useState<string | null>(initialSymbol);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
   const hint = useTypingExample(draft.length > 0);
   const [turns, setTurns] = useState<Turn[]>([]);
   const named = symbol && symbol === initialSymbol ? initialName : null;
+  turnsRef.current = turns;
+
+  useEffect(() => {
+    const loaded = loadChatLog(window.localStorage);
+    const maxLoaded = loaded.reduce((max, turn) => Math.max(max, turn.id), 0);
+    if (maxLoaded > seq.current) seq.current = maxLoaded;
+    setTurns((current) => {
+      const known = new Set(loaded.map((turn) => turn.id));
+      const fresh = current.filter((turn) => !known.has(turn.id));
+      return capTurns([...loaded.map(revive), ...fresh]);
+    });
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const done = storedTurns(turns);
+    if (done.length === 0 && loadChatLog(window.localStorage).length > 0)
+      return;
+    saveChatLog(window.localStorage, done);
+  }, [ready, turns]);
 
   useEffect(() => {
     if (!turns.length) return;
@@ -76,17 +105,16 @@ export function Desk({
 
   async function submit(text: string) {
     const question = text.trim() || hint.submit;
-    if (!question || busy) return;
+    if (!question || busy || !ready) return;
+    const memory = chainFromLog(storedTurns(turnsRef.current));
     setDraft("");
     const id = ++seq.current;
-    setTurns((prev) => [...prev, { id, question, shown: { kind: "pending" } }]);
+    setTurns((prev) =>
+      capTurns([...prev, { id, question, shown: { kind: "pending" } }]),
+    );
     setBusy(true);
     try {
-      const res = await onTurn(question, symbol, prior.current);
-      prior.current = {
-        sentence: question,
-        tool: res.tools.at(-1) ?? null,
-      };
+      const res = await onTurn(question, symbol, memory);
       setSymbol(res.symbol);
       const cards = res.cards.length ? res.cards : res.card ? [res.card] : [];
       patch(id, {
@@ -170,13 +198,13 @@ export function Desk({
                 autoComplete="off"
                 autoCapitalize="off"
                 autoCorrect="off"
-                disabled={busy}
+                disabled={busy || !ready}
                 className="composer-input h-11 w-full bg-transparent px-3 text-[16px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
               />
             </div>
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || !ready}
               className="composer-send"
               aria-label="Send"
             >
@@ -403,4 +431,44 @@ function CardLink({
       {label}
     </Link>
   );
+}
+
+function capTurns(turns: Turn[]): Turn[] {
+  return turns.slice(-FINNIE_LOG_CAP);
+}
+
+function storedTurns(turns: Turn[]): ChatLogTurn[] {
+  const out: ChatLogTurn[] = [];
+  for (const turn of turns) {
+    if (turn.shown.kind !== "finnie") continue;
+    out.push({
+      id: turn.id,
+      question: turn.question,
+      say: turn.shown.say,
+      cards: turn.shown.cards,
+      pages: turn.shown.pages,
+      links: turn.shown.links,
+      href: turn.shown.href,
+      link: turn.shown.link,
+      sayAfter: turn.shown.sayAfter,
+    });
+  }
+  return out;
+}
+
+function revive(row: ChatLogTurn): Turn {
+  return {
+    id: row.id,
+    question: row.question,
+    shown: {
+      kind: "finnie",
+      say: row.say,
+      cards: row.cards,
+      pages: row.pages,
+      links: row.links,
+      href: row.href,
+      link: row.link,
+      sayAfter: row.sayAfter,
+    },
+  };
 }

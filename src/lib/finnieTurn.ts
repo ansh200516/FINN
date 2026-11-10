@@ -1,7 +1,8 @@
 /**
- * One chat turn. Every sentence gets the same context from the database.
- * One model call writes the bubble and chooses any cards. A write, when
- * the model asks for one, runs after that call and does not replace the bubble.
+ * One chat turn. The book is loaded once. The model also sees the prior
+ * user sentences and assistant bubbles, and answers the latest sentence
+ * in light of that chain. A write, when the model asks for one, runs
+ * after that call and does not replace the bubble.
  */
 import { z } from "zod";
 import {
@@ -20,10 +21,11 @@ import {
 } from "@/lib/finnieContext";
 import { executeTool } from "@/lib/finnieTools";
 import {
+  FINNIE_CHAIN_CAP,
   FINNIE_NO_MATCH,
   FINNIE_OUT_OF_CALLS,
   type FinnieCard,
-  type FinniePrior,
+  type FinnieMemory,
   type FinnieTool,
   type FinnieTurnResult,
   type ToolArgs,
@@ -50,6 +52,8 @@ type CardKind = (typeof CARD_KINDS)[number];
 
 const CARD_CAP = 8;
 const LINK_CAP = 5;
+const CHAIN_USER_CAP = 500;
+const CHAIN_SAY_CAP = 800;
 
 const WriteArgs = z.object({
   symbol: z.string().optional(),
@@ -89,20 +93,23 @@ export const FinnieReply = z.object({
 
 const SYSTEM = [
   "You are Finnie.",
-  "Answer the user using only the context JSON.",
-  "Do not invent a number, a quote, or a name that is not in the JSON.",
+  "Answer the latest sentence in light of the thread, using only the context JSON and that thread.",
+  "The thread is the prior user sentences and your earlier replies. It is empty on the first sentence.",
+  "Do not invent a number, a quote, or a name that is not in the JSON or the thread.",
   "Do not recite every holding, and do not list the portfolio in order.",
   "Each portfolio row has movePct, results (label, crore, and yoyPct for revenue or NII), promises (kept, missed, open), and href.",
   'For a judgment across the book, say what stands out in brief.act, missed, and movers. At most five companies. End with "The decision is yours."',
-  "When the question is about a company, say must use that row's results figure and year-on-year change, and its promise counts. Do not answer with only the price or volume line.",
+  "When the question is about a company and the thread does not already state that figure, say must use that row's results figure and year-on-year change, and its promise counts. Do not answer with only the price or volume line.",
+  "A follow-up refers to the company and the facts already in the thread. Do not restart the company analysis, and do not open a fresh list of movers.",
+  'If they ask about a put or a short, say the app has no options data, then answer from the company already in the thread, using the results and the move already there, and end with "The decision is yours." Do not paste an earlier results paragraph unchanged.',
   "If yoyPct is null, do not invent a year-on-year change. If results is null, say the results are not on file.",
   "No buy. No sell. No target price.",
-  "If the context does not contain what they asked, say that in one clause and answer from what is there.",
+  "If the context JSON and the thread do not contain what they asked, say that in one clause and answer from the company already in the thread when there is one, otherwise from what is there.",
   "say is that answer. Name a company by its symbol.",
   "showList is true only when the answer is the list of holdings. Otherwise false. The app draws that list.",
   "cards is a list of {symbol, kind} to draw under say. kind is results, promises, management, or brief.",
   "You choose the kind. results draws the results card. promises draws the promise ledger. management draws the people. brief draws that symbol's act row.",
-  "For a question about one company, choose results, unless they asked only about promises or only about management.",
+  "For a question about one company, choose results, unless they asked only about promises or only about management. If the thread already showed that company's results card, do not choose results again unless they ask to see the numbers again.",
   "When they ask which stocks to act on, choose brief for each symbol you name. say stays your sentence. The app draws the act rows.",
   "cards is empty when no card helps.",
   "write is null, or one change: add_to_portfolio, remove_from_portfolio, set_alert, disable_alert, or mark_read.",
@@ -138,11 +145,12 @@ interface PageLink {
 export async function runFinnieTurn(
   sentence: string,
   focus: string | null,
-  _prior?: FinniePrior | null,
+  prior?: unknown,
 ): Promise<FinnieTurnResult> {
   const text = sentence.trim().replace(/\s+/g, " ").slice(0, 500);
   if (!text) return quiet("Name a company.");
   const open = focusSymbol(focus);
+  const memory = clipChain(prior);
   if (await modelAtSoftCap("bulk")) return quiet(FINNIE_OUT_OF_CALLS);
 
   const pack = await loadChatPack(open);
@@ -152,9 +160,9 @@ export async function runFinnieTurn(
       task: "finnie",
       tier: "bulk",
       schema: FinnieReply,
-      prompt: userPrompt(text, pack.context),
+      prompt: userPrompt(text, pack.context, memory),
       system: SYSTEM,
-      promptVersion: "8",
+      promptVersion: "9",
       temperature: 0,
       maxTokens: 1024,
     });
@@ -167,11 +175,75 @@ export async function runFinnieTurn(
   if (reply.write) {
     outcome = await runWrite(reply.write.tool, reply.write.args, open);
   }
-  return present(reply, pack, outcome, open);
+  return present(reply, pack, outcome, open, text, memory);
 }
 
-function userPrompt(sentence: string, context: ChatContext): string {
-  return `Question: ${sentence}\n\nContext:\n${JSON.stringify(context)}`;
+function userPrompt(
+  sentence: string,
+  context: ChatContext,
+  memory: FinnieMemory[],
+): string {
+  const question = `Question: ${sentence}`;
+  const thread = formatThread(memory);
+  const head = thread ? `${question}\n\n${thread}` : question;
+  return `${head}\n\nContext:\n${JSON.stringify(context)}`;
+}
+
+function formatThread(memory: FinnieMemory[]): string {
+  if (!memory.length) return "";
+  const lines = ["Thread:"];
+  const shown: string[] = [];
+  for (const turn of memory) {
+    for (const symbol of turn.results) {
+      if (!shown.includes(symbol)) shown.push(symbol);
+    }
+  }
+  if (shown.length)
+    lines.push(`Results cards already shown: ${shown.join(", ")}`);
+  for (const turn of memory) {
+    if (turn.user) lines.push(`User: ${turn.user}`);
+    if (turn.say) lines.push(`Finnie: ${turn.say}`);
+  }
+  return lines.join("\n");
+}
+
+function clipChain(input: unknown): FinnieMemory[] {
+  if (!Array.isArray(input)) return [];
+  const out: FinnieMemory[] = [];
+  for (const item of input.slice(-FINNIE_CHAIN_CAP)) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as { user?: unknown; say?: unknown; results?: unknown };
+    const user = clipChainText(
+      typeof rec.user === "string" ? rec.user : "",
+      CHAIN_USER_CAP,
+    );
+    const say = clipChainText(
+      typeof rec.say === "string" ? rec.say : "",
+      CHAIN_SAY_CAP,
+    );
+    if (!user && !say) continue;
+    out.push({ user, say, results: readSymbols(rec.results) });
+  }
+  return out;
+}
+
+function clipChainText(value: string, max: number): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return clean.length <= max ? clean : clean.slice(0, max);
+}
+
+function readSymbols(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const symbol = item.trim().toUpperCase();
+    if (!/^[A-Z0-9&.-]{1,20}$/.test(symbol)) continue;
+    if (out.includes(symbol)) continue;
+    out.push(symbol);
+    if (out.length >= CARD_CAP) break;
+  }
+  return out;
 }
 
 async function modelAtSoftCap(tier: LlmTier): Promise<boolean> {
@@ -194,13 +266,14 @@ async function present(
   pack: ChatPack,
   outcome: ToolOutcome | null,
   focus: string | null,
+  sentence: string,
+  memory: FinnieMemory[],
 ): Promise<FinnieTurnResult> {
   const known = new Set(contextSymbols(pack.context));
   for (const row of pack.names) known.add(row.symbol);
+  const { picks, withheld } = picksToDraw(reply.cards, memory, sentence);
   const drawn = await Promise.all(
-    reply.cards.map((pick) =>
-      drawPick(pick, pack.act, known).catch(() => null),
-    ),
+    picks.map((pick) => drawPick(pick, pack.act, known).catch(() => null)),
   );
   const cards: FinnieCard[] = [];
   const pages: Array<string | null> = [];
@@ -214,13 +287,14 @@ async function present(
       links.push({ href: item.page, label: "Full page" });
     }
   }
+  for (const symbol of withheld) pushPage(links, companyHref(symbol));
   if (reply.showList && pack.names.length) {
     cards.push({ kind: "portfolio", names: pack.names });
     pages.push(null);
   }
   if (!reply.cards.length) {
     for (const symbol of symbolsNamed(reply.say, [...known])) {
-      links.push({ href: companyHref(symbol), label: "Full page" });
+      pushPage(links, companyHref(symbol));
     }
   }
   return {
@@ -236,6 +310,38 @@ async function present(
     symbol: outcome?.symbol ?? focus,
     book: outcome?.book ?? null,
   };
+}
+
+function picksToDraw(
+  cards: CardPick[],
+  memory: FinnieMemory[],
+  sentence: string,
+): { picks: CardPick[]; withheld: string[] } {
+  const shown = new Set(memory.flatMap((turn) => turn.results));
+  const again = wantsResultsAgain(sentence);
+  const picks: CardPick[] = [];
+  const withheld: string[] = [];
+  for (const pick of cards) {
+    if (pick.kind === "results" && shown.has(pick.symbol) && !again) {
+      if (!withheld.includes(pick.symbol)) withheld.push(pick.symbol);
+      continue;
+    }
+    picks.push(pick);
+  }
+  return { picks, withheld };
+}
+
+/** Puts a results card back only when this sentence asks to see the figures. */
+function wantsResultsAgain(sentence: string): boolean {
+  const text = sentence.toLowerCase();
+  const subject = /\b(numbers|results|figures|analysis|card)\b/.test(text);
+  const ask = /\b(show|see|pull|open|again|display|give)\b/.test(text);
+  return subject && ask;
+}
+
+function pushPage(links: PageLink[], href: string) {
+  if (links.some((item) => item.href === href)) return;
+  links.push({ href, label: "Full page" });
 }
 
 async function drawPick(

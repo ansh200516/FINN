@@ -547,6 +547,113 @@ describe("runFinnieTurn", () => {
     expect(html).toContain('href="/c/PIIND"');
     expect(html).toContain("Full page");
   });
+
+  it("passes a prior PIIND reply into the next prompt", async () => {
+    const priorSay =
+      "For PIIND, Q2 FY27 Revenue is 1701.8 crore, down 9.11% year-on-year.";
+    llm.mockResolvedValueOnce(
+      model({
+        say: "VOLTAS stands out. The decision is yours.",
+        showList: false,
+        cards: [],
+        write: null,
+      }),
+    );
+    llm.mockResolvedValueOnce(
+      model({
+        say: "The app has no options data. PIIND is already down. The decision is yours.",
+        showList: false,
+        cards: [{ symbol: "PIIND", kind: "results" }],
+        write: null,
+      }),
+    );
+    await runFinnieTurn("which stocks to act upon next week", null);
+    const followUp =
+      "so buying a put will be a good option for this next week?";
+    const result = await runFinnieTurn(followUp, null, [
+      {
+        user: "give me the analysis for PIIND",
+        say: priorSay,
+        results: ["PIIND"],
+      },
+    ]);
+    expect(llm).toHaveBeenCalledTimes(2);
+    const first = String(llm.mock.calls[0]?.[0].prompt);
+    const second = String(llm.mock.calls[1]?.[0].prompt);
+    expect(first).not.toContain(priorSay);
+    expect(first).not.toContain("Thread:");
+    expect(second.startsWith(`Question: ${followUp}\n`)).toBe(true);
+    expect(second).toContain(`User: give me the analysis for PIIND`);
+    expect(second).toContain(`Finnie: ${priorSay}`);
+    expect(second).toContain("Results cards already shown: PIIND");
+    const system = String(llm.mock.calls[1]?.[0].system);
+    expect(system).toContain(
+      "Answer the latest sentence in light of the thread",
+    );
+    expect(system).toContain("no options data");
+    expect(system).toContain(
+      "Do not paste an earlier results paragraph unchanged.",
+    );
+    expect(result.cards).toEqual([]);
+    expect(result.links).toEqual([{ href: "/c/PIIND", label: "Full page" }]);
+    const html = renderToStaticMarkup(
+      createElement(FinnieAnswer, {
+        say: result.say,
+        cards: result.cards,
+        pages: result.pages,
+        links: result.links,
+      }),
+    );
+    expect(html).toContain('href="/c/PIIND"');
+    expect(html).not.toContain("rtable");
+  });
+
+  it("draws the results card again when the follow-up asks to see the numbers", async () => {
+    llm.mockResolvedValueOnce(
+      model({
+        say: "Here are the PIIND numbers again.",
+        showList: false,
+        cards: [{ symbol: "PIIND", kind: "results" }],
+        write: null,
+      }),
+    );
+    const result = await runFinnieTurn("show me the numbers again", null, [
+      {
+        user: "how is PIIND",
+        say: "For PIIND, revenue is 1701.8 crore.",
+        results: ["PIIND"],
+      },
+    ]);
+    expect(result.cards[0]).toMatchObject({
+      kind: "reply",
+      symbol: "PIIND",
+      reply: { kind: "results" },
+    });
+    expect(result.pages[0]).toBe("/c/PIIND");
+  });
+
+  it("sends only the last eight turns", async () => {
+    llm.mockResolvedValueOnce(
+      model({ say: "Noted.", showList: false, cards: [], write: null }),
+    );
+    const memory = Array.from({ length: 10 }, (_, i) => {
+      const label = String(i).padStart(2, "0");
+      return {
+        user: `user-${label} asked about PIIND`,
+        say: `finnie-${label} kept a PIIND line`,
+        results: [] as string[],
+      };
+    });
+    await runFinnieTurn("and the latest sentence", null, memory);
+    const prompt = String(llm.mock.calls[0]?.[0].prompt);
+    expect(prompt).toContain("finnie-02 kept a PIIND line");
+    expect(prompt).toContain("finnie-09 kept a PIIND line");
+    expect(prompt).toContain("user-02 asked about PIIND");
+    expect(prompt).not.toContain("finnie-00");
+    expect(prompt).not.toContain("finnie-01");
+    expect(prompt).not.toContain("user-00");
+    expect(prompt).not.toContain("user-01");
+  });
 });
 
 function stringEnums(node: unknown, found: string[][] = []): string[][] {

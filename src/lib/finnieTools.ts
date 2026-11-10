@@ -855,6 +855,55 @@ const WINDOWS: Record<string, "24h" | "48h" | "7d" | "30d" | "close"> = {
   since_close: "close",
 };
 
+function attentionFilings(
+  view: Awaited<ReturnType<typeof getBriefView>>["view"],
+  symbol: string,
+  ledgers: ReturnType<typeof tallyByIsin>,
+): Array<{
+  symbol: string;
+  category: string;
+  tier: number;
+  surface: "card" | "line";
+  title: string;
+  sentence: string;
+  href: string;
+}> {
+  const events = [
+    ...view.tier1,
+    ...view.tier2,
+    ...view.tier3.flatMap((group) => group.items),
+  ]
+    .filter((event) => event.symbol.toUpperCase() === symbol)
+    .sort((a, b) => b.filedAtMs - a.filedAtMs);
+  return events.slice(0, 8).map((event) => {
+    const judged = judgeEvent(event, ledgers.get(event.isin) ?? null);
+    return {
+      symbol: event.symbol,
+      category: event.category,
+      tier: event.tier,
+      surface: judged.decision === "act" ? "card" : "line",
+      title: event.title,
+      sentence: judged.sentence,
+      href: `/e/${encodeURIComponent(event.eventKey)}`,
+    };
+  });
+}
+
+async function loadBrief(
+  preset: "auto" | "24h" | "48h" | "7d" | "30d" | "close",
+  isins: string[],
+  thresholds: AnomalyThresholds,
+  now: number,
+): Promise<Awaited<ReturnType<typeof getBriefView>>["view"]> {
+  const { view } = await getBriefView({
+    now,
+    query: preset === "auto" ? {} : { w: preset },
+    isins,
+    thresholds,
+  });
+  return view;
+}
+
 async function briefFor(
   raw: string | undefined,
   symbol?: string,
@@ -871,16 +920,35 @@ async function briefFor(
   const user = await getDemoUser();
   const rules = await getTripwires(user.id);
   const thresholds = thresholdsFrom(rules);
-  const { view } = await getBriefView({
-    now,
-    query: window.preset === "auto" ? {} : { w: window.preset },
-    isins: user.portfolioIsins,
-    thresholds,
-  });
-  const filingIsins = [
-    ...new Set([...view.tier1, ...view.tier2].map((event) => event.isin)),
+  let isins = user.portfolioIsins;
+  if (only) {
+    const company = await getCompanyBySymbol(only);
+    if (company && !isins.includes(company.isin))
+      isins = [...isins, company.isin];
+  }
+  const preset = window.preset;
+  const view = await loadBrief(preset, isins, thresholds, now);
+  const filingIsinsOf = (
+    current: Awaited<ReturnType<typeof getBriefView>>["view"],
+  ) => [
+    ...new Set(
+      [
+        ...current.tier1,
+        ...current.tier2,
+        ...current.tier3.flatMap((group) => group.items),
+      ].map((event) => event.isin),
+    ),
   ];
-  const ledgers = tallyByIsin(await guidanceVerdictGroups(filingIsins));
+  const ledgers = tallyByIsin(await guidanceVerdictGroups(filingIsinsOf(view)));
+  let filings = only ? attentionFilings(view, only, ledgers) : [];
+  if (only && preset === "auto") {
+    const wider = await loadBrief("30d", isins, thresholds, now);
+    const wideLedgers = tallyByIsin(
+      await guidanceVerdictGroups(filingIsinsOf(wider)),
+    );
+    const wideFilings = attentionFilings(wider, only, wideLedgers);
+    if (wideFilings.length > filings.length) filings = wideFilings;
+  }
   const act: FinnieLine[] = [];
   let watch = 0;
   for (const event of [...view.tier1, ...view.tier2]) {
@@ -916,14 +984,16 @@ async function briefFor(
       status: "brief",
       window: view.window.preset,
       label: view.window.label,
-      ...(only ? { symbol: only } : {}),
+      ...(only ? { symbol: only, filings } : {}),
       act: act.map((line) => ({
         symbol: line.symbol,
         sentence: line.text,
         href: line.href,
       })),
       watch,
-      filedAway: view.counts.filedAway,
+      filedAway: only
+        ? filings.filter((filing) => filing.tier === 3).length
+        : view.counts.filedAway,
     },
     act,
   );

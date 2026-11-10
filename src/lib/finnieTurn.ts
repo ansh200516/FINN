@@ -92,13 +92,14 @@ const TOOL_LINES: Record<FinnieTool, string> = {
     "One of the eight pull readings. args.symbol. args.which is exactly Business snapshot, Financial snapshot, Trajectory, Balance sheet, Cash quality, Narrative vs. numbers, Guidance, or Bull vs. bear. Promised versus delivered over recent quarters is get_results and get_promises, not this tool alone.",
   get_quote: "Live price for one symbol. args.symbol.",
   get_index: "Live index level. args.name.",
-  get_corporate_actions: "Corporate actions for one symbol. args.symbol.",
+  get_corporate_actions:
+    "Dividends, splits, and bonuses for one symbol. args.symbol. Whether a filing earns a card or one line is get_brief.",
   set_alert:
     "Watch a threshold the user sets. args.scope is a symbol or the book. args.kind is price, volume, or category. A price move beyond a chosen percent uses params.pct. Volume more than about 2× its recent average uses params.ratio and params.lookbackDays. A material filing type uses params.categories, including results, m_and_a, and management_change.",
   disable_alert: "Turn off an alert. args.scope, args.kind, args.params.",
   open_company: "Page for one symbol. args.symbol.",
   get_brief:
-    "Windowed digest of portfolio filings. What matters is listed first. Routine filings are counted as filed away. The default window is the last 24 hours. args.window is 24h, 48h, 7d, 30d, or close.",
+    "Windowed digest of filings for the book or one company. What matters is listed first. For one company, filings lists each item with surface card or line and a sentence. A routine filing is a line, not a card. args.symbol limits the digest to that company. args.window is 24h, 48h, 7d, 30d, or close. The default window is the last 24 hours.",
   list_unread: "Unread inbox rows.",
   mark_read: "Mark the inbox read.",
   get_upcoming: "Upcoming filings and events.",
@@ -132,7 +133,7 @@ const PLAN_SYSTEM = [
   "args are optional. args.symbol is the NSE symbol of the company the latest sentence names. Do not substitute a similar ticker. HDFC Bank is HDFCBANK. IndusInd Bank is INDUSINDBK.",
   "get_results may set args.quarters from 1 to 8. Omitted, it is 4.",
   "Promised versus delivered over recent quarters is get_results and get_promises together.",
-  "A results question is get_results. A management change is get_management. A filing digest is get_brief. A threshold to watch is set_alert. One pull-menu reading is get_reading.",
+  "A results question is get_results. A management change is get_management. A filing digest is get_brief. Whether a filing earns a card or one line, or whether a filing deserves attention, is get_brief with that company's symbol. A dividend, a split, or a bonus is get_corporate_actions. A threshold to watch is set_alert. One pull-menu reading is get_reading.",
   "The examples under the catalog illustrate tool choice. They are not strings to match.",
   "Do not invent a tool.",
 ].join(" ");
@@ -150,6 +151,7 @@ const ANSWER_SYSTEM = [
   "When delivered is null, say that guidance is still open and quote what management said.",
   "A management-change question names the person and the profile, including prior roles when the tool JSON has them.",
   "A pull reading answers from that reading's verdict, lines, and table.",
+  "When the question asks whether a filing earns a card or one line, or whether a filing deserves attention, use the filings array. Name the company and the filing sentence, then say it earns a card when surface is card, or one line when surface is line. Write a full sentence. If filings is empty, say there is no filing in the window. Do not answer with only the word card or the words one line.",
   'When the question asks for a judgment, or compares what was promised with what was delivered, or asks whether to buy, sell, or for a target price or a put, refuse the trade and end with "The decision is yours."',
   'Do not answer a trade question with only "No buy." Use the filings or the price in the tool JSON.',
   "Do not invent guidance.",
@@ -254,7 +256,7 @@ export async function runFinnieTurn(
         schema: FinnieSay,
         prompt: answerPrompt(text, memory, ran),
         system: ANSWER_SYSTEM,
-        promptVersion: "answer-6",
+        promptVersion: "answer-7",
         temperature: 0,
         maxTokens: 2048,
       }),
@@ -278,7 +280,7 @@ export async function runFinnieTurn(
               ungroundedNumbers(say, text, facts),
             ),
             system: ANSWER_SYSTEM,
-            promptVersion: "answer-6",
+            promptVersion: "answer-7",
             temperature: 0,
             maxTokens: 2048,
           }),
@@ -330,7 +332,7 @@ async function planCalls(
       schema: ToolPlan,
       prompt: planPrompt(sentence, memory, company),
       system: PLAN_SYSTEM,
-      promptVersion: company ? "plan-5" : "plan-4",
+      promptVersion: company ? "plan-7" : "plan-6",
       temperature: 0,
       maxTokens: 512,
     }),
@@ -568,6 +570,8 @@ async function modelAtSoftCap(tier: LlmTier): Promise<boolean> {
     const cap = row?.cap ?? dailyCap(model);
     const requests = row?.requests ?? 0;
     if (cap <= 0) return true;
+    const stopAt = Number(process.env.FINN_LLM_STOP_AT ?? "");
+    if (Number.isFinite(stopAt) && stopAt > 0) return requests >= stopAt;
     return requests >= cap * 0.8;
   } catch {
     return false;

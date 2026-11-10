@@ -135,7 +135,10 @@ function limitsFor(model: string): ModelLimits {
 
 export function dailyCap(model: string): number {
   const l = limitsFor(model);
-  return Math.floor(l.rpd * l.capFraction);
+  const raw = Number(process.env.FINN_LLM_CAP_FRACTION ?? "");
+  const fraction =
+    Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : l.capFraction;
+  return Math.floor(l.rpd * fraction);
 }
 
 const DEFAULT_BULK = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"];

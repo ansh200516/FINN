@@ -2,6 +2,10 @@
  * Ask the question bank through runFinnieTurn, the same handler as /chat.
  * Stops at 120 live questions, at 80% of the bulk daily cap, or when one
  * failure pattern has shown up three times.
+ *
+ * --from <n|id> continues through the rest of the bank in file order,
+ * skipping ids already in the log, and stops at --stop-at (default 460)
+ * so a fix can still be retested under the provider cap of 500.
  */
 import {
   appendFileSync,
@@ -507,6 +511,32 @@ function grade(
   return fails;
 }
 
+function memoryForFollow(
+  question: Question,
+  rows: Map<string, LogRow>,
+): { focus: string | null; prior: ChatLogTurn[] } {
+  if (!question.followOf) return { focus: null, prior: [] };
+  const parent = rows.get(question.followOf);
+  const focus = parent?.symbol || question.company;
+  if (!parent) return { focus, prior: [] };
+  return {
+    focus,
+    prior: [
+      {
+        id: 1,
+        question: parent.question,
+        say: parent.say,
+        cards: [],
+        pages: [],
+        links: [],
+        href: null,
+        link: null,
+        sayAfter: false,
+      },
+    ],
+  };
+}
+
 function memoryFor(
   question: Question,
   live: Question[],
@@ -547,6 +577,17 @@ async function main(): Promise<void> {
     console.log("restored book and alerts");
     if (process.argv.includes("--restore-only")) return;
   }
+  const fromRaw = arg("--from");
+  const extend = fromRaw !== undefined;
+  const stopAt = Number(arg("--stop-at") ?? (extend ? "460" : "0"));
+  if (extend) {
+    if (!process.env.FINN_LLM_CAP_FRACTION) {
+      process.env.FINN_LLM_CAP_FRACTION = "1";
+    }
+    if (Number.isFinite(stopAt) && stopAt > 0) {
+      process.env.FINN_LLM_STOP_AT = String(stopAt);
+    }
+  }
   const max = Number(arg("--max") ?? CEILING);
   const retest = new Set(
     (arg("--retest") ?? "")
@@ -586,9 +627,26 @@ async function main(): Promise<void> {
     process.exitCode = 4;
     return;
   }
+  if (stopAt > 0 && budget.requests >= stopAt) {
+    console.log(
+      `ledger already ${budget.requests} >= ${stopAt}; no model calls`,
+    );
+    process.exitCode = 3;
+    return;
+  }
+  let queue = live;
+  if (extend) {
+    if (fromRaw && !/^\d+$/.test(fromRaw)) {
+      const at = bank.findIndex((question) => question.id === fromRaw);
+      queue = bank.slice(at >= 0 ? at : 0);
+    } else {
+      const at = Number(fromRaw);
+      queue = bank.slice(Number.isFinite(at) ? at : 0);
+    }
+  }
   const pending = [
-    ...live.filter((question) => retest.has(question.id)),
-    ...live.filter(
+    ...queue.filter((question) => retest.has(question.id)),
+    ...queue.filter(
       (question) => !rows.has(question.id) && !retest.has(question.id),
     ),
   ].slice(0, max);
@@ -601,20 +659,27 @@ async function main(): Promise<void> {
     for (let index = 0; index < pending.length; index++) {
       const question = pending[index];
       if (!question) break;
-      if (!retest.has(question.id) && covered >= CEILING) {
+      if (!extend && !retest.has(question.id) && covered >= CEILING) {
         console.log("hit the 120 live-question ceiling");
         break;
       }
-      if (index % 8 === 0) {
+      if (extend || index % 8 === 0) {
         const check = await bulkAtSoftCap();
         console.log(`batch ledger ${check.requests}/${check.cap}`);
-        if (check.at80) {
+        if (stopAt > 0 && check.requests >= stopAt) {
+          console.log(`stopping: ledger ${check.requests} >= ${stopAt}`);
+          process.exitCode = 3;
+          break;
+        }
+        if (!extend && check.at80) {
           console.log("stopping: bulk model at 80% of its daily cap");
           process.exitCode = 3;
           break;
         }
       }
-      const { focus, prior } = memoryFor(question, live, rows);
+      const { focus, prior } = extend
+        ? memoryForFollow(question, rows)
+        : memoryFor(question, live, rows);
       let facts: FactRow[] = [];
       setFinnieFactTap((next) => {
         facts = next.map((row) => ({

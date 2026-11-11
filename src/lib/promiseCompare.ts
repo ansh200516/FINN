@@ -29,7 +29,7 @@ export interface ComparisonRow {
   promised: string;
   /** Null when no quarter covers the horizon yet. */
   delivered: string | null;
-  verdict: "kept" | "missed" | "open";
+  verdict: "kept" | "missed" | "open" | "unverifiable";
 }
 
 const HEADLINE = new Set([
@@ -54,9 +54,17 @@ const HEADLINE = new Set([
   "nim",
 ]);
 
-/** Colour, capacity, and a named slice. Those stay on the company page. */
-const ASIDE =
-  /\b(festive(?:\s+season)?|bullish|bearish|gigawatts?|giga[\s-]?watts?|bess|solar\s+cells?|capacity|facilit(?:y|ies)|jio)\b/i;
+/**
+ * Colour, capacity, and a festive aside stay on the company page.
+ * Jio growth is a headline comment. The quote does not have to say "headline".
+ */
+const FESTIVE = /\bfestive(?:\s+season)?\b/i;
+const COLOUR = /\b(bullish|bearish)\b/i;
+const CAPACITY =
+  /\b(gigawatts?|giga[\s-]?watts?|bess|solar\s+cells?|capacity|facilit(?:y|ies))\b/i;
+const GROWTH_WORD = /\b(revenue|ebitda|margin|growth|jio)\b/i;
+const TEEN = /\b(high|mid|low|upper|double)[\s-]+teens?\b/i;
+const QUOTE_WORDS = 24;
 
 const COUNT = [
   "",
@@ -107,14 +115,35 @@ function hasBand(row: PromiseSource): boolean {
   return finite(row.low) != null || finite(row.high) != null;
 }
 
-/** Revenue, EBITDA, margin, or a growth range. Not a festive or capacity line. */
+function isAside(row: PromiseSource): boolean {
+  if (metricKey(row) === "capacity") return true;
+  const quote = row.quote ?? "";
+  return FESTIVE.test(quote) || COLOUR.test(quote) || CAPACITY.test(quote);
+}
+
+function mentionsGrowth(quote: string): boolean {
+  return GROWTH_WORD.test(quote);
+}
+
+/**
+ * Revenue, EBITDA, margin, Jio growth, or a guided range.
+ * A numeric band is not required. The word "headline" is not required.
+ */
 export function isHeadlinePromise(row: PromiseSource): boolean {
   if (row.status === "superseded" || row.status === "withdrawn") return false;
   const quote = (row.quote ?? "").replace(/\s+/g, " ").trim();
-  const metric = metricKey(row);
-  if (!quote || !hasBand(row)) return false;
-  if (metric === "capacity" || ASIDE.test(quote)) return false;
-  return HEADLINE.has(metric);
+  if (!quote || isAside(row)) return false;
+  if (HEADLINE.has(metricKey(row))) return true;
+  return hasBand(row) && mentionsGrowth(quote);
+}
+
+function isCurrentHorizon(horizon: string): boolean {
+  const key = horizon
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return key === "medium term" || key === "near term" || key === "short term";
 }
 
 function clipWords(text: string, max: number): string {
@@ -125,6 +154,13 @@ function clipWords(text: string, max: number): string {
 
 function num(value: number): string {
   return groupIndian(value, Number.isInteger(value) ? 0 : 1);
+}
+
+function qualitativePromise(quote: string): string {
+  const teen = TEEN.exec(quote);
+  if (teen) return teen[0].replace(/[\s-]+/g, " ").toLowerCase();
+  if (/\bhigh single[\s-]+digit\b/i.test(quote)) return "high single digit";
+  return "qualitative";
 }
 
 function promisedText(row: PromiseSource): string {
@@ -142,7 +178,8 @@ function promisedText(row: PromiseSource): string {
   if (low != null && high != null && low !== high)
     return `${num(low)}–${num(high)}${suffix}`;
   const value = low ?? high;
-  return value == null ? "" : `${num(value)}${suffix}`;
+  if (value != null) return `${num(value)}${suffix}`;
+  return qualitativePromise(row.quote ?? "");
 }
 
 function ratio(part: number | null, base: number | null): number | null {
@@ -253,20 +290,22 @@ function covers(horizon: FiscalPeriod, quarter: FiscalPeriod): boolean {
   return false;
 }
 
+function withoutBand(row: PromiseSource): "kept" | "missed" | "unverifiable" {
+  if (row.verdict === "missed" || row.verdict === "cut") return "missed";
+  if (row.verdict === "kept" || row.verdict === "beat") return "kept";
+  return "unverifiable";
+}
+
 function judge(
   actual: number,
   row: PromiseSource,
   kind: Reading["kind"],
-): "kept" | "missed" {
+): "kept" | "missed" | "unverifiable" {
   const low = finite(row.low);
   const high = finite(row.high);
   const lo = low ?? high;
   const hi = high ?? low;
-  if (lo == null || hi == null) {
-    return row.verdict === "missed" || row.verdict === "cut"
-      ? "missed"
-      : "kept";
-  }
+  if (lo == null || hi == null) return withoutBand(row);
   const tol = (edge: number) =>
     kind === "margin"
       ? 0.5
@@ -297,18 +336,21 @@ export function comparisonsFor(
     if (!isHeadlinePromise(row)) continue;
     const horizon = horizonText(row);
     const parsed = horizon ? parsePeriodLabel(horizon) : null;
-    const pool = !horizon
-      ? slices
-      : !parsed
-        ? []
-        : slices.filter((slice) => {
-            const quarter = parsePeriodLabel(slice.period);
-            return quarter ? covers(parsed, quarter) : false;
-          });
-    const quote = clipWords(row.quote ?? "", 18);
+    // FY27 covers Q2 FY27. A medium-term comment is current guidance, so the
+    // latest quarter on screen is the delivery to show.
+    const pool =
+      !horizon || isCurrentHorizon(horizon)
+        ? slices
+        : !parsed
+          ? []
+          : slices.filter((slice) => {
+              const quarter = parsePeriodLabel(slice.period);
+              return quarter ? covers(parsed, quarter) : false;
+            });
+    const quote = clipWords(row.quote ?? "", QUOTE_WORDS);
     const promised = promisedText(row);
     if (!pool.length) {
-      if (!horizon) continue;
+      if (!horizon || !hasBand(row)) continue;
       out.push({
         period: horizon,
         quote,
@@ -320,14 +362,23 @@ export function comparisonsFor(
       const latest = pool[pool.length - 1];
       if (!latest) continue;
       const reading = readMetric(row, latest) ?? ledgerReading(row);
-      if (!reading) continue;
-      out.push({
-        period: periodLabel(horizon, latest.period),
-        quote,
-        promised,
-        delivered: deliveredText(reading),
-        verdict: judge(reading.value, row, reading.kind),
-      });
+      if (!reading) {
+        out.push({
+          period: periodLabel(horizon, latest.period),
+          quote,
+          promised,
+          delivered: null,
+          verdict: withoutBand(row),
+        });
+      } else {
+        out.push({
+          period: periodLabel(horizon, latest.period),
+          quote,
+          promised,
+          delivered: deliveredText(reading),
+          verdict: judge(reading.value, row, reading.kind),
+        });
+      }
     }
     if (out.length >= 8) break;
   }
@@ -366,17 +417,74 @@ function joinList(parts: string[]): string {
   return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
 }
 
+function growthClause(n: number, lead: boolean): string {
+  const word = countWord(n, !lead);
+  if (lead) {
+    return n === 1
+      ? `${word} growth comment is in this window, and it has no numeric range`
+      : `${word} growth comments are in this window, and they have no numeric range`;
+  }
+  return n === 1
+    ? `${word} growth comment has no numeric range`
+    : `${word} growth comments have no numeric range`;
+}
+
+/**
+ * One clause for an empty comparison. Names what the filter dropped.
+ * Never "no headline promise" when a growth comment is stored.
+ */
+function exclusionLead(sources: PromiseSource[]): string {
+  if (!sources.length) return "No headline promise is in this window.";
+  let capacity = false;
+  let festive = false;
+  let colour = false;
+  let growth = false;
+  for (const row of sources) {
+    const quote = row.quote ?? "";
+    if (FESTIVE.test(quote)) {
+      festive = true;
+      continue;
+    }
+    if (COLOUR.test(quote)) {
+      colour = true;
+      continue;
+    }
+    if (metricKey(row) === "capacity" || CAPACITY.test(quote)) {
+      capacity = true;
+      continue;
+    }
+    if (isHeadlinePromise(row) || mentionsGrowth(quote)) growth = true;
+  }
+  const bits: string[] = [];
+  if (capacity) bits.push("capacity");
+  if (festive) bits.push("festive-season");
+  if (colour) bits.push("colour");
+  const remarks = bits.length ? `${joinList(bits)} remarks` : "";
+  if (growth && remarks) {
+    return `The stored comments are ${remarks}, and a growth comment has no numeric range for these quarters.`;
+  }
+  if (growth) {
+    return "A growth comment is in the rows, and it has no numeric range for these quarters.";
+  }
+  if (remarks)
+    return `The stored comments are ${remarks}, not a revenue range.`;
+  return "No headline promise is in this window.";
+}
+
 /** Two sentences. Counts, then the decision. Never "delivered is null". */
-export function comparisonBubble(rows: ComparisonRow[]): string {
+export function comparisonBubble(
+  rows: ComparisonRow[],
+  sources: PromiseSource[] = [],
+): string {
   const kept = rows.filter((row) => row.verdict === "kept").length;
   const missed = rows.filter((row) => row.verdict === "missed").length;
   const open = rows.filter((row) => row.verdict === "open").length;
+  const unscored = rows.filter((row) => row.verdict === "unverifiable").length;
   const parts: string[] = [];
   if (kept) parts.push(clause(kept, "kept", parts.length === 0));
   if (missed) parts.push(clause(missed, "missed", parts.length === 0));
   if (open) parts.push(clause(open, "open", parts.length === 0));
-  const lead = parts.length
-    ? `${joinList(parts)}.`
-    : "No headline promise is in this window.";
+  if (unscored) parts.push(growthClause(unscored, parts.length === 0));
+  const lead = parts.length ? `${joinList(parts)}.` : exclusionLead(sources);
   return `${lead} The decision is yours.`;
 }

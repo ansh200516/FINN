@@ -660,6 +660,12 @@ export function FinnieAnswer({
   const paired = resultsIndex >= 0 && promisesIndex >= 0;
   const resultsCard = paired ? cards[resultsIndex] : null;
   const promiseCard = paired ? cards[promisesIndex] : null;
+  const promiseRows =
+    paired &&
+    promiseCard?.kind === "reply" &&
+    promiseCard.reply.kind === "promises"
+      ? promiseCard.reply.rows
+      : [];
   const compared =
     paired &&
     resultsCard?.kind === "reply" &&
@@ -667,7 +673,7 @@ export function FinnieAnswer({
     promiseCard.reply.kind === "promises"
       ? comparisonsFor(
           multiQuarters(resultsCard),
-          promiseCard.reply.rows,
+          promiseRows,
           resultsCard.periodCards,
         )
       : [];
@@ -703,7 +709,7 @@ export function FinnieAnswer({
     />
   ));
   const spoken = paired
-    ? comparisonBubble(compared)
+    ? comparisonBubble(compared, promiseRows)
     : wall
       ? ""
       : clipQuarterWall(say);

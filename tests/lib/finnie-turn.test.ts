@@ -288,7 +288,10 @@ describe("runFinnieTurn", () => {
       expect(kept?.delivered).toContain("11");
       expect(second).toContain("festive season");
       expect(second).not.toContain("SUPERSEDED_MARKER");
-      expect(result.say).toBe(say);
+      expect(result.say).toBe(
+        "RELIANCE revenue growth of 10–12% is open and not yet scored. Management said word00. The margin row was kept at 11%.",
+      );
+      expect(result.say).not.toContain("The decision is yours");
       expect(result.say).not.toContain("Q3 FY25");
       expect(result.say).not.toMatch(/qoqPct|yoyPct/);
       expect(result.say).not.toContain("the results are Q2");
@@ -317,15 +320,15 @@ describe("runFinnieTurn", () => {
           links: result.links,
         }),
       );
-      expect(html).toContain(say);
-      expect(html.indexOf(say)).toBeLessThan(html.indexOf("<table"));
+      expect(html).toContain("Two kept, none missed, none unverifiable.");
+      expect(html.indexOf("Two kept")).toBeLessThan(html.indexOf("<table"));
       expect(html).not.toContain("No headline promise");
       expect(html).not.toContain("Two headline promises were kept.");
-      expect(html).toContain("The decision is yours.");
+      expect(html).not.toContain("The decision is yours");
       expect(html).not.toContain("delivered is null");
       expect(html).not.toContain("festive season");
       expect(html).toContain("word00");
-      expect(html).not.toContain("word40");
+      expect(html).toContain("word40");
       expect(html).toContain("eleven percent");
       expect(html).toContain("Kept");
       expect(html).toContain("+50.0% YoY");
@@ -488,8 +491,14 @@ describe("runFinnieTurn", () => {
       expect(String(llm.mock.calls[1]?.[0].system)).toContain(
         "Do not invent a promise",
       );
+      expect(String(llm.mock.calls[1]?.[0].system)).not.toContain(
+        "The decision is yours",
+      );
       expect(String(llm.mock.calls[1]?.[0].system)).toContain(
-        "The decision is yours.",
+        "counts how many were kept",
+      );
+      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
+        "Do not invent a 20–30%",
       );
       expect(String(llm.mock.calls[1]?.[0].system)).not.toContain(
         "name every period",

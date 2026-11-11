@@ -30,9 +30,9 @@ export const FINNIE_OUT_OF_CALLS = "Finnie is out of calls until 13:30 IST";
 export const FINNIE_MODEL_DOWN = "Finnie could not reach the model.";
 export const FINNIE_NO_MATCH = "I couldn\u2019t match that to data I have.";
 export const FINNIE_DOES_NOT_HAVE = "Finnie does not have that.";
-/** Last line after the results, the promises, and the price. Two sentences. */
+/** Filings and the price. A chat reply does not add a decision sentence. */
 export const FINNIE_DECISION_LINE =
-  "I can only give you the filings and the price. The decision is yours.";
+  "I can only give you the filings and the price.";
 
 export const MAX_TOOL_CALLS = 4;
 

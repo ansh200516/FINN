@@ -1,7 +1,7 @@
 /**
  * Headline guidance set next to the quarters already on screen.
- * A null ledger delivery means the row was not scored. It does not mean
- * the quarter is missing. Open is only for a horizon no quarter covers yet.
+ * Each pair is one complete quote, what was promised, what was delivered,
+ * and a chip. Open is only for a horizon no quarter covers yet.
  */
 import {
   type FiscalPeriod,
@@ -64,7 +64,34 @@ const CAPACITY =
   /\b(gigawatts?|giga[\s-]?watts?|bess|solar\s+cells?|capacity|facilit(?:y|ies))\b/i;
 const GROWTH_WORD = /\b(revenue|ebitda|margin|growth|jio)\b/i;
 const TEEN = /\b(high|mid|low|upper|double)[\s-]+teens?\b/i;
-const QUOTE_WORDS = 24;
+const NOT_A_BUSINESS = new Set([
+  "the",
+  "a",
+  "an",
+  "this",
+  "that",
+  "our",
+  "its",
+  "these",
+  "those",
+  "q1",
+  "q2",
+  "q3",
+  "q4",
+  "revenue",
+  "ebitda",
+  "pat",
+  "pbt",
+  "nii",
+  "ppop",
+  "margin",
+  "growth",
+  "year",
+  "half",
+  "them",
+  "us",
+  "me",
+]);
 
 const COUNT = [
   "",
@@ -146,12 +173,6 @@ function isCurrentHorizon(horizon: string): boolean {
   return key === "medium term" || key === "near term" || key === "short term";
 }
 
-function clipWords(text: string, max: number): string {
-  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
-  if (words.length <= max) return words.join(" ");
-  return `${words.slice(0, max).join(" ")}…`;
-}
-
 function num(value: number): string {
   return groupIndian(value, Number.isInteger(value) ? 0 : 1);
 }
@@ -161,6 +182,67 @@ function qualitativePromise(quote: string): string {
   if (teen) return teen[0].replace(/[\s-]+/g, " ").toLowerCase();
   if (/\bhigh single[\s-]+digit\b/i.test(quote)) return "high single digit";
   return "qualitative";
+}
+
+/**
+ * The sentence that states the promise. A transcript turn can hold several
+ * sentences; the one with the figure or the phrase is the quote on the card.
+ * It is not cut off mid-phrase.
+ */
+function promiseSentence(quote: string, promised: string): string {
+  const clean = quote.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  const parts = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return clean;
+  const digits = [...promised.matchAll(/\d+(?:\.\d+)?/g)].map(
+    (match) => match[0] ?? "",
+  );
+  const phrase = promised
+    .replace(/%/g, "")
+    .replace(/[–-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  const scored = parts.map((part) => {
+    const lower = part.toLowerCase();
+    let score = 0;
+    if (phrase && phrase !== "qualitative" && lower.includes(phrase))
+      score += 4;
+    if (digits.length && digits.every((digit) => part.includes(digit)))
+      score += 3;
+    if (TEEN.test(part)) score += 2;
+    if (/[.!?]$/.test(part)) score += 1;
+    if (/^(and|but|so|or|which)\b/i.test(part)) score -= 3;
+    return { part, score };
+  });
+  const finished = scored.filter((item) => /[.!?]$/.test(item.part));
+  const pool = finished.length ? finished : scored;
+  pool.sort((a, b) => b.score - a.score);
+  return pool[0]?.part ?? clean;
+}
+
+/** "growth for Jio" names a business the consolidated quarter does not print. */
+function namedLine(quote: string): string | null {
+  const re = /\bfor\s+([A-Za-z][A-Za-z0-9]*)\b/g;
+  for (const match of quote.matchAll(re)) {
+    const name = match[1] ?? "";
+    const key = name.toLowerCase();
+    if (!name || NOT_A_BUSINESS.has(key) || /^fy\d/.test(key)) continue;
+    return name;
+  }
+  return null;
+}
+
+function lineName(row: PromiseSource): string {
+  const metric = metricKey(row);
+  if (metric.includes("ebitda") || metric.includes("ppop")) return "EBITDA";
+  if (metric.includes("pat") || metric === "net_margin") return "PAT";
+  if (metric.includes("pbt")) return "PBT";
+  if (metric.includes("nii") || metric === "nim") return "NII";
+  return "revenue";
 }
 
 function promisedText(row: PromiseSource): string {
@@ -347,8 +429,10 @@ export function comparisonsFor(
               const quarter = parsePeriodLabel(slice.period);
               return quarter ? covers(parsed, quarter) : false;
             });
-    const quote = clipWords(row.quote ?? "", QUOTE_WORDS);
+    const full = (row.quote ?? "").replace(/\s+/g, " ").trim();
     const promised = promisedText(row);
+    const quote = promiseSentence(full, promised);
+    const segment = namedLine(quote) ?? namedLine(full);
     if (!pool.length) {
       if (!horizon || !hasBand(row)) continue;
       out.push({
@@ -362,17 +446,28 @@ export function comparisonsFor(
       const latest = pool[pool.length - 1];
       if (!latest) continue;
       const reading = readMetric(row, latest) ?? ledgerReading(row);
-      if (!reading) {
+      const period = periodLabel(horizon, latest.period);
+      if (segment) {
         out.push({
-          period: periodLabel(horizon, latest.period),
+          period,
           quote,
           promised,
-          delivered: null,
+          delivered: reading
+            ? `${deliveredText(reading)} is consolidated ${lineName(row)}, not ${segment}`
+            : "not the consolidated line",
+          verdict: "unverifiable",
+        });
+      } else if (!reading) {
+        out.push({
+          period,
+          quote,
+          promised,
+          delivered: "not the consolidated line",
           verdict: withoutBand(row),
         });
       } else {
         out.push({
-          period: periodLabel(horizon, latest.period),
+          period,
           quote,
           promised,
           delivered: deliveredText(reading),
@@ -390,43 +485,15 @@ function countWord(n: number, lower: boolean): string {
   return lower ? word.toLowerCase() : word;
 }
 
-function clause(
-  n: number,
-  kind: "kept" | "missed" | "open",
-  lead: boolean,
-): string {
-  const word = countWord(n, !lead);
-  if (kind === "kept") {
-    return lead
-      ? `${word} headline ${n === 1 ? "promise was" : "promises were"} kept`
-      : `${word} ${n === 1 ? "was" : "were"} kept`;
-  }
-  if (kind === "missed") {
-    return lead
-      ? `${word} headline ${n === 1 ? "promise was" : "promises were"} missed`
-      : `${word} ${n === 1 ? "was" : "were"} missed`;
-  }
-  return lead
-    ? `${word} headline ${n === 1 ? "promise is" : "promises are"} still open`
-    : `${word} ${n === 1 ? "is" : "are"} still open`;
+function tallyWord(n: number, lead: boolean): string {
+  if (n === 0) return lead ? "None" : "none";
+  return countWord(n, !lead);
 }
 
 function joinList(parts: string[]): string {
   if (parts.length <= 1) return parts[0] ?? "";
   if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
   return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
-}
-
-function growthClause(n: number, lead: boolean): string {
-  const word = countWord(n, !lead);
-  if (lead) {
-    return n === 1
-      ? `${word} growth comment is in this window, and it has no numeric range`
-      : `${word} growth comments are in this window, and they have no numeric range`;
-  }
-  return n === 1
-    ? `${word} growth comment has no numeric range`
-    : `${word} growth comments have no numeric range`;
 }
 
 /**
@@ -471,20 +538,23 @@ function exclusionLead(sources: PromiseSource[]): string {
   return "No headline promise is in this window.";
 }
 
-/** Two sentences. Counts, then the decision. Never "delivered is null". */
+/** One sentence. Counts kept, missed, and unverifiable. */
 export function comparisonBubble(
   rows: ComparisonRow[],
   sources: PromiseSource[] = [],
 ): string {
+  if (!rows.length) return exclusionLead(sources);
   const kept = rows.filter((row) => row.verdict === "kept").length;
   const missed = rows.filter((row) => row.verdict === "missed").length;
+  const unverifiable = rows.filter(
+    (row) => row.verdict === "unverifiable",
+  ).length;
   const open = rows.filter((row) => row.verdict === "open").length;
-  const unscored = rows.filter((row) => row.verdict === "unverifiable").length;
-  const parts: string[] = [];
-  if (kept) parts.push(clause(kept, "kept", parts.length === 0));
-  if (missed) parts.push(clause(missed, "missed", parts.length === 0));
-  if (open) parts.push(clause(open, "open", parts.length === 0));
-  if (unscored) parts.push(growthClause(unscored, parts.length === 0));
-  const lead = parts.length ? `${joinList(parts)}.` : exclusionLead(sources);
-  return `${lead} The decision is yours.`;
+  const parts = [
+    `${tallyWord(kept, true)} kept`,
+    `${tallyWord(missed, false)} missed`,
+    `${tallyWord(unverifiable, false)} unverifiable`,
+  ];
+  if (open) parts.push(`${tallyWord(open, false)} still open`);
+  return `${parts.join(", ")}.`;
 }

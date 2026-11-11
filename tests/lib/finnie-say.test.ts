@@ -4,6 +4,7 @@ import {
   isNumberWall,
   repairSay,
   stateFilingSurface,
+  stripDecision,
 } from "@/lib/finnieSay";
 
 const quarters = [
@@ -35,7 +36,7 @@ describe("finnie say repair", () => {
     expect(say).not.toMatch(/qoqPct|yoyPct/);
   });
 
-  it("clips a quarter recital to two sentences and keeps the decision line", () => {
+  it("clips a quarter recital to two sentences and drops the decision line", () => {
     const wall = [
       "For Q3 FY26, Revenue was 100, EBITDA was 10, PBT was 8, and PAT was 6.",
       "For Q4 FY26, Revenue was 110, EBITDA was 11, PBT was 9, and PAT was 7.",
@@ -44,10 +45,14 @@ describe("finnie say repair", () => {
     ].join(" ");
     const say = clipQuarterWall(wall);
     expect(say).toBe(
-      "For Q3 FY26, Revenue was 100, EBITDA was 10, PBT was 8, and PAT was 6. The decision is yours.",
+      "For Q3 FY26, Revenue was 100, EBITDA was 10, PBT was 8, and PAT was 6. For Q4 FY26, Revenue was 110, EBITDA was 11, PBT was 9, and PAT was 7.",
     );
+    expect(say).not.toContain("The decision is yours");
     expect(say.split(/(?<=[.!?])\s+/)).toHaveLength(2);
     expect(isNumberWall(wall)).toBe(true);
+    expect(stripDecision("The quarters are in. The decision is yours.")).toBe(
+      "The quarters are in.",
+    );
   });
 
   it("replaces a short no-filing line when the payload has a surface", () => {

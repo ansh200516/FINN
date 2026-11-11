@@ -95,7 +95,24 @@ export function QuarterBoard({
   );
 }
 
-/** Promised figure, delivered figure from the matching quarter, one chip. */
+function DeliveredText({ text }: { text: string }) {
+  const cut = text.indexOf(" is ");
+  if (cut > 0 && /^[+\-−\d]/.test(text)) {
+    return (
+      <>
+        <span className="num text-ink">{text.slice(0, cut)}</span>
+        <span className="text-ink">{text.slice(cut)}</span>
+      </>
+    );
+  }
+  return (
+    <span className={/^[+\-−\d]/.test(text) ? "num text-ink" : "text-ink"}>
+      {text}
+    </span>
+  );
+}
+
+/** One pair: the quote, what was promised, what was delivered, one chip. */
 export function ComparisonList({
   rows,
   symbol,
@@ -109,28 +126,26 @@ export function ComparisonList({
     <div>
       {rows.length ? (
         <ul
-          className="m-0 mt-3 list-none p-0"
+          className="pair-list"
           aria-label="Promised versus delivered"
           data-promised=""
         >
           {rows.map((row, index) => (
-            <li
-              key={`${row.period}-${row.quote}-${index}`}
-              className="border-b border-rule py-2 last:border-b-0"
-            >
-              <div className="flex items-baseline gap-2">
+            <li key={`${row.period}-${row.quote}-${index}`} className="pair">
+              <div className="pair-top">
                 <VerdictBadge verdict={row.verdict} className="small" />
                 <span className="receipt">{row.period}</span>
               </div>
-              {row.quote ? (
-                <p className="small mt-1 text-ink">{row.quote}</p>
-              ) : null}
-              <p className="small mt-1 text-ink-2">
+              {row.quote ? <p className="pair-quote">{row.quote}</p> : null}
+              <p className="pair-row">
+                <span className="pair-k">Promised</span>
                 <span className="num text-ink">{row.promised}</span>
-                <span> promised</span>
-                <span> · </span>
-                <span className="num text-ink">{row.delivered ?? EM_DASH}</span>
-                <span> delivered</span>
+              </p>
+              <p className="pair-row">
+                <span className="pair-k">Delivered</span>
+                <DeliveredText
+                  text={row.delivered ?? "not the consolidated line"}
+                />
               </p>
             </li>
           ))}

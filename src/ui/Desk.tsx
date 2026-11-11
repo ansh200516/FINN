@@ -20,7 +20,7 @@ import {
   saveChatLog,
 } from "@/lib/chatLog";
 import { NO_PROMISES, NO_RESULTS } from "@/lib/companyTurn";
-import { clipQuarterWall, isNumberWall } from "@/lib/finnieSay";
+import { clipQuarterWall, isNumberWall, stripDecision } from "@/lib/finnieSay";
 import {
   type ChatQuarter,
   type ChatQuarterMetric,
@@ -31,7 +31,11 @@ import {
   type FinnieMemory,
   type FinnieTurnResult,
 } from "@/lib/finnieTypes";
-import { type ComparisonRow, comparisonsFor } from "@/lib/promiseCompare";
+import {
+  type ComparisonRow,
+  comparisonBubble,
+  comparisonsFor,
+} from "@/lib/promiseCompare";
 import { composerBoxHeight, FINNIE_GREETING } from "@/ui/composer";
 import type { LedgerRowView } from "@/ui/model";
 import { useTypingExample } from "@/ui/typingExample";
@@ -675,7 +679,7 @@ export function FinnieAnswer({
       : [];
   const wall =
     isNumberWall(say) && cards.some((card) => multiQuarters(card).length >= 2);
-  const clean = say.replace(/\s+/g, " ").trim();
+  const clean = stripDecision(say);
   const blocks = cards.map((card, index) => {
     if (paired && index === promisesIndex) return null;
     const node = cardNode(card, {
@@ -705,9 +709,10 @@ export function FinnieAnswer({
       label={item.label}
     />
   ));
-  // say is the bubble. The table and the guidance rows sit under it.
+  // The bubble is one count when the pairs are on the card. The table sits under it.
   let spoken = clipQuarterWall(clean);
-  if (paired) spoken = clean;
+  if (paired && compared.length) spoken = comparisonBubble(compared);
+  else if (paired) spoken = clean;
   else if (wall) spoken = "";
   const bubble = spoken ? <div className="bubble-agent">{spoken}</div> : null;
   const jump = <CardLink href={href ?? null} label={link ?? null} />;

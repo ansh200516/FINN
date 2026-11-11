@@ -215,13 +215,23 @@ describe("promised versus delivered", () => {
     expect(isHeadlinePromise(revenueLater)).toBe(true);
     const rows = comparisonsFor(quarters, relianceLedger);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.quote).toContain("high teen growth for Jio");
+    expect(rows[0]?.quote).toBe(
+      "We are able to, in our minds at least, we see visibility of high teen growth for Jio, and those are the points that Akash was talking about.",
+    );
+    expect(rows[0]?.quote).toContain("visibility of high teen growth for Jio");
+    expect(rows[0]?.quote).not.toMatch(/and those…|and those\.\.\./);
+    expect(rows[0]?.quote.startsWith("What is important")).toBe(false);
     expect(rows[0]?.quote).not.toMatch(/headline/i);
     expect(rows[0]?.promised).toBe("high teen");
     expect(rows[0]?.period).toContain("medium term");
     expect(rows[0]?.period).toContain("Q2 FY27");
-    expect(rows[0]?.delivered).toBe("+28.6% YoY");
+    expect(rows[0]?.delivered).toBe(
+      "+28.6% YoY is consolidated revenue, not Jio",
+    );
     expect(rows[0]?.verdict).toBe("unverifiable");
+    expect(comparisonBubble(rows)).toBe(
+      "None kept, none missed, one unverifiable.",
+    );
 
     const html = answer(relianceLedger);
     const bubble = html.indexOf('class="bubble-agent"');
@@ -230,11 +240,22 @@ describe("promised versus delivered", () => {
     expect(bubble).toBeGreaterThan(-1);
     expect(bubble).toBeLessThan(table);
     expect(table).toBeLessThan(listAt);
-    expect(html).toContain(mockSay);
+    expect(html).toContain("None kept, none missed, one unverifiable.");
+    expect(html.indexOf("None kept")).toBeLessThan(table);
+    expect(html).not.toContain(mockSay);
+    expect(html).not.toContain("The decision is yours");
+    expect(html).not.toContain("cannot be scored");
+    expect(html).not.toContain("cannot be directly scored");
     const list = html.slice(listAt);
-    expect(list).toContain("high teen growth for Jio");
+    expect(list).toContain("visibility of high teen growth for Jio");
+    expect(list).toContain(
+      "and those are the points that Akash was talking about.",
+    );
+    expect(list).not.toContain("and those…");
     expect(list).toContain("high teen");
-    expect(list).toContain("+28.6% YoY");
+    expect(list).toContain("+28.6%");
+    expect(list).toContain("consolidated revenue");
+    expect(list).toContain("not Jio");
     expect(list).not.toContain("+25.4%");
     expect(list).toContain("Unverifiable");
     expect(list).not.toContain("Kept");
@@ -263,7 +284,10 @@ describe("promised versus delivered", () => {
     const say =
       "The rows here are capacity and a festive remark, not a revenue range. The decision is yours.";
     const html = answer([festive, capacity], say);
-    expect(html).toContain(say);
+    expect(html).toContain(
+      "The rows here are capacity and a festive remark, not a revenue range.",
+    );
+    expect(html).not.toContain("The decision is yours");
     expect(html).not.toContain("No headline promise");
     expect(html).not.toContain(
       "The stored comments are capacity and festive-season remarks",
@@ -280,7 +304,8 @@ describe("promised versus delivered", () => {
     const say =
       "A growth comment is stored for a later year. The decision is yours.";
     const html = answer([ebitdaLater], say);
-    expect(html).toContain(say);
+    expect(html).toContain("A growth comment is stored for a later year.");
+    expect(html).not.toContain("The decision is yours");
     expect(html).not.toContain("No headline promise");
     expect(html).not.toContain(
       "A growth comment is in the rows, and it has no numeric range for these quarters.",
@@ -309,7 +334,7 @@ describe("promised versus delivered", () => {
     expect(rows[0]?.delivered).toBe("+28.6% YoY");
     expect(rows[0]?.verdict).toBe("kept");
     expect(comparisonBubble(rows)).toBe(
-      "One headline promise was kept. The decision is yours.",
+      "One kept, none missed, none unverifiable.",
     );
   });
 

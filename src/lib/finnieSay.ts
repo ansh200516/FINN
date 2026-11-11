@@ -53,7 +53,20 @@ function briefSymbol(facts: Fact[]): string | null {
   return null;
 }
 
-const DECISION = "The decision is yours.";
+/** Drop the decision sentence from a chat reply. */
+export function stripDecision(say: string): string {
+  const clean = say.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  const parts = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part && !/^the decision is yours\.?$/i.test(part));
+  return parts
+    .join(" ")
+    .replace(/\s*the decision is yours\.?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function sentenceParts(say: string): string[] {
   const clean = say.replace(/\s+/g, " ").trim();
@@ -100,14 +113,11 @@ export function isNumberWall(say: string): boolean {
  * The figures stay in the results table, which is built from the tool JSON.
  */
 export function clipQuarterWall(say: string): string {
-  const clean = say.replace(/\s+/g, " ").trim();
+  const clean = stripDecision(say);
   if (!clean || !isQuarterWall(clean)) return clean;
   const parts = sentenceParts(clean);
   if (parts.length <= 2) return parts.join(" ");
-  const decision = parts.find((part) => part.includes(DECISION));
-  if (!decision) return parts.slice(0, 2).join(" ");
-  const lead = parts.find((part) => !part.includes(DECISION));
-  return [lead, decision].filter(Boolean).join(" ");
+  return parts.slice(0, 2).join(" ");
 }
 
 function judgmentSentence(filing: Record<string, unknown>): string {
@@ -170,8 +180,8 @@ export function groundedBrief(facts: Fact[]): string {
 }
 
 export function repairSay(say: string, facts: Fact[]): string {
-  const next = clipQuarterWall(
-    stateFilingSurface(dropListedDenial(say, facts), facts),
+  const next = stripDecision(
+    clipQuarterWall(stateFilingSurface(dropListedDenial(say, facts), facts)),
   );
   if (next.trim()) return next.replace(/\s+/g, " ").trim();
   if (quartersOf(facts).length) return "The quarters are in the table.";

@@ -49,11 +49,8 @@ const quarters: ChatQuarter[] = [
   },
 ];
 
-const wall = [
-  "For Q3 FY26, Revenue was 269496, EBITDA was 46018, PBT was 29697, and PAT was 22290.",
-  "For Q4 FY26, Revenue was 298621, EBITDA was 44141, PBT was 27195, and PAT was 20589.",
-  "Reliance has open rows where delivered is null, so those promises are still open.",
-].join(" ");
+const mockSay =
+  "Management said they see visibility of high teen growth for Jio. The quarters are consolidated, so that comment cannot be scored. The decision is yours.";
 
 const jio = {
   quote:
@@ -184,10 +181,10 @@ const relianceLedger = [
   gas,
 ];
 
-function answer(rows: unknown[]): string {
+function answer(rows: unknown[], say = mockSay): string {
   return renderToStaticMarkup(
     createElement(FinnieAnswer, {
-      say: wall,
+      say,
       cards: [
         {
           kind: "reply",
@@ -227,7 +224,14 @@ describe("promised versus delivered", () => {
     expect(rows[0]?.verdict).toBe("unverifiable");
 
     const html = answer(relianceLedger);
-    const list = html.slice(html.indexOf('data-promised=""'));
+    const bubble = html.indexOf('class="bubble-agent"');
+    const table = html.indexOf("<table");
+    const listAt = html.indexOf('data-promised=""');
+    expect(bubble).toBeGreaterThan(-1);
+    expect(bubble).toBeLessThan(table);
+    expect(table).toBeLessThan(listAt);
+    expect(html).toContain(mockSay);
+    const list = html.slice(listAt);
     expect(list).toContain("high teen growth for Jio");
     expect(list).toContain("high teen");
     expect(list).toContain("+28.6% YoY");
@@ -245,10 +249,9 @@ describe("promised versus delivered", () => {
     expect(html).not.toContain("No headline promise");
     expect(html).not.toContain("delivered is null");
     expect(html).not.toContain("Revenue was 269496");
-    expect(html).toContain(
+    expect(html).not.toContain(
       "One growth comment is in this window, and it has no numeric range.",
     );
-    expect(html).toContain("The decision is yours.");
     expect((html.match(/<table/g) ?? []).length).toBe(1);
     expect(html).toContain("2,69,496");
     expect(html).toContain("3,52,861");
@@ -256,13 +259,15 @@ describe("promised versus delivered", () => {
     expect(html).not.toContain("QoQ");
   });
 
-  it("names capacity and festive remarks when nothing in the window qualifies", () => {
-    const html = answer([festive, capacity]);
-    expect(html).toContain(
-      "The stored comments are capacity and festive-season remarks, not a revenue range.",
-    );
-    expect(html).toContain("The decision is yours.");
+  it("keeps the model's sentence when only asides are stored", () => {
+    const say =
+      "The rows here are capacity and a festive remark, not a revenue range. The decision is yours.";
+    const html = answer([festive, capacity], say);
+    expect(html).toContain(say);
     expect(html).not.toContain("No headline promise");
+    expect(html).not.toContain(
+      "The stored comments are capacity and festive-season remarks",
+    );
     expect(html).not.toContain("festive season");
     expect(html).not.toContain("gigawatt");
     expect(html).toContain("2,69,496");
@@ -272,12 +277,14 @@ describe("promised versus delivered", () => {
   });
 
   it("does not say there is no promise when a growth comment is outside the window", () => {
-    const html = answer([ebitdaLater]);
+    const say =
+      "A growth comment is stored for a later year. The decision is yours.";
+    const html = answer([ebitdaLater], say);
+    expect(html).toContain(say);
     expect(html).not.toContain("No headline promise");
-    expect(html).toContain(
+    expect(html).not.toContain(
       "A growth comment is in the rows, and it has no numeric range for these quarters.",
     );
-    expect(html).toContain("The decision is yours.");
     expect(html).not.toContain("earnings contribution");
     expect(html).toContain("3,52,861");
   });

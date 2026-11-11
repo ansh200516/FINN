@@ -176,6 +176,20 @@ describe("runFinnieTurn", () => {
         createdAt: Date.now() - 1000,
       },
       {
+        id: "rel-festive",
+        isin: RELIANCE,
+        docId: "doc-rel",
+        quote: "Beyond the festive season as we look to the rest of the year.",
+        metric: "revenue_growth",
+        direction: "qualitative",
+        unit: "qualitative",
+        horizon: "FY27",
+        status: "open",
+        verdict: null,
+        evidenceJson: "{}",
+        createdAt: Date.now() - 1500,
+      },
+      {
         id: "rel-old",
         isin: RELIANCE,
         docId: "doc-rel",
@@ -257,7 +271,10 @@ describe("runFinnieTurn", () => {
           delivered: string | null;
         }>;
       };
-      expect(promises.rows).toHaveLength(2);
+      expect(promises.rows).toHaveLength(3);
+      expect(
+        promises.rows.some((row) => row.quote.includes("festive season")),
+      ).toBe(true);
       const open = promises.rows.find((row) => row.verdict === "open");
       const kept = promises.rows.find((row) => row.verdict === "kept");
       expect(open?.metric).toBe("revenue growth");
@@ -269,6 +286,7 @@ describe("runFinnieTurn", () => {
       expect(open?.quote).not.toContain("word40");
       expect(kept?.quote).toContain("eleven percent");
       expect(kept?.delivered).toContain("11");
+      expect(second).toContain("festive season");
       expect(second).not.toContain("SUPERSEDED_MARKER");
       expect(result.say).toBe(say);
       expect(result.say).not.toContain("Q3 FY25");
@@ -299,11 +317,13 @@ describe("runFinnieTurn", () => {
           links: result.links,
         }),
       );
-      expect(html).not.toContain(say);
-      expect(html).toContain("Two headline promises were kept.");
+      expect(html).toContain(say);
+      expect(html.indexOf(say)).toBeLessThan(html.indexOf("<table"));
+      expect(html).not.toContain("No headline promise");
+      expect(html).not.toContain("Two headline promises were kept.");
       expect(html).toContain("The decision is yours.");
-      expect(html).not.toContain("not yet scored");
       expect(html).not.toContain("delivered is null");
+      expect(html).not.toContain("festive season");
       expect(html).toContain("word00");
       expect(html).not.toContain("word40");
       expect(html).toContain("eleven percent");
@@ -458,6 +478,15 @@ describe("runFinnieTurn", () => {
       );
       expect(String(llm.mock.calls[1]?.[0].system)).toContain(
         "two short sentences",
+      );
+      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
+        "Read every row you were given",
+      );
+      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
+        "Do not say a promise is missing",
+      );
+      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
+        "Do not invent a promise",
       );
       expect(String(llm.mock.calls[1]?.[0].system)).toContain(
         "The decision is yours.",

@@ -31,11 +31,7 @@ import {
   type FinnieMemory,
   type FinnieTurnResult,
 } from "@/lib/finnieTypes";
-import {
-  type ComparisonRow,
-  comparisonBubble,
-  comparisonsFor,
-} from "@/lib/promiseCompare";
+import { type ComparisonRow, comparisonsFor } from "@/lib/promiseCompare";
 import { composerBoxHeight, FINNIE_GREETING } from "@/ui/composer";
 import type { LedgerRowView } from "@/ui/model";
 import { useTypingExample } from "@/ui/typingExample";
@@ -679,6 +675,7 @@ export function FinnieAnswer({
       : [];
   const wall =
     isNumberWall(say) && cards.some((card) => multiQuarters(card).length >= 2);
+  const clean = say.replace(/\s+/g, " ").trim();
   const blocks = cards.map((card, index) => {
     if (paired && index === promisesIndex) return null;
     const node = cardNode(card, {
@@ -708,14 +705,13 @@ export function FinnieAnswer({
       label={item.label}
     />
   ));
-  const spoken = paired
-    ? comparisonBubble(compared, promiseRows)
-    : wall
-      ? ""
-      : clipQuarterWall(say);
+  // say is the bubble. The table and the guidance rows sit under it.
+  let spoken = clipQuarterWall(clean);
+  if (paired) spoken = clean;
+  else if (wall) spoken = "";
   const bubble = spoken ? <div className="bubble-agent">{spoken}</div> : null;
   const jump = <CardLink href={href ?? null} label={link ?? null} />;
-  const decisionLast = sayAfter || paired;
+  const decisionLast = sayAfter && !paired;
   return (
     <div className="flex min-w-0 flex-col items-start gap-2" data-answer="">
       {decisionLast ? (

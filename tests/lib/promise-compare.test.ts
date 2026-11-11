@@ -225,9 +225,7 @@ describe("promised versus delivered", () => {
     expect(rows[0]?.promised).toBe("high teen");
     expect(rows[0]?.period).toContain("medium term");
     expect(rows[0]?.period).toContain("Q2 FY27");
-    expect(rows[0]?.delivered).toBe(
-      "+28.6% YoY is consolidated revenue, not Jio",
-    );
+    expect(rows[0]?.delivered).toBe("+28.6% YoY consolidated revenue, not Jio");
     expect(rows[0]?.verdict).toBe("unverifiable");
     expect(comparisonBubble(rows)).toBe(
       "None kept, none missed, one unverifiable.",
@@ -252,10 +250,20 @@ describe("promised versus delivered", () => {
       "and those are the points that Akash was talking about.",
     );
     expect(list).not.toContain("and those…");
+    expect(list).toContain("Promised:");
     expect(list).toContain("high teen");
-    expect(list).toContain("+28.6%");
-    expect(list).toContain("consolidated revenue");
+    expect(list).toContain("Delivered:");
+    expect(list.replace(/<[^>]+>/g, "")).toContain(
+      "Delivered: +28.6% YoY consolidated revenue, not Jio",
+    );
     expect(list).toContain("not Jio");
+    const quoteAt = list.indexOf("visibility of high teen growth for Jio");
+    const promisedAt = list.indexOf("Promised:");
+    const deliveredAt = list.indexOf("Delivered:");
+    const chipAt = list.indexOf("Unverifiable");
+    expect(quoteAt).toBeLessThan(promisedAt);
+    expect(promisedAt).toBeLessThan(deliveredAt);
+    expect(deliveredAt).toBeLessThan(chipAt);
     expect(list).not.toContain("+25.4%");
     expect(list).toContain("Unverifiable");
     expect(list).not.toContain("Kept");
@@ -278,6 +286,31 @@ describe("promised versus delivered", () => {
     expect(html).toContain("3,52,861");
     expect(html).toContain("YoY");
     expect(html).not.toContain("QoQ");
+    expect(html).not.toMatch(/tool JSON|\bpayload\b|\bschema\b/i);
+  });
+
+  it("does not render a sentence that names the tool JSON", () => {
+    const html = answer(
+      relianceLedger,
+      "Out of the guidance quotes in the tool JSON, zero were kept, zero were missed, and nine are unverifiable.",
+    );
+    expect(html).not.toContain("tool JSON");
+    expect(html).not.toContain("zero were kept");
+    expect(html).toContain("None kept, none missed, one unverifiable.");
+  });
+
+  it("shows the high-teen sentence when the quote was cut off", () => {
+    const rows = comparisonsFor(quarters, [
+      {
+        ...jio,
+        quote:
+          "What is important is. We are able to, in our minds at least, we see visibility of high teen growth for Jio, and those…",
+      },
+    ]);
+    expect(rows[0]?.quote).toContain("visibility of high teen growth for Jio");
+    expect(rows[0]?.quote.startsWith("What is important")).toBe(false);
+    expect(rows[0]?.quote).not.toMatch(/and those/);
+    expect(rows[0]?.quote.endsWith(".")).toBe(true);
   });
 
   it("keeps the model's sentence when only asides are stored", () => {

@@ -179,9 +179,24 @@ export function groundedBrief(facts: Fact[]): string {
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
+const CALL_LEAK = /\b(?:tool\s+json|payload|schema)\b/i;
+
+/** Drop a sentence that names the call, the payload, or a schema. */
+export function dropCallWords(say: string): string {
+  const clean = say.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  const parts = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part && !CALL_LEAK.test(part));
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
 export function repairSay(say: string, facts: Fact[]): string {
-  const next = stripDecision(
-    clipQuarterWall(stateFilingSurface(dropListedDenial(say, facts), facts)),
+  const next = dropCallWords(
+    stripDecision(
+      clipQuarterWall(stateFilingSurface(dropListedDenial(say, facts), facts)),
+    ),
   );
   if (next.trim()) return next.replace(/\s+/g, " ").trim();
   if (quartersOf(facts).length) return "The quarters are in the table.";

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clipQuarterWall,
+  dropCallWords,
   isNumberWall,
   repairSay,
   stateFilingSurface,
@@ -86,6 +87,20 @@ describe("finnie say repair", () => {
     expect(say).toContain("BHARTIARTL");
     expect(say).toContain("no filing");
     expect(say.length).toBeGreaterThan(40);
+  });
+
+  it("drops a sentence that names the tool JSON", () => {
+    const say = repairSay(
+      "Out of the guidance quotes in the tool JSON, zero were kept. Revenue held up.",
+      [],
+    );
+    expect(say).toBe("Revenue held up.");
+    expect(say).not.toMatch(/tool JSON|payload|schema/i);
+    expect(
+      dropCallWords(
+        "Out of the guidance quotes in the tool JSON, zero were kept",
+      ),
+    ).toBe("");
   });
 
   it("drops a false ticker denial without reciting the quarters", () => {

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -221,14 +221,23 @@ describe("runFinnieTurn", () => {
       expect(llm).toHaveBeenCalledTimes(2);
       expect(llm.mock.calls[0]?.[0]).toMatchObject({
         task: "finnie",
-        tier: "bulk",
+        tier: "reason",
         schema: ToolPlan,
         system: expect.stringContaining("Do not answer"),
       });
       expect(llm.mock.calls[1]?.[0]).toMatchObject({
+        tier: "reason",
         schema: FinnieSay,
-        system: expect.stringContaining("only the tool JSON"),
+        system: expect.stringContaining("talking to an investor"),
       });
+      const answerSystem = String(llm.mock.calls[1]?.[0].system);
+      expect(answerSystem).toContain("Never mention how you were called");
+      expect(answerSystem).not.toMatch(
+        /tool JSON|\bpayload\b|\bschema\b|the model/i,
+      );
+      for (const call of llm.mock.calls) {
+        expect(call[0].tier).toBe("reason");
+      }
       const first = String(llm.mock.calls[0]?.[0].prompt);
       const second = String(llm.mock.calls[1]?.[0].prompt);
       expect(first.startsWith(`Question: ${sentence}`)).toBe(true);
@@ -531,26 +540,29 @@ describe("runFinnieTurn", () => {
     expect(llm).toHaveBeenCalledTimes(1);
   });
 
-  it("does not call the model when the bulk ledger is at 80% of cap", async () => {
-    const name = MODEL_LADDERS.bulk()[0] ?? "gemini-3.5-flash-lite";
-    const cap = dailyCap(name);
-    await db.delete(llmLedger).where(eq(llmLedger.model, name));
-    await db.insert(llmLedger).values({
-      model: name,
-      datePt: todayPt(),
-      requests: Math.ceil(cap * 0.8),
-      tokensIn: 0,
-      tokensOut: 0,
-      tokensThought: 0,
-      errors: 0,
-      updatedAt: Date.now(),
-    });
+  it("does not call the model when the reason ladder is at 80% of cap", async () => {
+    const names = MODEL_LADDERS.reason().filter(
+      (model) => !/lite/i.test(model),
+    );
+    await db.delete(llmLedger).where(inArray(llmLedger.model, names));
+    await db.insert(llmLedger).values(
+      names.map((model) => ({
+        model,
+        datePt: todayPt(),
+        requests: Math.ceil(dailyCap(model) * 0.8),
+        tokensIn: 0,
+        tokensOut: 0,
+        tokensThought: 0,
+        errors: 0,
+        updatedAt: Date.now(),
+      })),
+    );
     try {
       const result = await runFinnieTurn("zylophone the marigold ledger", null);
       expect(result.say).toBe(FINNIE_OUT_OF_CALLS);
       expect(llm).not.toHaveBeenCalled();
     } finally {
-      await db.delete(llmLedger).where(eq(llmLedger.model, name));
+      await db.delete(llmLedger).where(inArray(llmLedger.model, names));
     }
   });
 
@@ -653,7 +665,9 @@ describe("runFinnieTurn", () => {
     expect(llm).toHaveBeenCalledTimes(3);
     const rewrite = String(llm.mock.calls[2]?.[0].prompt);
     expect(rewrite).toContain("38");
-    expect(rewrite).toContain("not in the tool JSON");
+    expect(rewrite).toContain("not in the filings");
+    expect(rewrite).not.toMatch(/tool JSON/i);
+    expect(llm.mock.calls[2]?.[0].tier).toBe("reason");
     expect(result.say).toContain("The names are on file.");
     expect(result.say).not.toContain("38");
   });

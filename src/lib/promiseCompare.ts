@@ -184,10 +184,88 @@ function qualitativePromise(quote: string): string {
   return "qualitative";
 }
 
+const QUOTE_MAX = 240;
+
+function isStub(part: string): boolean {
+  const words = part
+    .replace(/[.!?…]+$/g, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length > 6) return false;
+  if (TEEN.test(part)) return false;
+  if (
+    /\b(growth|guidance|revenue|margin|ebitda|pat|see|expect|visibility)\b/i.test(
+      part,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Drop a cut-off tail such as "and those…" so the quote ends on a clause. */
+function danglingCut(part: string): string {
+  return part
+    .replace(/\s+(?:and|but|or|which|so)\s+\S{1,24}(?:…|\.{3})\s*$/i, "")
+    .replace(/(?:…|\.{3})\s*$/g, "")
+    .replace(/[,:;]\s*$/g, "")
+    .trim();
+}
+
+function fitQuote(chosen: string): string {
+  const cut = /(?:…|\.{3})\s*$/.test(chosen);
+  let text = cut ? danglingCut(chosen) : chosen.replace(/\s+/g, " ").trim();
+  if (!text) text = chosen.replace(/(?:…|\.{3})\s*$/g, "").trim();
+  if (text.length <= QUOTE_MAX) {
+    if (cut && text && !/[.!?]$/.test(text)) return `${text}.`;
+    return text;
+  }
+  const guideAt = text.search(
+    /\b(?:high|mid|low|upper|double)[\s-]+teens?\b|\bvisibility of\b/i,
+  );
+  if (guideAt >= 0) {
+    const before = text.slice(0, guideAt);
+    const startAt = Math.max(
+      before.lastIndexOf(". "),
+      before.lastIndexOf("; "),
+    );
+    const start = startAt >= 0 ? startAt + 2 : 0;
+    let slice = text.slice(start).trim();
+    if (slice.length > QUOTE_MAX) {
+      const window = slice.slice(0, QUOTE_MAX);
+      const guideInWindow = window.search(
+        /\b(?:high|mid|low|upper|double)[\s-]+teens?\b|\bvisibility of\b/i,
+      );
+      const boundary = Math.max(
+        window.lastIndexOf(", "),
+        window.lastIndexOf("; "),
+        window.lastIndexOf(". "),
+      );
+      if (guideInWindow >= 0 && boundary > guideInWindow) {
+        slice = window
+          .slice(0, boundary)
+          .replace(/[,:;]\s*$/g, "")
+          .trim();
+      }
+    }
+    if (slice && !/[.!?]$/.test(slice)) return `${slice}.`;
+    return slice;
+  }
+  const window = text.slice(0, QUOTE_MAX);
+  const stop = Math.max(
+    window.lastIndexOf(". "),
+    window.lastIndexOf("! "),
+    window.lastIndexOf("? "),
+  );
+  if (stop >= 40) return window.slice(0, stop + 1).trim();
+  return text;
+}
+
 /**
  * The sentence that states the promise. A transcript turn can hold several
  * sentences; the one with the figure or the phrase is the quote on the card.
- * It is not cut off mid-phrase.
+ * A later guidance sentence wins over a short fragment. The cut stays on a
+ * clause, about 240 characters, and does not stop mid-guidance.
  */
 function promiseSentence(quote: string, promised: string): string {
   const clean = quote.replace(/\s+/g, " ").trim();
@@ -196,7 +274,6 @@ function promiseSentence(quote: string, promised: string): string {
     .split(/(?<=[.!?])\s+/)
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length <= 1) return clean;
   const digits = [...promised.matchAll(/\d+(?:\.\d+)?/g)].map(
     (match) => match[0] ?? "",
   );
@@ -206,7 +283,7 @@ function promiseSentence(quote: string, promised: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
-  const scored = parts.map((part) => {
+  const scoreOf = (part: string) => {
     const lower = part.toLowerCase();
     let score = 0;
     if (phrase && phrase !== "qualitative" && lower.includes(phrase))
@@ -216,12 +293,18 @@ function promiseSentence(quote: string, promised: string): string {
     if (TEEN.test(part)) score += 2;
     if (/[.!?]$/.test(part)) score += 1;
     if (/^(and|but|so|or|which)\b/i.test(part)) score -= 3;
-    return { part, score };
-  });
-  const finished = scored.filter((item) => /[.!?]$/.test(item.part));
-  const pool = finished.length ? finished : scored;
-  pool.sort((a, b) => b.score - a.score);
-  return pool[0]?.part ?? clean;
+    if (isStub(part)) score -= 5;
+    return score;
+  };
+  const guided = parts.filter((part) => scoreOf(part) >= 2);
+  const withoutStubs = parts.filter((part) => !isStub(part));
+  const pool = guided.length
+    ? guided
+    : withoutStubs.length
+      ? withoutStubs
+      : parts;
+  const ranked = [...pool].sort((a, b) => scoreOf(b) - scoreOf(a));
+  return fitQuote(ranked[0] ?? clean);
 }
 
 /** "growth for Jio" names a business the consolidated quarter does not print. */
@@ -453,7 +536,7 @@ export function comparisonsFor(
           quote,
           promised,
           delivered: reading
-            ? `${deliveredText(reading)} is consolidated ${lineName(row)}, not ${segment}`
+            ? `${deliveredText(reading)} consolidated ${lineName(row)}, not ${segment}`
             : "not the consolidated line",
           verdict: "unverifiable",
         });
@@ -475,7 +558,7 @@ export function comparisonsFor(
         });
       }
     }
-    if (out.length >= 8) break;
+    if (out.length >= 6) break;
   }
   return out;
 }

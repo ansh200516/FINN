@@ -20,7 +20,12 @@ import {
   saveChatLog,
 } from "@/lib/chatLog";
 import { NO_PROMISES, NO_RESULTS } from "@/lib/companyTurn";
-import { clipQuarterWall, isNumberWall, stripDecision } from "@/lib/finnieSay";
+import {
+  clipQuarterWall,
+  dropCallWords,
+  isNumberWall,
+  stripDecision,
+} from "@/lib/finnieSay";
 import {
   type ChatQuarter,
   type ChatQuarterMetric,
@@ -679,7 +684,7 @@ export function FinnieAnswer({
       : [];
   const wall =
     isNumberWall(say) && cards.some((card) => multiQuarters(card).length >= 2);
-  const clean = stripDecision(say);
+  const clean = dropCallWords(stripDecision(say));
   const blocks = cards.map((card, index) => {
     if (paired && index === promisesIndex) return null;
     const node = cardNode(card, {

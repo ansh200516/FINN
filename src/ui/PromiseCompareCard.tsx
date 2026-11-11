@@ -96,20 +96,16 @@ export function QuarterBoard({
 }
 
 function DeliveredText({ text }: { text: string }) {
-  const cut = text.indexOf(" is ");
-  if (cut > 0 && /^[+\-−\d]/.test(text)) {
+  const match = text.match(/^([+\-−]?\d[\d.,]*%(?:\s+YoY)?)([\s\S]*)$/);
+  if (match) {
     return (
       <>
-        <span className="num text-ink">{text.slice(0, cut)}</span>
-        <span className="text-ink">{text.slice(cut)}</span>
+        <span className="num text-ink">{match[1]}</span>
+        {match[2] ? <span className="text-ink">{match[2]}</span> : null}
       </>
     );
   }
-  return (
-    <span className={/^[+\-−\d]/.test(text) ? "num text-ink" : "text-ink"}>
-      {text}
-    </span>
-  );
+  return <span className="text-ink">{text}</span>;
 }
 
 /** One pair: the quote, what was promised, what was delivered, one chip. */
@@ -132,21 +128,21 @@ export function ComparisonList({
         >
           {rows.map((row, index) => (
             <li key={`${row.period}-${row.quote}-${index}`} className="pair">
-              <div className="pair-top">
-                <VerdictBadge verdict={row.verdict} className="small" />
-                <span className="receipt">{row.period}</span>
-              </div>
               {row.quote ? <p className="pair-quote">{row.quote}</p> : null}
-              <p className="pair-row">
-                <span className="pair-k">Promised</span>
+              <p className="pair-line">
+                <span className="pair-k">Promised: </span>
                 <span className="num text-ink">{row.promised}</span>
               </p>
-              <p className="pair-row">
-                <span className="pair-k">Delivered</span>
+              <p className="pair-line">
+                <span className="pair-k">Delivered: </span>
                 <DeliveredText
                   text={row.delivered ?? "not the consolidated line"}
                 />
               </p>
+              <div className="pair-top">
+                <VerdictBadge verdict={row.verdict} className="small" />
+                <span className="receipt">{row.period}</span>
+              </div>
             </li>
           ))}
         </ul>

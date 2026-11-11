@@ -12,7 +12,6 @@ import {
   MODEL_LADDERS,
   remainingBudget,
 } from "@/engine/llm/gateway";
-import type { LlmTier } from "@/engine/types";
 import {
   type CompanyName,
   companiesMentioned,
@@ -141,20 +140,22 @@ const PLAN_SYSTEM = [
 ].join(" ");
 
 const ANSWER_SYSTEM = [
-  "You are Finnie.",
-  "Answer the latest sentence using only the tool JSON.",
+  "You are Finnie, talking to an investor.",
+  "Use only the filings and the quarters you were given.",
+  "Write one or two plain sentences about what management said and what the quarters show.",
+  "Never mention how you were called.",
   "say is that answer. Be concise.",
-  "Do not state a number or a name that is not in the tool JSON.",
-  "Do not add numbers to make a total. A count has to be a count field the tool JSON already returned.",
+  "Do not state a number or a name that you were not given.",
+  "Do not add numbers to make a total. A count has to be a count you were already given.",
   "No buy. No sell. No target price. No news.",
   "Read every row you were given and answer the question.",
-  "When the tool JSON includes results and no guidance rows, say is at most two short sentences. Do not list every quarter's Revenue, EBITDA, PBT, and PAT. When the lines are NII and PPOP, do not list every quarter of those either. Name what stands out. The screen draws one table for the quarters. Do not write qoqPct or yoyPct. Do not say the results are missing when the quarters array is present.",
-  "When the tool JSON includes guidance rows, read every row, including a comment that is not a numeric range. If they asked promised versus delivered, say is one sentence that counts how many were kept, how many were missed, and how many are unverifiable. The screen lists each quote as a pair: the complete sentence, what was promised, what was delivered, and a chip of Kept, Missed, or Unverifiable. A quote about Jio or one business, next to a consolidated quarter, is unverifiable: name the consolidated figure from the tool JSON and say it is not that business. If no quarter metric matches, say not the consolidated line. Do not invent a promise. Do not invent a 20–30% range that is not in the tool JSON. Do not say a promise is missing if a guidance row is in the JSON. Do not answer with only that the quarters cannot be scored when a quote is in the tool JSON. No buy or sell.",
-  "A management-change question names the person and the profile, including prior roles when the tool JSON has them.",
+  "When you were given results and no guidance rows, say is at most two short sentences. Do not list every quarter's Revenue, EBITDA, PBT, and PAT. When the lines are NII and PPOP, do not list every quarter of those either. Name what stands out. The screen draws one table for the quarters. Do not write qoqPct or yoyPct. Do not say the results are missing when the quarters are present.",
+  "When you were given guidance rows, read every row, including a comment that is not a numeric range. If they asked promised versus delivered, say is one sentence that counts how many were kept, how many were missed, and how many are unverifiable. The screen lists each quote as a pair: the complete sentence, what was promised, what was delivered, and a chip of Kept, Missed, or Unverifiable. A quote about Jio or one business, next to a consolidated quarter, is unverifiable: name the consolidated figure you were given and say it is not that business. If no quarter metric matches, say not the consolidated line. Do not invent a promise. Do not invent a 20–30% range that you were not given. Do not say a promise is missing if a guidance row was given. Do not answer with only that the quarters cannot be scored when a quote was given. No buy or sell.",
+  "A management-change question names the person and the profile, including prior roles when you were given them.",
   "A pull reading answers from that reading's verdict, lines, and table.",
-  "When the question asks whether a filing earns a card or one line, or whether a filing deserves attention, use the filings array. Name the company and the filing sentence, then say it earns a card when surface is card, or one line when surface is line. Write a full sentence. If filings is empty, say there is no filing in the window. Do not answer with only the word card or the words one line.",
-  "When the question asks for a judgment, or asks whether to buy, sell, or for a target price or a put, refuse the trade. Use the filings or the price in the tool JSON.",
-  'Do not answer a trade question with only "No buy." Use the filings or the price in the tool JSON.',
+  "When the question asks whether a filing earns a card or one line, or whether a filing deserves attention, use the filings you were given. Name the company and the filing sentence, then say it earns a card when surface is card, or one line when surface is line. Write a full sentence. If there is no filing, say there is no filing in the window. Do not answer with only the word card or the words one line.",
+  "When the question asks for a judgment, or asks whether to buy, sell, or for a target price or a put, refuse the trade. Use the filings or the price you were given.",
+  'Do not answer a trade question with only "No buy." Use the filings or the price you were given.',
   "Do not invent guidance.",
 ].join(" ");
 
@@ -188,7 +189,7 @@ export async function runFinnieTurn(
   if (!text) return quiet("Name a company.");
   const open = focusSymbol(focus);
   const memory = clipChain(prior);
-  if (await modelAtSoftCap("bulk")) return quiet(FINNIE_OUT_OF_CALLS);
+  if (await reasonAtSoftCap()) return quiet(FINNIE_OUT_OF_CALLS);
 
   const directory = await companyDirectory();
   const named = companiesMentioned(text, directory);
@@ -257,11 +258,11 @@ export async function runFinnieTurn(
     const answered = await callWithRetry(() =>
       callStructured({
         task: "finnie",
-        tier: "bulk",
+        tier: "reason",
         schema: FinnieSay,
         prompt: answerPrompt(text, memory, ran),
         system: ANSWER_SYSTEM,
-        promptVersion: "answer-10",
+        promptVersion: "answer-11",
         temperature: 0,
         maxTokens: 2048,
       }),
@@ -276,7 +277,7 @@ export async function runFinnieTurn(
         const again = await callWithRetry(() =>
           callStructured({
             task: "finnie",
-            tier: "bulk",
+            tier: "reason",
             schema: FinnieSay,
             prompt: answerPrompt(
               text,
@@ -285,7 +286,7 @@ export async function runFinnieTurn(
               ungroundedNumbers(say, text, facts),
             ),
             system: ANSWER_SYSTEM,
-            promptVersion: "answer-10",
+            promptVersion: "answer-11",
             temperature: 0,
             maxTokens: 2048,
           }),
@@ -344,7 +345,7 @@ async function planCalls(
   const planned = await callWithRetry(() =>
     callStructured({
       task: "finnie",
-      tier: "bulk",
+      tier: "reason",
       schema: ToolPlan,
       prompt: planPrompt(sentence, memory, company),
       system: PLAN_SYSTEM,
@@ -469,7 +470,7 @@ function answerPrompt(
   if (stray?.length) {
     lines.push(
       "",
-      `The previous answer used ${stray.join(", ")}, which is not in the tool JSON. Rewrite the answer without that number. Do not add figures together. A count has to be a count field the tool JSON already returned.`,
+      `The previous answer used ${stray.join(", ")}, which is not in the filings or the quarters. Rewrite the answer without that number. Do not add figures together. A count has to be a count you were already given.`,
     );
   }
   return lines.join("\n");
@@ -706,18 +707,23 @@ function readSymbols(value: unknown): string[] {
   return out;
 }
 
-async function modelAtSoftCap(tier: LlmTier): Promise<boolean> {
+/** True when every Flash model on the reason ladder is at the soft cap. */
+async function reasonAtSoftCap(): Promise<boolean> {
   try {
-    const model = MODEL_LADDERS[tier]()[0];
-    if (!model) return true;
+    const models = MODEL_LADDERS.reason().filter(
+      (model) => !/lite/i.test(model),
+    );
+    if (!models.length) return true;
     const rows = await remainingBudget();
-    const row = rows.find((item) => item.model === model);
-    const cap = row?.cap ?? dailyCap(model);
-    const requests = row?.requests ?? 0;
-    if (cap <= 0) return true;
     const stopAt = Number(process.env.FINN_LLM_STOP_AT ?? "");
-    if (Number.isFinite(stopAt) && stopAt > 0) return requests >= stopAt;
-    return requests >= cap * 0.8;
+    return models.every((model) => {
+      const row = rows.find((item) => item.model === model);
+      const cap = row?.cap ?? dailyCap(model);
+      const requests = row?.requests ?? 0;
+      if (cap <= 0) return true;
+      if (Number.isFinite(stopAt) && stopAt > 0) return requests >= stopAt;
+      return requests >= cap * 0.8;
+    });
   } catch {
     return false;
   }

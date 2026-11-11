@@ -150,11 +150,8 @@ const DEFAULT_REASON = [
 
 export const MODEL_LADDERS: Record<LlmTier, () => string[]> = {
   bulk: () => parseList(env().FINN_MODELS_BULK) ?? DEFAULT_BULK,
-  // reason falls back to the bulk ladder when every Flash is capped/unavailable
-  reason: () => [
-    ...(parseList(env().FINN_MODELS_REASON) ?? DEFAULT_REASON),
-    ...MODEL_LADDERS.bulk(),
-  ],
+  // Flash only. Flash-Lite stays on the bulk ladder.
+  reason: () => parseList(env().FINN_MODELS_REASON) ?? DEFAULT_REASON,
 };
 
 function parseList(v: string | undefined): string[] | undefined {
@@ -255,7 +252,7 @@ export async function remainingBudget(
   const byModel = new Map(rows.map((r) => [r.model, r]));
   const out: ModelBudget[] = [];
   const seen = new Set<string>();
-  // bulk first so Flash-Lite models are labelled "bulk" (the reason ladder includes them as fallback)
+  // bulk first so a model that appears on both ladders is labelled "bulk"
   for (const tier of ["bulk", "reason"] as const) {
     for (const model of MODEL_LADDERS[tier]()) {
       if (seen.has(model)) continue;

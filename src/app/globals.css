@@ -866,24 +866,23 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
+    margin-top: 8px;
   }
   .pair-quote {
-    margin: 6px 0 0;
+    margin: 0;
     font-family: var(--font-sans);
     font-size: var(--fs-small);
     line-height: var(--lh-small);
     color: var(--ink);
     overflow-wrap: anywhere;
   }
-  .pair-row {
-    display: grid;
-    grid-template-columns: 4.5rem minmax(0, 1fr);
-    gap: 8px;
-    align-items: baseline;
-    margin: 6px 0 0;
+  .pair-line {
+    display: block;
+    margin: 8px 0 0;
     font-family: var(--font-sans);
     font-size: var(--fs-small);
     line-height: var(--lh-small);
+    color: var(--ink);
   }
   .pair-k {
     color: var(--ink-3);

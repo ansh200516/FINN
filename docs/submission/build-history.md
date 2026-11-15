@@ -57,4 +57,4 @@ On 10 November Ask was wired to NSE's official MCP, the page at [https://www.nse
 
 ## What this file is not
 
-Agent transcripts are not pasted here, and no line above is presented as something an agent said. The covering note, ready to paste, is [`covering-note.md`](covering-note.md).
+Agent transcripts are not pasted here, and no line above is presented as something an agent said. This repository does not contain a Cursor session export or any other saved build dialogue. The narrative is taken from the experiment log and the commits it names. The covering note, ready to paste, is [`covering-note.md`](covering-note.md).

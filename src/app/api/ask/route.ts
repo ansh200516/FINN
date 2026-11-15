@@ -3,13 +3,12 @@ import { z } from "zod";
 import { LlmBudgetExhausted, LlmCallFailed } from "@/engine/llm/gateway";
 import {
   ASK_COOKIE,
-  ASK_DAILY_LIMIT,
   answerQuestion,
+  askInputError,
   asksRemaining,
-  cookieFromHeader,
-  readAskCount,
   remainingBudget,
   sealAskCookie,
+  takeAskSlot,
   todayPt,
 } from "@/lib/ask";
 import { logger } from "@/lib/logger";
@@ -47,6 +46,12 @@ export async function POST(req: Request) {
       { status: 400, headers: { "cache-control": "no-store" } },
     );
   }
+  const inputError = askInputError(json);
+  if (inputError)
+    return NextResponse.json(
+      { ok: false, error: inputError },
+      { status: 400, headers: { "cache-control": "no-store" } },
+    );
   const parsed = Body.safeParse(json);
   if (!parsed.success)
     return NextResponse.json(
@@ -55,9 +60,9 @@ export async function POST(req: Request) {
     );
 
   const day = todayPt();
-  const used = readAskCount(cookieFromHeader(req.headers.get("cookie")), day);
+  const slot = await takeAskSlot(day);
   const budget = await remainingBudget().catch(() => []);
-  if (used.count >= ASK_DAILY_LIMIT) {
+  if (!slot.allowed) {
     return NextResponse.json(
       {
         ok: false,
@@ -69,7 +74,7 @@ export async function POST(req: Request) {
         status: 429,
         headers: {
           "cache-control": "no-store",
-          "set-cookie": cookieHeader(used.count, day),
+          "set-cookie": cookieHeader(slot.count, day),
         },
       },
     );
@@ -86,11 +91,11 @@ export async function POST(req: Request) {
           ok: false,
           error: "Unknown symbol",
           budget,
-          asksRemaining: asksRemaining(used.count),
+          asksRemaining: asksRemaining(slot.count),
         },
         { status: 404, headers: { "cache-control": "no-store" } },
       );
-    const next = used.count + 1;
+    const next = slot.count;
     return NextResponse.json(
       {
         ok: true,
@@ -122,7 +127,7 @@ export async function POST(req: Request) {
           e instanceof LlmBudgetExhausted
             ? "Model budget exhausted"
             : "Ask failed",
-        asksRemaining: asksRemaining(used.count),
+        asksRemaining: asksRemaining(slot.count),
         budget,
       },
       { status, headers: { "cache-control": "no-store" } },

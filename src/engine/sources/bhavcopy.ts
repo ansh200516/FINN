@@ -234,8 +234,15 @@ export async function fetchBhavcopy(
   }
   const rows = parseBhavcopyZip(bytes, dateKey); // validate before caching
   if (!o.noCache) {
-    mkdirSync(cacheDir, { recursive: true });
-    writeFileSync(cachePath, bytes);
+    try {
+      mkdirSync(cacheDir, { recursive: true });
+      writeFileSync(cachePath, bytes);
+    } catch (e) {
+      log.warn(
+        { dateKey, err: e instanceof Error ? e.message : String(e) },
+        "bhavcopy cache write failed",
+      );
+    }
   }
   return rows;
 }

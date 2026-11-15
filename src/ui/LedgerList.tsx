@@ -73,6 +73,16 @@ function money(
   };
 }
 
+/** Absolute-rupee edges in a stored rule read as crore. */
+function readableRule(rule: string): string {
+  return rule.replace(/\d{8,}/g, (digits) => {
+    const n = Number(digits);
+    if (!Number.isFinite(n) || Math.abs(n) < 1e7) return digits;
+    const cr = n / 1e7;
+    return `${groupIndian(cr, Math.abs(cr) < 100 ? 1 : 0)} cr`;
+  });
+}
+
 function isMoney(unit: string | null): boolean {
   return unit === "INR" || unit === "INR_cr";
 }
@@ -239,6 +249,22 @@ function PromiseRow({ g, symbol }: { g: LedgerGroup; symbol: string }) {
         ? "open-ended horizon"
         : null;
   const src = r.delivered?.source ? sourceLabel(r.delivered.source) : null;
+  const basis = typeof r.evidence?.basis === "string" ? r.evidence.basis : null;
+  const rule = typeof r.evidence?.rule === "string" ? r.evidence.rule : null;
+  const scored =
+    verdict === "kept" ||
+    verdict === "missed" ||
+    verdict === "beat" ||
+    verdict === "cut";
+  const scoreWhy = scored
+    ? [
+        basis,
+        r.horizon?.replace(/_/g, " ") ?? null,
+        rule ? readableRule(rule) : null,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(" · ")
+    : "";
   const header = (
     <>
       <span className="rowtitle text-ink min-w-0">
@@ -286,6 +312,7 @@ function PromiseRow({ g, symbol }: { g: LedgerGroup; symbol: string }) {
         </p>
       ) : null}
       <p className="quote text-ink-2 mt-1">“{r.quote}”</p>
+      {scoreWhy ? <p className="receipt mt-1">{scoreWhy}</p> : null}
       <p className="receipt mt-1">
         {[r.speaker, r.role].filter(Boolean).join(", ") || "Management"} ·{" "}
         {r.statedOnIst ?? docLabel}

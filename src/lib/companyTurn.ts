@@ -152,6 +152,13 @@ export type CompanyReply =
   | { kind: "rejected"; sentence: string }
   | { kind: "error"; message: string }
   | { kind: "nse"; headline: string; note: string }
+  | {
+      kind: "confirm";
+      token: string;
+      sentence: string;
+      label: string;
+      steps: string[];
+    }
   | { kind: "ask" };
 
 export type CompanyIntent =

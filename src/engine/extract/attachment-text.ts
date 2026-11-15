@@ -258,8 +258,15 @@ export async function extractAttachmentText(
     kind,
     cached: false,
   };
-  mkdirSync(cacheDir, { recursive: true });
-  writeFileSync(cachePath, JSON.stringify(result));
+  try {
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(cachePath, JSON.stringify(result));
+  } catch (e) {
+    log.warn(
+      { url: u, err: e instanceof Error ? e.message : String(e) },
+      "attachment cache write failed",
+    );
+  }
   log.info(
     { url: u, chars: result.text.length, pages, bytes: bytes.byteLength, kind },
     "attachment text extracted",

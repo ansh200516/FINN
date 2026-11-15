@@ -22,6 +22,12 @@ interface SymbolsFile {
   rows: Row[];
 }
 
+/** Old symbols the master no longer lists. Searching the old name finds the current row. */
+const OLD_SYMBOLS: Record<string, string> = {
+  TATAMOTORS: "TMPV",
+  ZOMATO: "ETERNAL",
+};
+
 const STEP_LABEL: Record<string, string> = {
   queued: "Queued",
   resolve_company: "Resolve company · ISIN, BSE code, aliases",
@@ -91,6 +97,11 @@ export function AddCompanyForm({
     if (s.length < 1) return [];
     const starts: Row[] = [];
     const contains: Row[] = [];
+    const alias = OLD_SYMBOLS[s];
+    if (alias) {
+      const row = rows.find((r) => r[0].toUpperCase() === alias);
+      if (row) starts.push(row);
+    }
     for (const r of rows) {
       const sym = r[0];
       const name = r[1].toUpperCase();

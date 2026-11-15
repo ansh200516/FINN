@@ -43,6 +43,9 @@ export function WindowScrubber({
           Since close
         </a>
       </div>
+      {window.widened ? (
+        <p className="receipt mt-2 text-ink-2">{window.widened}</p>
+      ) : null}
       <details className="mt-2 group">
         <summary className="hit inline-flex items-center gap-2 receipt text-ink-2 -ml-1 pl-1 select-none">
           <span className="chev" aria-hidden="true">

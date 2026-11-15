@@ -9,7 +9,7 @@ implementations, not stubs.
 
 - Schema-constrained JSON output (`responseMimeType: application/json` + `responseJsonSchema` from zod).
 - Model ladders: `bulk` = `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite`; `reason` = `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-3.8-flash` → bulk ladder. Override with `FINN_MODELS_BULK` / `FINN_MODELS_REASON`.
-- Thinking: `MINIMAL` for bulk, `LOW` for reason.
+- Thinking: `MINIMAL` for bulk, `LOW` for reason. A Finnie plan or answer call that streams thoughts uses `MEDIUM` with `includeThoughts`. That is the lowest level that returns a displayable summary on Gemini 3 Flash. LOW returns no thought tokens.
 - Per-model daily ledger (`llm_ledger`, date in America/Los_Angeles) with hard caps at **80 % of RPD** (Flash-Lite 500 → 400, Flash 20 → 16). A capped model is skipped; if every model is capped → `LlmBudgetExhausted`.
 - Process-local token bucket: bulk 10 RPM / 250k TPM, reason 5 RPM.
 - 60 s timeout; one retry with jitter on 429/503/500, then next model.

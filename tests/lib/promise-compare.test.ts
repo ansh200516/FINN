@@ -50,7 +50,7 @@ const quarters: ChatQuarter[] = [
 ];
 
 const mockSay =
-  "Management said they see visibility of high teen growth for Jio. The quarters are consolidated, so that comment cannot be scored. The decision is yours.";
+  "Management said they see visibility of high teen growth for Jio. The consolidated figure is not that business. The decision is yours.";
 
 const jio = {
   quote:
@@ -238,8 +238,11 @@ describe("promised versus delivered", () => {
     expect(bubble).toBeGreaterThan(-1);
     expect(bubble).toBeLessThan(table);
     expect(table).toBeLessThan(listAt);
-    expect(html).toContain("None kept, none missed, one unverifiable.");
-    expect(html.indexOf("None kept")).toBeLessThan(table);
+    expect(html).toContain(
+      "Management said they see visibility of high teen growth for Jio. The consolidated figure is not that business.",
+    );
+    expect(html.indexOf("Management said")).toBeLessThan(table);
+    expect(html).not.toContain("None kept, none missed, one unverifiable.");
     expect(html).not.toContain(mockSay);
     expect(html).not.toContain("The decision is yours");
     expect(html).not.toContain("cannot be scored");
@@ -296,7 +299,8 @@ describe("promised versus delivered", () => {
     );
     expect(html).not.toContain("tool JSON");
     expect(html).not.toContain("zero were kept");
-    expect(html).toContain("None kept, none missed, one unverifiable.");
+    expect(html).not.toContain("None kept, none missed, one unverifiable.");
+    expect(html).toContain("Unverifiable");
   });
 
   it("shows the high-teen sentence when the quote was cut off", () => {
@@ -428,5 +432,193 @@ describe("promised versus delivered", () => {
     expect(rows[0]?.verdict).toBe("missed");
     expect(rows[0]?.delivered).toContain("8.0");
     expect(rows[0]?.delivered).toContain("YoY");
+  });
+
+  it("scores a full-year rupee band against the year, not the latest quarter", () => {
+    const fy26: ChatQuarter[] = [
+      {
+        period: "Q1 FY26",
+        revenue: line("Revenue", 2700, 0, 0),
+        ebitda: null,
+        pbt: null,
+        pat: null,
+      },
+      {
+        period: "Q2 FY26",
+        revenue: line("Revenue", 2490, 0, 0),
+        ebitda: null,
+        pbt: null,
+        pat: null,
+      },
+      {
+        period: "Q3 FY26",
+        revenue: line("Revenue", 2499.68, 0, 0),
+        ebitda: null,
+        pbt: null,
+        pat: null,
+      },
+      {
+        period: "Q4 FY26",
+        revenue: line("Revenue", 3528, 0, 0),
+        ebitda: null,
+        pbt: null,
+        pat: null,
+      },
+    ];
+    const source = {
+      quote:
+        "We expect revenue for FY26 to be in the range of Rs 11,000 crore to Rs 11,500 crore.",
+      metric: "revenue",
+      horizon: "FY26",
+      low: 1100_000_000_00,
+      high: 1150_000_000_00,
+      unit: "INR",
+      status: "settled",
+      verdict: "kept",
+      delivered: { value: 1121_768_000_00, unit: "INR" },
+    };
+    const rows = comparisonsFor(fy26, [source]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.verdict).toBe("kept");
+    expect(rows[0]?.promised).toBe("₹ 11,000–11,500 cr");
+    expect(rows[0]?.promised).not.toContain("1,10,00,00,00,000");
+    expect(rows[0]?.delivered).toContain("11,218");
+    expect(rows[0]?.delivered).not.toContain("3,528");
+    expect(rows[0]?.period).toBe("FY26");
+    expect(rows[0]?.period).not.toContain("Q4");
+
+    const judged = comparisonsFor(fy26, [
+      { ...source, verdict: null, delivered: null },
+    ]);
+    expect(judged[0]?.verdict).toBe("kept");
+    expect(judged[0]?.delivered).toContain("11,218");
+    expect(judged[0]?.delivered).not.toContain("3,528");
+
+    const onlyQuarter = comparisonsFor(
+      [
+        {
+          period: "Q4 FY26",
+          revenue: line("Revenue", 3528, 0, 0),
+          ebitda: null,
+          pbt: null,
+          pat: null,
+        },
+      ],
+      [source],
+    );
+    expect(onlyQuarter[0]?.verdict).toBe("kept");
+    expect(onlyQuarter[0]?.delivered).toContain("11,218");
+    expect(onlyQuarter[0]?.delivered).not.toContain("3,528");
+
+    const above = comparisonsFor(fy26, [
+      {
+        ...source,
+        verdict: null,
+        delivered: { value: 13000, unit: "INR_cr" },
+        low: 11000,
+        high: 11500,
+        unit: "INR_cr",
+      },
+    ]);
+    expect(above[0]?.verdict).toBe("beat");
+    expect(above[0]?.verdict).not.toBe("kept");
+  });
+
+  it("quotes the sentence that holds the rupee band", () => {
+    const rows = comparisonsFor(
+      [
+        {
+          period: "Q4 FY26",
+          revenue: line("Revenue", 3528, 0, 16.5),
+          ebitda: null,
+          pbt: null,
+          pat: null,
+        },
+      ],
+      [
+        {
+          quote:
+            "Even the topline, you see, polymer prices, they are coming down. So, instead of 12,000 crores, now we are maintaining 11,000 crores to 11,500 crores.",
+          metric: "revenue",
+          horizon: "FY26",
+          low: 110000000000,
+          high: 115000000000,
+          unit: "INR",
+          status: "settled",
+          verdict: "kept",
+          delivered: { value: 112176800000, unit: "INR" },
+        },
+      ],
+    );
+    expect(rows[0]?.quote).toContain("11,000 crores to 11,500");
+    expect(rows[0]?.quote).not.toContain("polymer prices");
+  });
+
+  it("does not score piping growth or an export dollar aim as consolidated revenue", () => {
+    const piping = comparisonsFor(quarters, [
+      {
+        quote:
+          "And of course, we already stated to you that we anticipate to grow 15% to 17% piping business.",
+        metric: "revenue_growth",
+        horizon: "FY27",
+        low: 15,
+        high: 17,
+        unit: "%",
+        status: "open",
+        verdict: null,
+        delivered: null,
+      },
+    ]);
+    expect(piping[0]?.verdict).toBe("unverifiable");
+    expect(piping[0]?.delivered).toMatch(/not piping/i);
+    const exp = comparisonsFor(quarters, [
+      {
+        quote:
+          "Last year our export was USD26 million overall. We are aiming to reach USD150 millions in six to seven year from USD26 million.",
+        metric: "revenue",
+        horizon: "medium_term",
+        low: 150000000,
+        high: 150000000,
+        unit: "USD",
+        status: "open",
+        verdict: null,
+        delivered: null,
+      },
+    ]);
+    expect(exp[0]?.promised).toBe("USD 150 million");
+    expect(exp[0]?.verdict).toBe("unverifiable");
+  });
+
+  it("scores a full-year margin from the ledger, not one quarter", () => {
+    const rows = comparisonsFor(
+      [
+        {
+          period: "Q4 FY26",
+          revenue: line("Revenue", 3528, 0, 16.5),
+          ebitda: line("EBITDA", 623, 0, 49.7),
+          pbt: null,
+          pat: null,
+        },
+      ],
+      [
+        {
+          quote:
+            "For the current year now, we have revised our guidelines. And we now believe that our margin will be between 13.5% to 14%.",
+          metric: "operating_margin",
+          horizon: "FY26",
+          low: 13.5,
+          high: 14,
+          unit: "%",
+          status: "settled",
+          verdict: "kept",
+          delivered: { value: 13.846, unit: "%" },
+        },
+      ],
+    );
+    expect(rows[0]?.period).toBe("FY26");
+    expect(rows[0]?.period).not.toContain("Q4");
+    expect(rows[0]?.delivered).not.toContain("17");
+    expect(rows[0]?.verdict).toBe("kept");
+    expect(rows[0]?.quote).toContain("13.5%");
   });
 });

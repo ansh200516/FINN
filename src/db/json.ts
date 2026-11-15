@@ -20,6 +20,9 @@ export const UserPrefs = z
     quietCategories: z.array(z.string()).default([]),
     /** ms when /alerts was last opened; the bell counts firings after this */
     alertsSeenAt: z.number().nonnegative().optional(),
+    /** Pacific day of the demo user's Ask counter. Dropping a cookie does not reset it. */
+    askDay: z.string().optional(),
+    askCount: z.number().int().nonnegative().optional(),
   })
   .partial();
 

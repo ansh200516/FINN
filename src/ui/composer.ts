@@ -51,15 +51,25 @@ export interface GhostState {
   phase: GhostPhase;
 }
 
-/** The line an empty send should use. A partial line falls back to the first. */
+/**
+ * The example on screen. A partial line finishes the example being typed,
+ * not a different one earlier in the rotation.
+ */
 export function exampleForEmptySend(
   examples: readonly string[],
   shown: string,
+  index = 0,
 ): string {
-  for (const example of examples) {
+  const clean = examples.map(plainHint);
+  const count = clean.length;
+  const at = count ? ((index % count) + count) % count : 0;
+  const current = clean[at] ?? "";
+  if (current && (shown === current || current.startsWith(shown)))
+    return current;
+  for (const example of clean) {
     if (example === shown) return example;
   }
-  return examples[0] ?? "";
+  return current || clean[0] || "";
 }
 
 export function ghostDelay(state: GhostState): number {
@@ -108,13 +118,15 @@ export function fieldHint(input: {
   paused: boolean;
   examples: readonly string[];
   shown: string;
+  index?: number;
 }): { placeholder: string; submit: string } {
   const examples = input.examples.map(plainHint);
   const first = examples[0] ?? "";
   const shown = plainHint(input.shown);
   const typing = input.animate && !input.paused;
+  const index = input.index ?? 0;
   return {
     placeholder: typing ? shown : first,
-    submit: input.animate ? exampleForEmptySend(examples, shown) : first,
+    submit: input.animate ? exampleForEmptySend(examples, shown, index) : first,
   };
 }

@@ -220,6 +220,24 @@ describe("window resolution", () => {
     expect(c.label).toBe("1–8 Nov");
     expect(c.toMs).toBeLessThanOrEqual(now);
   });
+  it("does not throw on an invalid date and does not widen it", () => {
+    const bad = resolveWindow(now, { from: "9999-99-99" });
+    expect(bad.preset).toBe("24h");
+    expect(bad.auto).toBe(false);
+    expect(bad.toMs - bad.fromMs).toBe(24 * 3_600_000);
+    expect(resolveWindow(now, { from: "" }).preset).toBe("24h");
+    expect(resolveWindow(now, { w: "nope" })).toMatchObject({
+      preset: "24h",
+      auto: false,
+    });
+    expect(resolveWindow(now, {}).auto).toBe(true);
+  });
+  it("labels an inverted custom range in calendar order", () => {
+    const c = resolveWindow(now, { from: "2026-11-08", to: "2026-11-01" });
+    expect(c.preset).toBe("custom");
+    expect(c.label).toBe("1–8 Nov");
+    expect(c.fromMs).toBeLessThanOrEqual(c.toMs);
+  });
   it("widens through 7 d and 30 d when the last close is inside 24 h", () => {
     // Sun 8 Nov: the Muhurat session closed at 15:30 IST, inside the 24 h window
     expect(widenSequence(now)).toEqual(["7d", "30d"]);

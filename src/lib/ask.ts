@@ -3,7 +3,8 @@
  * the latest results card(s), guidance rows (quote + verdict), and at most
  * six `document_pages` chosen by keyword overlap with the question.
  * Every quote is checked with `verifyQuote` and dropped when it is not in
- * the retrieved source. A signed cookie caps a device at 8 asks per Pacific day.
+ * the retrieved source. The demo user's Ask count lives in server prefs,
+ * so dropping the cookie does not reset the 8-a-day cap.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, desc, eq, or } from "drizzle-orm";
@@ -15,6 +16,7 @@ import {
   documents,
   events,
   guidance,
+  users,
 } from "@/db/schema";
 import { withBusyRetry } from "@/engine/jobs/runner";
 import {
@@ -27,6 +29,8 @@ import {
   todayPt,
 } from "@/engine/llm/gateway";
 import { verifyQuote } from "@/engine/llm/verify";
+import { dropUngroundedSentences, ungroundedNumbers } from "@/lib/groundedSay";
+import { DEMO_USER_ID } from "@/lib/queries";
 
 export const ASK_DAILY_LIMIT = 8;
 export const ASK_COOKIE = "finn_ask";
@@ -328,14 +332,82 @@ export async function answerWithContext(
     })),
     sources,
   );
+  const facts = [{ tool: "ask", data: corpus }];
+  let answer = res.data.answer;
+  if (ungroundedNumbers(answer, question, facts).length)
+    answer = dropUngroundedSentences(answer, question, facts);
+  if (!answer.trim()) {
+    return {
+      answer: "That is not in the filings.",
+      citations: grounded.citations,
+      notInFilings: true,
+      model: res.model,
+      cached: res.cached,
+      quotesDropped: grounded.quotesDropped,
+    };
+  }
   return {
-    answer: res.data.answer,
+    answer,
     citations: grounded.citations,
     notInFilings: res.data.notInFilings,
     model: res.model,
     cached: res.cached,
     quotesDropped: grounded.quotesDropped,
   };
+}
+
+/** A 501-character question is a length error, not a missing field. */
+export function askInputError(body: unknown): string | null {
+  if (!body || typeof body !== "object")
+    return "symbol and question are required";
+  const rec = body as { symbol?: unknown; question?: unknown };
+  const symbol = typeof rec.symbol === "string" ? rec.symbol.trim() : "";
+  const question = typeof rec.question === "string" ? rec.question.trim() : "";
+  if (question.length > 500) return "Ask is limited to 500 characters.";
+  if (!symbol || !question) return "symbol and question are required";
+  if (!/^[A-Za-z0-9&.-]{1,20}$/.test(symbol))
+    return "symbol and question are required";
+  return null;
+}
+
+/**
+ * One Ask for the demo user, counted on the server. A missing or replaced
+ * cookie does not start the day over.
+ */
+export async function takeAskSlot(
+  day: string,
+  limit = ASK_DAILY_LIMIT,
+): Promise<{ count: number; allowed: boolean }> {
+  const rows = await db
+    .select({ prefsJson: users.prefsJson })
+    .from(users)
+    .where(eq(users.id, DEMO_USER_ID))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return { count: limit, allowed: false };
+  let prefs: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(row.prefsJson) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+      prefs = { ...(parsed as Record<string, unknown>) };
+  } catch {
+    prefs = {};
+  }
+  const prev =
+    prefs.askDay === day &&
+    typeof prefs.askCount === "number" &&
+    Number.isFinite(prefs.askCount)
+      ? prefs.askCount
+      : 0;
+  if (prev >= limit) return { count: prev, allowed: false };
+  const count = prev + 1;
+  prefs.askDay = day;
+  prefs.askCount = count;
+  await db
+    .update(users)
+    .set({ prefsJson: JSON.stringify(prefs) })
+    .where(eq(users.id, DEMO_USER_ID));
+  return { count, allowed: true };
 }
 
 function resultsText(cardJson: string): string {

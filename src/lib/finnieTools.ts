@@ -4,17 +4,17 @@
  */
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { removeFromPortfolio } from "@/app/add/actions";
 import { db } from "@/db/client";
 import { parseJsonColumn, StringArray } from "@/db/json";
 import { alerts, events, prices } from "@/db/schema";
 import { barMetrics } from "@/engine/analyse/anomalies";
 import { buildResultsCard } from "@/engine/analyse/results";
-import { ensureCompany, resolveNseSymbol } from "@/engine/jobs/resolve";
+import { resolveNseSymbol } from "@/engine/jobs/resolve";
 import {
   answerNse,
   NSE_FEED_FAILED,
   NseFeedError,
+  quoteCard,
 } from "@/engine/sources/nse-mcp";
 import {
   CATEGORIES,
@@ -24,7 +24,8 @@ import {
   type ResultsQuarter,
   type Tripwire,
 } from "@/engine/types";
-import { getBriefView, invalidateBrief } from "@/lib/brief";
+import { confirmExpiry, sealBookConfirm } from "@/lib/bookConfirm";
+import { getBriefView } from "@/lib/brief";
 import { type CompanyReply, confirmRule } from "@/lib/companyTurn";
 import type {
   ChatQuarter,
@@ -35,8 +36,7 @@ import type {
   ToolArgs,
   ToolOutcome,
 } from "@/lib/finnieTypes";
-import { categoryLabel, dayLabel } from "@/lib/format";
-import { continueJob, startResearch } from "@/lib/jobs";
+import { categoryLabel, dayLabel, formatInr } from "@/lib/format";
 import { PULL_TITLES, type PullTitle } from "@/lib/pull";
 import { loadPullMenu } from "@/lib/pullRead";
 import {
@@ -51,11 +51,11 @@ import {
   getEngineQuarters,
   getInbox,
   getLedger,
+  getPriceSeries,
   getQuarters,
   getTripwires,
   guidanceVerdictGroups,
 } from "@/lib/queries";
-import { disableTripwire, writeTripwire } from "@/lib/tripwireWrite";
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
 import {
   judgeEvent,
@@ -69,7 +69,39 @@ import type { LedgerRowView, ManagementChangeCard } from "@/ui/model";
 import { peopleOf } from "@/ui/people";
 
 /** One chat request may advance research, not run the whole pipeline. */
-const RESEARCH_BUDGET_MS = 8_000;
+const RESEARCH_STEPS = [
+  "Resolve company · ISIN and aliases",
+  "Fetch announcements",
+  "Fetch prices",
+  "Fetch results",
+  "Discover documents",
+  "Settle the ledger",
+];
+
+function confirmCard(
+  symbol: string,
+  sentence: string,
+  label: string,
+  token: string,
+  steps: string[],
+  status: string,
+): ToolOutcome {
+  const reply: CompanyReply = {
+    kind: "confirm",
+    token,
+    sentence,
+    label,
+    steps,
+  };
+  return {
+    fact: { status, symbol, sentence },
+    card: { kind: "reply", symbol, reply },
+    symbol,
+    href: null,
+    link: null,
+    book: null,
+  };
+}
 
 const READING: Record<string, PullTitle> = {
   "business snapshot": "Business snapshot",
@@ -203,45 +235,19 @@ async function addToPortfolio(
       book: "already_in",
     };
   }
-  await ensureCompany(
-    {
-      symbol: found.symbol,
-      isin: found.isin,
-      name: found.name,
-      series: null,
-      via: "db",
-    },
-    { portfolio: true },
-  );
-  const card = await getCompanyResultsCard(found.isin);
-  let research: "started" | "has_results" | "not_started" = card
-    ? "has_results"
-    : "not_started";
-  if (!card) {
-    const job = await startResearch(found.symbol, { portfolio: true });
-    if (job.ok) {
-      research = "started";
-      try {
-        await continueJob(job.jobId, { deadlineMs: RESEARCH_BUDGET_MS });
-      } catch {
-        // The job is queued. This request could not finish it.
-      }
-    }
-  }
-  await refreshBook();
-  return {
-    fact: {
-      status: "added",
-      symbol: found.symbol,
-      name: found.name,
-      research,
-    },
-    card: null,
+  const token = sealBookConfirm({
+    op: "add",
     symbol: found.symbol,
-    href: `/c/${encodeURIComponent(found.symbol)}`,
-    link: `Open ${found.symbol}`,
-    book: "added",
-  };
+    exp: confirmExpiry(),
+  });
+  return confirmCard(
+    found.symbol,
+    `Add ${found.symbol} to the book? Research starts after you confirm.`,
+    `Add ${found.symbol}`,
+    token,
+    RESEARCH_STEPS,
+    "confirm_add",
+  );
 }
 
 async function removeName(
@@ -263,26 +269,19 @@ async function removeName(
       book: null,
     };
   }
-  try {
-    await removeFromPortfolio(found.isin);
-  } catch {
-    // A cache refresh can throw after the row is gone.
-  }
-  if (await inBook(found.isin)) {
-    return bare({
-      error: "The portfolio did not change.",
-      symbol: found.symbol,
-    });
-  }
-  await refreshBook();
-  return {
-    fact: { status: "removed", symbol: found.symbol, name: found.name },
-    card: null,
+  const token = sealBookConfirm({
+    op: "remove",
     symbol: found.symbol,
-    href,
-    link,
-    book: "removed",
-  };
+    exp: confirmExpiry(),
+  });
+  return confirmCard(
+    found.symbol,
+    `Remove ${found.symbol} from the book? Nothing changes until you confirm.`,
+    `Remove ${found.symbol}`,
+    token,
+    [],
+    "confirm_remove",
+  );
 }
 
 async function resultsFor(
@@ -411,11 +410,42 @@ async function quoteFor(
 ): Promise<ToolOutcome> {
   const found = await findSymbol(raw, focus, true);
   if (!found.ok) return bare({ error: found.error });
-  return nseCard(
+  const live = await nseCard(
     () => answerNse({ kind: "quote", symbol: found.symbol }),
     found.symbol,
     "quote",
   );
+  if (typeof live.fact.error !== "string") return live;
+  const series = await getPriceSeries(found.isin, 5).catch(() => null);
+  if (!series || series.lastClose == null) return live;
+  const pct = series.lastPct;
+  const price = formatInr(series.lastClose, { decimals: 2 });
+  const headline =
+    pct == null
+      ? `${found.symbol} ${price}.`
+      : quoteCard({
+          symbol: found.symbol,
+          last: series.lastClose,
+          changePct: pct,
+          asOf: series.lastDate,
+        }).headline;
+  const note = series.lastDate
+    ? `Stored close · ${series.lastDate}`
+    : "Stored close";
+  const reply: CompanyReply = { kind: "nse", headline, note };
+  return {
+    fact: {
+      status: "quote",
+      symbol: found.symbol,
+      headline,
+      note,
+      source: "stored",
+    },
+    card: { kind: "reply", symbol: found.symbol, reply },
+    symbol: found.symbol,
+    ...linkFor(reply, found.symbol),
+    book: null,
+  };
 }
 
 async function indexFor(raw: string | undefined): Promise<ToolOutcome> {
@@ -485,23 +515,23 @@ async function setAlert(
     symbol = row.nseSymbol;
   }
   const scope: "symbol" | "book" = target.book ? "book" : "symbol";
-  const saved = await writeTripwire(
-    target.book ? null : isin,
-    built.rule,
+  const sentence = `${confirmRule(label, scope, built.rule)} Nothing is saved until you confirm.`;
+  const token = sealBookConfirm({
+    op: "alert",
     scope,
-    isin ?? "book",
-    { replace: true },
-  );
-  if (!saved) return bare({ error: "The rule did not save." });
-  const sentence = confirmRule(label, scope, built.rule);
-  const reply: CompanyReply = { kind: "rule", sentence };
-  return {
-    fact: { status: "alert", scope, symbol, sentence },
-    card: { kind: "reply", symbol: symbol ?? "", reply },
     symbol,
-    ...linkFor(reply, symbol ?? ""),
-    book: null,
-  };
+    isin,
+    rule: built.rule,
+    exp: confirmExpiry(),
+  });
+  return confirmCard(
+    symbol ?? "book",
+    sentence,
+    "Save alert",
+    token,
+    [],
+    "confirm_alert",
+  );
 }
 
 function alertTarget(
@@ -674,17 +704,6 @@ async function bankOf(row: {
     /bank/i.test(row.industry ?? "") ||
     /bank/i.test(row.sector ?? "")
   );
-}
-
-async function refreshBook(): Promise<void> {
-  try {
-    revalidatePath("/");
-    revalidatePath("/brief");
-    revalidatePath("/c");
-    await invalidateBrief();
-  } catch {
-    // The row is saved. The brief cache expires on its own.
-  }
 }
 
 function readingTitle(raw: string | undefined): PullTitle | null {
@@ -962,17 +981,17 @@ async function briefFor(
     }
   }
   const act: FinnieLine[] = [];
-  let watch = 0;
+  const watchLines: FinnieLine[] = [];
   for (const event of [...view.tier1, ...view.tier2]) {
     if (only && event.symbol.toUpperCase() !== only) continue;
     const judged = judgeEvent(event, ledgers.get(event.isin) ?? null);
-    if (judged.decision === "watch") watch += 1;
-    if (judged.decision !== "act") continue;
-    act.push({
+    const line: FinnieLine = {
       symbol: event.symbol,
       text: judged.sentence,
       href: `/e/${encodeURIComponent(event.eventKey)}`,
-    });
+    };
+    if (judged.decision === "watch") watchLines.push(line);
+    if (judged.decision === "act") act.push(line);
   }
   for (const anomaly of view.anomalies) {
     if (only && anomaly.symbol.toUpperCase() !== only) continue;
@@ -983,12 +1002,21 @@ async function briefFor(
     };
     if (!showAsMoveCard(move, thresholds.pricePct)) continue;
     const judged = judgeMove(move);
-    if (judged.decision === "watch") watch += 1;
-    if (judged.decision !== "act") continue;
-    act.push({
+    const line: FinnieLine = {
       symbol: anomaly.symbol,
       text: judged.sentence,
       href: "/",
+    };
+    if (judged.decision === "watch") watchLines.push(line);
+    if (judged.decision === "act") act.push(line);
+  }
+  const watch = watchLines.length;
+  const stacks = [...act, ...watchLines];
+  if (!only && view.counts.filedAway > 0) {
+    stacks.push({
+      symbol: "Book",
+      text: `${view.counts.filedAway} filed away`,
+      href: "/brief",
     });
   }
   const outcome = linesOutcome(
@@ -1003,11 +1031,16 @@ async function briefFor(
         href: line.href,
       })),
       watch,
+      watchLines: watchLines.map((line) => ({
+        symbol: line.symbol,
+        sentence: line.text,
+        href: line.href,
+      })),
       filedAway: only
         ? filings.filter((filing) => filing.tier === 3).length
         : view.counts.filedAway,
     },
-    act,
+    stacks,
   );
   if (!only) return outcome;
   return {
@@ -1315,17 +1348,25 @@ async function disableAlert(
     symbol = row.nseSymbol;
   }
   const scope: "symbol" | "book" = target.book ? "book" : "symbol";
-  const result = await disableTripwire(scope, parsed.kind, isin, parsed.drop);
   const who = categoryName(parsed);
-  const sentence = disableSentence(who, label, result);
-  return {
-    fact: { status: "alert_off", scope, symbol, sentence, result: result.ok },
-    card: null,
+  const sentence = `Turn off the ${who} alert for ${label}? Nothing changes until you confirm.`;
+  const token = sealBookConfirm({
+    op: "alert_off",
+    scope,
     symbol,
-    href: "/alerts",
-    link: "Alerts",
-    book: null,
-  };
+    isin,
+    kind: parsed.kind,
+    ...(parsed.drop ? { drop: parsed.drop } : {}),
+    exp: confirmExpiry(),
+  });
+  return confirmCard(
+    symbol ?? "book",
+    sentence,
+    "Turn alert off",
+    token,
+    [],
+    "confirm_alert_off",
+  );
 }
 
 async function latestStoredMove(
@@ -1534,23 +1575,6 @@ function categoryName(parsed: {
   if (parsed.kind === "price_move") return "price";
   if (parsed.kind === "volume_ratio") return "volume";
   return "category";
-}
-
-function disableSentence(
-  who: string,
-  label: string,
-  result: Awaited<ReturnType<typeof disableTripwire>>,
-): string {
-  if (result.ok === "missing") return `There is no ${who} alert for ${label}.`;
-  if (result.ok === "absent") return `${cap(who)} is not watched for ${label}.`;
-  if (result.ok === "narrowed")
-    return `${cap(who)} alerts for ${label} are off.`;
-  if (result.already) return `The ${who} alert for ${label} is already off.`;
-  return `The ${who} alert for ${label} is off.`;
-}
-
-function cap(text: string): string {
-  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
 }
 
 function linesOutcome(

@@ -923,9 +923,16 @@ export async function ingestOneDocument(
       };
     }
 
-    mkdirSync(DOCS_CACHE_DIR, { recursive: true });
     const file = join(DOCS_CACHE_DIR, `${dl.sha256}.pdf`);
-    if (!existsSync(file)) writeFileSync(file, dl.bytes);
+    try {
+      mkdirSync(DOCS_CACHE_DIR, { recursive: true });
+      if (!existsSync(file)) writeFileSync(file, dl.bytes);
+    } catch (e) {
+      log.warn(
+        { file, err: e instanceof Error ? e.message : String(e) },
+        "pdf cache write failed",
+      );
+    }
 
     const ex = await extractPdfPages(dl.bytes);
     const docText: DocumentText = {

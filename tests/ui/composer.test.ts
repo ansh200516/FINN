@@ -69,9 +69,13 @@ describe("typed example", () => {
     const held: string[] = [];
     for (let i = 0; i < 500 && held.length < examples.length; i++) {
       if (state.phase === "holding") held.push(state.shown);
-      const finished = examples.find((example) => example === state.shown);
-      expect(exampleForEmptySend(examples, state.shown)).toBe(
-        finished ?? examples[0],
+      const current = examples[state.index] ?? examples[0] ?? "";
+      const expected =
+        current.startsWith(state.shown) || current === state.shown
+          ? current
+          : (examples.find((example) => example === state.shown) ?? current);
+      expect(exampleForEmptySend(examples, state.shown, state.index)).toBe(
+        expected,
       );
       state = advanceGhost(state, examples);
     }
@@ -86,6 +90,12 @@ describe("typed example", () => {
     );
     expect(exampleForEmptySend(examples, "reliance price")).toBe(
       "reliance price",
+    );
+    expect(exampleForEmptySend(examples, "reliance p", 3)).toBe(
+      "reliance price",
+    );
+    expect(exampleForEmptySend(examples, "set a pr", 4)).toBe(
+      "set a price alert to 4%",
     );
   });
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { applyBookConfirm } from "@/app/chat/actions";
 import { type AskChip, type CompanyReply, NO_RESULTS } from "@/lib/companyTurn";
 import { CitationChip } from "./CitationChip";
 import { PullReading } from "./PullMenu";
@@ -45,6 +46,26 @@ export function ReplyBody({
           <p className="small text-ink">{reply.headline}</p>
           <p className="receipt mt-1">{reply.note}</p>
         </div>
+      );
+    case "confirm":
+      return (
+        <form action={applyBookConfirm} className="card px-3 py-3">
+          <p className="small text-ink">{reply.sentence}</p>
+          {reply.steps.length ? (
+            <ol className="m-0 mt-2 list-decimal pl-5 receipt">
+              {reply.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          ) : null}
+          <input type="hidden" name="token" value={reply.token} />
+          <button
+            type="submit"
+            className="hit mt-3 inline-flex items-center rounded-[var(--r-chip)] bg-ink px-4 text-bg font-medium"
+          >
+            {reply.label}
+          </button>
+        </form>
       );
     case "ask":
       return null;

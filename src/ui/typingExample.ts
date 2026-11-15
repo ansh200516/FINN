@@ -48,5 +48,6 @@ export function useTypingExample(paused: boolean) {
     paused,
     examples,
     shown: ghost.shown,
+    index: ghost.index,
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import Link from "next/link";
 import {
   type KeyboardEvent,
@@ -19,6 +19,7 @@ import {
   loadChatLog,
   saveChatLog,
 } from "@/lib/chatLog";
+import { type ChatStreamEvent, readChatEvents } from "@/lib/chatStream";
 import { NO_PROMISES, NO_RESULTS } from "@/lib/companyTurn";
 import {
   clipQuarterWall,
@@ -26,6 +27,7 @@ import {
   isNumberWall,
   stripDecision,
 } from "@/lib/finnieSay";
+import { reduceTrace, type TraceItem } from "@/lib/finnieTrace";
 import {
   type ChatQuarter,
   type ChatQuarterMetric,
@@ -36,17 +38,15 @@ import {
   type FinnieMemory,
   type FinnieTurnResult,
 } from "@/lib/finnieTypes";
-import {
-  type ComparisonRow,
-  comparisonBubble,
-  comparisonsFor,
-} from "@/lib/promiseCompare";
+import { repairPdfWords } from "@/lib/pdfWords";
+import { type ComparisonRow, comparisonsFor } from "@/lib/promiseCompare";
 import { composerBoxHeight, FINNIE_GREETING } from "@/ui/composer";
 import type { LedgerRowView } from "@/ui/model";
 import { useTypingExample } from "@/ui/typingExample";
 import { ReplyBody } from "./CompanyConversation";
 import { ComparisonList, QuarterBoard } from "./PromiseCompareCard";
 import { ResultsGrid } from "./ResultsGrid";
+import { ThoughtRow } from "./ThoughtRow";
 import { VerdictBadge } from "./VerdictBadge";
 
 /** Grow with the draft. An empty field stays one line so the placeholder cannot stretch it. */
@@ -66,7 +66,7 @@ function fitComposerField(el: HTMLTextAreaElement, text = el.value) {
 }
 
 type Shown =
-  | { kind: "pending" }
+  | { kind: "pending"; thoughts: TraceItem[]; open: boolean }
   | {
       kind: "finnie";
       say: string;
@@ -76,6 +76,8 @@ type Shown =
       href: string | null;
       link: string | null;
       sayAfter: boolean;
+      thoughts: TraceItem[];
+      thoughtsOpen: boolean;
     };
 
 interface Turn {
@@ -95,7 +97,8 @@ export function Desk({
 }: {
   initialSymbol?: string | null;
   initialName?: string | null;
-  onTurn: (
+  /** Tests pass a turn. The chat page streams /api/chat instead. */
+  onTurn?: (
     sentence: string,
     focus: string | null,
     prior?: FinnieMemory[] | null,
@@ -107,6 +110,7 @@ export function Desk({
   const fieldWidth = useRef(0);
   const seq = useRef(0);
   const epoch = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   const turnsRef = useRef<Turn[]>([]);
   const [symbol, setSymbol] = useState<string | null>(initialSymbol);
   const [draft, setDraft] = useState("");
@@ -175,8 +179,28 @@ export function Desk({
     );
   }
 
+  function toggleThoughts(id: number) {
+    setTurns((prev) =>
+      prev.map((turn) => {
+        if (turn.id !== id) return turn;
+        if (turn.shown.kind === "pending") {
+          return { ...turn, shown: { ...turn.shown, open: !turn.shown.open } };
+        }
+        return {
+          ...turn,
+          shown: {
+            ...turn.shown,
+            thoughtsOpen: !turn.shown.thoughtsOpen,
+          },
+        };
+      }),
+    );
+  }
+
   function newChat() {
     epoch.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
     clearChatLog(window.localStorage);
     seq.current = 0;
     setSymbol(initialSymbol);
@@ -193,11 +217,19 @@ export function Desk({
     setDraft("");
     const id = ++seq.current;
     setTurns((prev) =>
-      capTurns([...prev, { id, question, shown: { kind: "pending" } }]),
+      capTurns([
+        ...prev,
+        {
+          id,
+          question,
+          shown: { kind: "pending", thoughts: [], open: false },
+        },
+      ]),
     );
     setBusy(true);
-    try {
-      const res = await onTurn(question, symbol, memory);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const finish = (res: FinnieTurnResult, thoughts: TraceItem[]) => {
       if (ticket !== epoch.current) return;
       setSymbol(res.symbol);
       const cards = res.cards.length ? res.cards : res.card ? [res.card] : [];
@@ -210,8 +242,11 @@ export function Desk({
         href: res.href,
         link: res.link,
         sayAfter: res.sayAfter,
+        thoughts,
+        thoughtsOpen: false,
       });
-    } catch {
+    };
+    const fail = (thoughts: TraceItem[]) => {
       if (ticket !== epoch.current) return;
       patch(id, {
         kind: "finnie",
@@ -222,9 +257,85 @@ export function Desk({
         href: null,
         link: null,
         sayAfter: false,
+        thoughts,
+        thoughtsOpen: false,
       });
+    };
+    try {
+      if (onTurn) {
+        try {
+          let res: FinnieTurnResult;
+          try {
+            res = await onTurn(question, symbol, memory);
+          } catch {
+            // A dropped action is not proof the model is down. Ask once more.
+            if (ticket !== epoch.current) return;
+            res = await onTurn(question, symbol, memory);
+          }
+          finish(res, []);
+        } catch {
+          fail([]);
+        }
+        return;
+      }
+      let thoughts: TraceItem[] = [];
+      const apply = (event: ChatStreamEvent) => {
+        if (ticket !== epoch.current) return;
+        if (event.type !== "step" && event.type !== "thought") return;
+        thoughts = reduceTrace(thoughts, event);
+        const next = thoughts;
+        setTurns((prev) =>
+          prev.map((turn) => {
+            if (turn.id !== id || turn.shown.kind !== "pending") return turn;
+            return {
+              ...turn,
+              shown: {
+                kind: "pending",
+                thoughts: next,
+                open: turn.shown.open,
+              },
+            };
+          }),
+        );
+      };
+      let outcome = await streamTurn(
+        question,
+        symbol,
+        memory,
+        controller.signal,
+        apply,
+      );
+      if (
+        !outcome.result &&
+        outcome.retry &&
+        ticket === epoch.current &&
+        !controller.signal.aborted
+      ) {
+        thoughts = [];
+        setTurns((prev) =>
+          prev.map((turn) =>
+            turn.id === id
+              ? {
+                  ...turn,
+                  shown: { kind: "pending", thoughts: [], open: false },
+                }
+              : turn,
+          ),
+        );
+        outcome = await streamTurn(
+          question,
+          symbol,
+          memory,
+          controller.signal,
+          apply,
+        );
+      }
+      if (ticket !== epoch.current || controller.signal.aborted) return;
+      if (!outcome.result) fail(thoughts);
+      else finish(outcome.result, thoughts);
     } finally {
       if (ticket === epoch.current) setBusy(false);
+      if (abortRef.current === controller) abortRef.current = null;
     }
   }
 
@@ -259,7 +370,7 @@ export function Desk({
                 <div className="flex flex-col items-end">
                   <div className="bubble-user">{turn.question}</div>
                 </div>
-                <TurnBody turn={turn} />
+                <TurnBody turn={turn} onToggle={toggleThoughts} />
               </li>
             ))}
           </ol>
@@ -314,27 +425,98 @@ export function Desk({
   );
 }
 
-function TurnBody({ turn }: { turn: Turn }) {
+function TurnBody({
+  turn,
+  onToggle,
+}: {
+  turn: Turn;
+  onToggle: (id: number) => void;
+}) {
   const shown = turn.shown;
   if (shown.kind === "pending") {
+    const title = shown.thoughts.at(-1)?.title ?? "";
+    if (!title) {
+      return (
+        <p className="agent-status">
+          <span className="live-dot" aria-hidden="true" />
+        </p>
+      );
+    }
     return (
-      <p className="agent-status">
-        <Loader2 className="animate-spin" size={14} aria-hidden="true" />
-        <span>Looking.</span>
-      </p>
+      <ThoughtRow
+        title={title}
+        items={shown.thoughts}
+        open={shown.open}
+        running
+        onToggle={() => onToggle(turn.id)}
+      />
     );
   }
+  const title = shown.thoughts.at(-1)?.title ?? "";
   return (
-    <FinnieAnswer
-      say={shown.say}
-      cards={shown.cards}
-      pages={shown.pages}
-      links={shown.links}
-      href={shown.href}
-      link={shown.link}
-      sayAfter={shown.sayAfter}
-    />
+    <>
+      {title ? (
+        <ThoughtRow
+          title={title}
+          items={shown.thoughts}
+          open={shown.thoughtsOpen}
+          running={false}
+          onToggle={() => onToggle(turn.id)}
+        />
+      ) : null}
+      <FinnieAnswer
+        say={shown.say}
+        cards={shown.cards}
+        pages={shown.pages}
+        links={shown.links}
+        href={shown.href}
+        link={shown.link}
+        sayAfter={shown.sayAfter}
+      />
+    </>
   );
+}
+
+async function streamTurn(
+  sentence: string,
+  focus: string | null,
+  prior: FinnieMemory[],
+  signal: AbortSignal,
+  onEvent: (event: ChatStreamEvent) => void,
+): Promise<{ result: FinnieTurnResult | null; retry: boolean }> {
+  let response: Response;
+  try {
+    response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/x-ndjson",
+      },
+      body: JSON.stringify({ sentence, focus, prior }),
+      signal,
+      cache: "no-store",
+    });
+  } catch {
+    return { result: null, retry: !signal.aborted };
+  }
+  if (signal.aborted) return { result: null, retry: false };
+  if (response.status >= 400 && response.status < 500) {
+    return { result: null, retry: false };
+  }
+  if (!response.ok || !response.body) return { result: null, retry: true };
+  let result: FinnieTurnResult | null = null;
+  let failed = false;
+  try {
+    await readChatEvents(response.body, (event) => {
+      if (event.type === "result") result = event.result;
+      else if (event.type === "error") failed = true;
+      else if (event.type !== "ping") onEvent(event);
+    });
+  } catch {
+    return { result, retry: !result && !signal.aborted };
+  }
+  if (result) return { result, retry: false };
+  return { result: null, retry: failed || !signal.aborted };
 }
 
 const GUIDANCE_CAP = 6;
@@ -631,7 +813,9 @@ function ManagementCard({
             {[person.action, person.role].filter(Boolean).join(" · ")}
           </p>
           {person.excerpt ? (
-            <p className="small mt-1 text-ink-2">{person.excerpt}</p>
+            <p className="small mt-1 text-ink-2">
+              {repairPdfWords(person.excerpt)}
+            </p>
           ) : null}
         </li>
       ))}
@@ -714,11 +898,8 @@ export function FinnieAnswer({
       label={item.label}
     />
   ));
-  // The bubble is one count when the pairs are on the card. The table sits under it.
-  let spoken = clipQuarterWall(clean);
-  if (paired && compared.length) spoken = comparisonBubble(compared);
-  else if (paired) spoken = clean;
-  else if (wall) spoken = "";
+  // The bubble is the model's sentence. The pairs under it are the rows.
+  const spoken = wall && !paired ? "" : clipQuarterWall(clean);
   const bubble = spoken ? <div className="bubble-agent">{spoken}</div> : null;
   const jump = <CardLink href={href ?? null} label={link ?? null} />;
   const decisionLast = sayAfter && !paired;
@@ -816,6 +997,8 @@ function revive(row: ChatLogTurn): Turn {
       href: row.href,
       link: row.link,
       sayAfter: row.sayAfter,
+      thoughts: [],
+      thoughtsOpen: false,
     },
   };
 }

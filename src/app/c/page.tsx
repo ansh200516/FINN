@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { groupIndian, relativeIst } from "@/lib/format";
-import { getCompaniesIndex, getDemoUser } from "@/lib/queries";
+import { getCompaniesIndex, listTrackedIsins } from "@/lib/queries";
 import { DeltaChip } from "@/ui/DeltaChip";
 import { Empty } from "@/ui/Empty";
 import { Sparkline } from "@/ui/Sparkline";
@@ -10,8 +10,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Companies" };
 
 export default async function CompaniesPage() {
-  const user = await getDemoUser();
-  const rows = await getCompaniesIndex(user.portfolioIsins);
+  const rows = await getCompaniesIndex(await listTrackedIsins());
   const now = Date.now();
   const portfolio = rows.filter((r) => r.inPortfolio);
   const adhoc = rows.filter((r) => !r.inPortfolio);
@@ -65,7 +64,9 @@ export default async function CompaniesPage() {
             className="dateline text-ink mt-1 reveal"
             style={{ animationDelay: "60ms" }}
           >
-            {rows.length ? `${rows.length} on the book.` : "An empty book."}
+            {rows.length
+              ? `${portfolio.length} in the portfolio${adhoc.length ? `, ${adhoc.length} ad-hoc` : ""}.`
+              : "An empty book."}
           </h1>
           <p
             className="receipt mt-2 reveal"

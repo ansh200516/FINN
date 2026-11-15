@@ -91,6 +91,17 @@ function guideRank(g: {
 }
 
 const PULL_CACHE_MS = 5 * 60_000;
+const PULL_VERSION = "mix2";
+const PROFILE_NEEDLES = [
+  "share in turnover",
+  "product groups of",
+  "external turnover",
+  "private sector bank",
+  "crore advances",
+  "total deposits",
+  "advances stood",
+  "segment revenue",
+];
 type PullCache = Map<string, { at: number; blocks: PullBlock[] }>;
 const pullCache = globalThis as { __finnPull?: PullCache };
 
@@ -103,27 +114,33 @@ export async function loadPullMenu(args: {
   isin: string;
   isBank: boolean;
 }): Promise<PullBlock[]> {
-  const key = `${args.isin}:${args.isBank ? 1 : 0}`;
+  const key = `${PULL_VERSION}:${args.isin}:${args.isBank ? 1 : 0}`;
   const hit = cachedPull().get(key);
   if (hit && Date.now() - hit.at < PULL_CACHE_MS) return hit.blocks;
 
   const needle = or(
     ...NEEDLES.map((n) => sql`lower(${documentPages.text}) like ${`%${n}%`}`),
   );
-  const [pageRows, quarterRows, guideRows, callRows] = await Promise.all([
-    db
-      .select({
-        page: documentPages.page,
-        text: documentPages.text,
-        docId: documents.id,
-        period: documents.period,
-        url: documents.url,
-      })
-      .from(documentPages)
-      .innerJoin(documents, eq(documentPages.docId, documents.id))
-      .where(
-        and(
-          sql`${documentPages.docId} = (
+  const profileNeedle = or(
+    ...PROFILE_NEEDLES.map(
+      (n) => sql`lower(${documentPages.text}) like ${`%${n}%`}`,
+    ),
+  );
+  const [pageRows, quarterRows, guideRows, callRows, profileRows] =
+    await Promise.all([
+      db
+        .select({
+          page: documentPages.page,
+          text: documentPages.text,
+          docId: documents.id,
+          period: documents.period,
+          url: documents.url,
+        })
+        .from(documentPages)
+        .innerJoin(documents, eq(documentPages.docId, documents.id))
+        .where(
+          and(
+            sql`${documentPages.docId} = (
             select ${documents.id} from ${documents}
             where ${documents.isin} = ${args.isin}
               and ${documents.kind} = 'annual_report'
@@ -131,48 +148,69 @@ export async function loadPullMenu(args: {
             order by ${documents.period} desc, ${documents.pages} desc
             limit 1
           )`,
-          needle,
+            needle,
+          ),
         ),
-      ),
-    db
-      .select()
-      .from(resultsQuarters)
-      .where(eq(resultsQuarters.isin, args.isin))
-      .orderBy(resultsQuarters.periodEnd),
-    db
-      .select({
-        metric: guidance.metric,
-        low: guidance.low,
-        high: guidance.high,
-        unit: guidance.unit,
-        horizon: guidance.horizon,
-        status: guidance.status,
-        page: guidance.page,
-        quote: guidance.quote,
-        docId: guidance.docId,
-        url: documents.url,
-        docKind: documents.kind,
-        period: documents.period,
-      })
-      .from(guidance)
-      .innerJoin(documents, eq(guidance.docId, documents.id))
-      .where(
-        and(
-          eq(guidance.isin, args.isin),
-          or(eq(guidance.status, "open"), eq(guidance.status, "settled")),
+      db
+        .select()
+        .from(resultsQuarters)
+        .where(eq(resultsQuarters.isin, args.isin))
+        .orderBy(resultsQuarters.periodEnd),
+      db
+        .select({
+          metric: guidance.metric,
+          low: guidance.low,
+          high: guidance.high,
+          unit: guidance.unit,
+          horizon: guidance.horizon,
+          status: guidance.status,
+          verdict: guidance.verdict,
+          page: guidance.page,
+          quote: guidance.quote,
+          docId: guidance.docId,
+          url: documents.url,
+          docKind: documents.kind,
+          period: documents.period,
+        })
+        .from(guidance)
+        .innerJoin(documents, eq(guidance.docId, documents.id))
+        .where(
+          and(
+            eq(guidance.isin, args.isin),
+            or(eq(guidance.status, "open"), eq(guidance.status, "settled")),
+          ),
         ),
-      ),
-    db
-      .select({ n: count() })
-      .from(documents)
-      .where(
-        and(
-          eq(documents.isin, args.isin),
-          eq(documents.kind, "transcript"),
-          eq(documents.textStatus, "ok"),
+      db
+        .select({ n: count() })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.isin, args.isin),
+            eq(documents.kind, "transcript"),
+            eq(documents.textStatus, "ok"),
+          ),
         ),
-      ),
-  ]);
+      db
+        .select({
+          page: documentPages.page,
+          text: documentPages.text,
+        })
+        .from(documentPages)
+        .innerJoin(documents, eq(documentPages.docId, documents.id))
+        .where(
+          and(
+            sql`${documentPages.docId} = (
+            select ${documents.id} from ${documents}
+            where ${documents.isin} = ${args.isin}
+              and ${documents.kind} = 'annual_report'
+              and ${documents.textStatus} = 'ok'
+            order by ${documents.period} desc, ${documents.pages} desc
+            limit 1
+          )`,
+            profileNeedle,
+          ),
+        ),
+    ]);
 
   const latestPeriod = pageRows.reduce<string | null>(
     (best, row) => ((row.period ?? "") > (best ?? "") ? row.period : best),
@@ -246,6 +284,7 @@ export async function loadPullMenu(args: {
       unit: g.unit,
       horizon: g.horizon,
       status: g.status,
+      verdict: g.verdict,
       page: g.page,
       quote,
       url: g.url,
@@ -269,6 +308,26 @@ export async function loadPullMenu(args: {
     };
   });
 
+  const usedPages = new Set(pages.map((p) => p.page));
+  const profilePages: PullPage[] = [];
+  const rank = (text: string) => {
+    const t = text.toLowerCase();
+    if (t.includes("total deposits") || t.includes("advances stood")) return 0;
+    if (t.includes("share in turnover") || t.includes("external turnover"))
+      return 1;
+    if (t.includes("private sector bank")) return 2;
+    return 3;
+  };
+  const ordered = [...profileRows].sort(
+    (a, b) => rank(a.text) - rank(b.text) || a.page - b.page,
+  );
+  for (const row of ordered) {
+    if (usedPages.has(row.page)) continue;
+    usedPages.add(row.page);
+    profilePages.push({ page: row.page, text: row.text });
+    if (profilePages.length >= 16) break;
+  }
+
   const blocks = composePull({
     isBank:
       args.isBank || quarters.some((q) => q.nii != null && q.ppop != null),
@@ -276,6 +335,7 @@ export async function loadPullMenu(args: {
     period: doc?.period ?? null,
     reportUrl: doc?.url ?? null,
     pages,
+    profilePages,
     quarters,
     guidance: guides,
   });

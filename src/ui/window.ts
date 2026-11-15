@@ -31,6 +31,27 @@ export interface ResolvedWindow extends BriefWindow {
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** A real calendar day. `9999-99-99` matches the shape and must not be used. */
+function calendarKey(key: string): boolean {
+  if (!DATE_KEY.test(key)) return false;
+  const y = Number(key.slice(0, 4));
+  const m = Number(key.slice(5, 7));
+  const d = Number(key.slice(8, 10));
+  if (y < 1990 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === m - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+
+function isPreset(w: string): w is Exclude<WindowPreset, "custom"> {
+  return (
+    w === "24h" || w === "48h" || w === "7d" || w === "30d" || w === "close"
+  );
+}
+
 export function presetWindow(now: number, preset: WindowPreset): BriefWindow {
   switch (preset) {
     case "48h":
@@ -64,19 +85,31 @@ export function presetWindow(now: number, preset: WindowPreset): BriefWindow {
 }
 
 export function resolveWindow(now: number, q: WindowQuery): ResolvedWindow {
-  if (q.from && DATE_KEY.test(q.from)) {
-    const toKey = q.to && DATE_KEY.test(q.to) ? q.to : istDateKey(now);
-    const fromMs = istTimeOn(q.from, "00:00");
-    const toMs = Math.min(now, istTimeOn(addDaysKey(toKey, 1), "00:00"));
-    const sameMonth = q.from.slice(0, 7) === toKey.slice(0, 7);
+  const fromOk = q.from && calendarKey(q.from) ? q.from : null;
+  const toOk = q.to && calendarKey(q.to) ? q.to : null;
+  if (fromOk) {
+    let start = fromOk;
+    let end = toOk ?? istDateKey(now);
+    if (start > end) {
+      const swap = start;
+      start = end;
+      end = swap;
+    }
+    const fromMs = istTimeOn(start, "00:00");
+    const toMs = Math.min(now, istTimeOn(addDaysKey(end, 1), "00:00"));
+    const sameMonth = start.slice(0, 7) === end.slice(0, 7);
     const label = sameMonth
-      ? `${formatIst(q.from, "d")}–${formatIst(toKey, "d MMM")}`
-      : `${formatIst(q.from, "d MMM")} – ${formatIst(toKey, "d MMM")}`;
+      ? `${formatIst(start, "d")}–${formatIst(end, "d MMM")}`
+      : `${formatIst(start, "d MMM")} – ${formatIst(end, "d MMM")}`;
     return { fromMs, toMs, label, preset: "custom", auto: false };
   }
+  // A date was supplied and it is not a calendar day. Stay on 24h; do not throw
+  // and do not let the empty window widen into 7d or 30d.
+  if (q.from || q.to) return { ...presetWindow(now, "24h"), auto: false };
   const w = q.w;
-  if (w === "24h" || w === "48h" || w === "7d" || w === "30d" || w === "close")
-    return { ...presetWindow(now, w), auto: false };
+  if (w && isPreset(w)) return { ...presetWindow(now, w), auto: false };
+  // An unknown preset is not a request to widen. Only a bare visit is auto.
+  if (w) return { ...presetWindow(now, "24h"), auto: false };
   return { ...presetWindow(now, "24h"), auto: true };
 }
 

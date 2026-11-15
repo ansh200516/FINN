@@ -150,4 +150,119 @@ Interest Coverage Ratio increased from 5.59 in FY 2024-25 to 8.83 in FY 2025-26.
     expect(g?.lines.join(" ")).not.toMatch(/bullish/i);
     expect(g?.cites[0]?.quote).toBe(quote);
   });
+
+  it("reads a segment turnover table and ignores a gas-portfolio fragment", () => {
+    const table = `disclosed as Unallocable. Primary Segment Information (I in crore) 2025-26 O2C Oil and Gas Retail Digital Services Others Unallocable Total Segment Revenue External Turnover 6,58,991 19,008 3,65,820 59,777 72,323 - 11,75,919 Value of Sales and Services (Revenue) * 6,62,401 23,861 3,71,085 1,76,164 80,522 - 11,75,919`;
+    const gas =
+      "RIL's gas portfolio remains well-positioned to support this structural shift, contributing nearly 30% of the country's domestic gas production.";
+    const blocks = composePull(
+      input({
+        hasTranscript: true,
+        pages: [
+          { page: 53, text: gas },
+          { page: 168, text: table },
+        ],
+      }),
+    );
+    const biz = blocks.find((b) => b.title === "Business snapshot");
+    const text = biz?.lines.join(" ") ?? "";
+    expect(text).toContain("O2C");
+    expect(text).toContain("Retail");
+    expect(text).toContain("6,62,401");
+    expect(text).toContain("1,76,164");
+    expect(text).not.toMatch(/Unallocable 6,58,991/);
+    expect(text).toContain("computed");
+    expect(text).not.toContain("gas portfolio");
+  });
+
+  it("reads a printed turnover mix", () => {
+    const page = `PRODUCT GROUP WISE SHARE IN TURNOVER Plastics Piping Products 70% Packaging Products 15% Industrial Products 11% Consumer Products 4%`;
+    const blocks = composePull(
+      input({
+        hasTranscript: true,
+        pages: [{ page: 52, text: page }],
+      }),
+    );
+    const text =
+      blocks.find((b) => b.title === "Business snapshot")?.lines.join(" ") ??
+      "";
+    expect(text).toContain("Plastics Piping Products 70%");
+    expect(text).toContain("Consumer Products 4%");
+  });
+
+  it("does not pair return on equity with the next ratio", () => {
+    const page = `KEY FINANCIAL RATIOS
+Return on Equity: 14.3% y Cost-to-income ratio: 38.0%
+Debt Equity Ratio for the year ended March 31, 2026 stood at 0.53 as compared to 0.74 in the previous year.
+`;
+    const blocks = composePull(
+      input({
+        isBank: true,
+        hasTranscript: true,
+        pages: [{ page: 83, text: page }],
+      }),
+    );
+    const balance =
+      blocks.find((b) => b.title === "Balance sheet")?.lines.join(" ") ?? "";
+    expect(balance).toContain("14.3%");
+    expect(balance).toContain("0.53");
+    expect(balance).not.toContain("14.3% against 38");
+    expect(balance).not.toContain("2,370");
+    expect(balance).toMatch(/working-capital cycle is not printed/i);
+    const glance =
+      blocks.find((b) => b.title === "Financial snapshot")?.lines.join(" ") ??
+      "";
+    expect(glance).toContain("38.0%");
+    expect(glance).not.toContain("against 38");
+  });
+
+  it("names NII, not revenue, on a bank trajectory", () => {
+    const quarters = [
+      "2024-12-31",
+      "2025-03-31",
+      "2025-06-30",
+      "2025-09-30",
+      "2025-12-31",
+      "2026-03-31",
+      "2026-06-30",
+      "2026-09-30",
+    ].map((periodEnd, i) => ({
+      periodEnd,
+      basis: "consolidated" as const,
+      source: "xbrl",
+      sourceUrl: null,
+      revenue: (100 + i) * 1e7,
+      ebitda: null,
+      pat: (20 + i) * 1e7,
+      nii: (40 + i) * 1e7,
+      ppop: (30 + i) * 1e7,
+    }));
+    const blocks = composePull(
+      input({ isBank: true, hasTranscript: true, quarters }),
+    );
+    const traj =
+      blocks.find((b) => b.title === "Trajectory")?.lines.join(" ") ?? "";
+    expect(traj).toContain("NII");
+    expect(traj).not.toMatch(/Revenue \+/);
+  });
+
+  it("reads net cash flows and the profit on the same statement", () => {
+    const page = `CONSOLIDATED CASH FLOW STATEMENT
+(C in crore)
+Cash flows from operating activities: Consolidated Profit after tax and minority interest 76,025.97 70,792.25
+Net cash flows from operating activities 113,506.38 127,241.84
+`;
+    const blocks = composePull(
+      input({
+        isBank: true,
+        hasTranscript: true,
+        pages: [{ page: 498, text: page }],
+      }),
+    );
+    const cash =
+      blocks.find((b) => b.title === "Cash quality")?.lines.join(" ") ?? "";
+    expect(cash).toContain("113,506.38");
+    expect(cash).toContain("76,025.97");
+    expect(cash).toMatch(/profit turning into operating cash/i);
+  });
 });

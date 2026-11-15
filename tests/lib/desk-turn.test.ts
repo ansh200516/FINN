@@ -14,6 +14,7 @@ import {
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
 import { FINNIE_GREETING } from "@/ui/composer";
 import { BookNames, Desk, FinnieAnswer } from "@/ui/Desk";
+import { ThoughtRow } from "@/ui/ThoughtRow";
 
 const book: DeskCompany[] = [
   { symbol: "ITC", name: "ITC Limited", aliases: [] },
@@ -318,6 +319,60 @@ function amberBook(): DeskCompany[] {
   ];
 }
 
+describe("thinking row", () => {
+  const items = [
+    {
+      id: 1,
+      title: "Planning ITC",
+      text: "Choosing which filings to read for ITC.",
+      source: "step" as const,
+    },
+    {
+      id: 2,
+      title: "Reading ITC guidance",
+      text: "Reading the ITC guidance rows.",
+      source: "step" as const,
+    },
+  ];
+
+  it("shows the latest title, and the thoughts in order when open", () => {
+    const html = renderToStaticMarkup(
+      createElement(ThoughtRow, {
+        title: "Reading ITC guidance",
+        items,
+        open: true,
+        running: true,
+        onToggle: () => undefined,
+      }),
+    );
+    expect(html).toContain("Reading ITC guidance");
+    expect(html).toContain("Choosing which filings to read for ITC.");
+    expect(html).toContain("Reading the ITC guidance rows.");
+    expect(html.indexOf("Planning ITC")).toBeLessThan(
+      html.indexOf("Reading the ITC guidance rows."),
+    );
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).not.toContain("Looking.");
+    expect(html).not.toContain("Thinking...");
+  });
+
+  it("keeps the thought text collapsed until the title is opened", () => {
+    const html = renderToStaticMarkup(
+      createElement(ThoughtRow, {
+        title: "Reading ITC guidance",
+        items,
+        open: false,
+        running: false,
+        onToggle: () => undefined,
+      }),
+    );
+    expect(html).toContain("Reading ITC guidance");
+    expect(html).not.toContain("Reading the ITC guidance rows.");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("Looking.");
+  });
+});
+
 describe("desk markup", () => {
   it("opens on Finnie's greeting and a composer, not the filings", () => {
     const html = renderToStaticMarkup(
@@ -326,6 +381,7 @@ describe("desk markup", () => {
       }),
     );
     expect(html).toContain(FINNIE_GREETING);
+    expect(html).not.toContain("Looking.");
     expect(html).toContain("New chat");
     expect(html).toContain('class="new-chat"');
     expect(html).not.toContain("Ask for the results, the promises, or a rule.");

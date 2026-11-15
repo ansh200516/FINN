@@ -14,6 +14,7 @@ import {
 } from "@/engine/analyse/results";
 import type { ResultsBasis, ResultsQuarter } from "@/engine/types";
 import { verificationForSnapshot } from "@/lib/queries";
+import { quartersUpToFiling, quotedPeriodEnd } from "@/lib/resultsAlign";
 import { ResultsGrid, snapshotChip } from "@/ui/ResultsGrid";
 
 const CR = 1e7;
@@ -738,5 +739,40 @@ describe("HDFC consolidated half-year", () => {
     expect(snapshotChip({ checksum: "preliminary", verification }).label).toBe(
       "Preliminary",
     );
+  });
+});
+
+describe("filing quarter vs XBRL grid", () => {
+  it("does not render a Q1 grid as Exchange XBRL verified under a Q2 title", () => {
+    const card = buildResultsCard([Q1FY27]);
+    expect(card?.periodEnd).toBe("2026-06-30");
+    expect(card?.fiscalLabel).toBe("Q1 FY27");
+    expect(quotedPeriodEnd("Q2 FY27 results filed")).toBe("2026-09-30");
+    expect(quartersUpToFiling([Q1FY27], "Q2 FY27 results filed")).toBeNull();
+    const mismatch = renderToStaticMarkup(
+      createElement(ResultsGrid, {
+        card: card as NonNullable<typeof card>,
+        filingTitle: "Q2 FY27 results filed",
+      }),
+    );
+    expect(mismatch).not.toContain("Exchange XBRL verified");
+    expect(mismatch).toContain("XBRL on file is Q1 FY27");
+    const match = renderToStaticMarkup(
+      createElement(ResultsGrid, {
+        card: card as NonNullable<typeof card>,
+        filingTitle: "Q1 FY27 results filed",
+      }),
+    );
+    expect(match).toContain("Exchange XBRL verified");
+    const compact = renderToStaticMarkup(
+      createElement(ResultsGrid, {
+        card: card as NonNullable<typeof card>,
+        filingTitle: "Q2 FY27 results filed",
+        showMeta: false,
+        compactMeta: true,
+      }),
+    );
+    expect(compact).not.toContain("XBRL ✓");
+    expect(compact).toContain("XBRL on file is Q1 FY27");
   });
 });

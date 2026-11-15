@@ -3,10 +3,16 @@
  *
  * callStructured<T>() = cache → ledger cap check → token bucket → Gemini
  * (schema-constrained JSON) → zod validate → ledger + cache write.
+ * Task "finnie" skips the cache in both directions. Extraction jobs still use it.
+ * A finnie call with onThought streams displayable thought summaries. The
+ * 60s timeout is per call. The chat route stays open across calls.
  *
  * Model ladder, thinking level, per-model daily caps (80 % of RPD, Pacific
  * day), process-local RPM/TPM buckets, 60 s timeout, one jittered retry on
  * 429/500/503 then fall to the next model. See README.md in this folder.
+ * Bulk stays MINIMAL and reason stays LOW. A Finnie call that asks for a
+ * displayable thought uses MEDIUM, the next level up. LOW returns no thought
+ * tokens on Gemini 3 Flash, so the summary never arrives.
  */
 import { createHash } from "node:crypto";
 import {
@@ -22,6 +28,7 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import { llmCache, llmLedger } from "@/db/schema";
 import { env, isCacheOnly } from "@/lib/env";
+import { consumeThoughtParts, type ThoughtScan } from "@/lib/finnieTrace";
 import { logger } from "@/lib/logger";
 import type { LlmTask, LlmTier } from "../types";
 
@@ -60,6 +67,11 @@ export interface CallStructuredOptions<T> {
   /** default true */
   cache?: boolean;
   signal?: AbortSignal;
+  /**
+   * Displayable thought summaries as they stream. Set only for a live chat
+   * turn. Hidden and redacted parts are not passed through.
+   */
+  onThought?: (thought: { text: string; fresh: boolean }) => void;
 }
 
 export interface CallStructuredResult<T> {
@@ -146,6 +158,9 @@ const DEFAULT_REASON = [
   "gemini-3.6-flash",
   "gemini-3.5-flash",
   "gemini-3.8-flash",
+  // Last rung when Flash is capped or has failed every call today.
+  // Chat still calls a live model. Finnie does not read llm_cache.
+  "gemini-3.5-flash-lite",
 ];
 
 export const MODEL_LADDERS: Record<LlmTier, () => string[]> = {
@@ -179,13 +194,19 @@ export function todayPt(now: Date = new Date()): string {
   return formatInTimeZone(now, "America/Los_Angeles", "yyyy-MM-dd");
 }
 
-async function ledgerRequests(model: string, datePt: string): Promise<number> {
+async function ledgerState(
+  model: string,
+  datePt: string,
+): Promise<{ requests: number; errors: number }> {
   const rows = await db
-    .select({ requests: llmLedger.requests })
+    .select({ requests: llmLedger.requests, errors: llmLedger.errors })
     .from(llmLedger)
     .where(and(eq(llmLedger.model, model), eq(llmLedger.datePt, datePt)))
     .limit(1);
-  return rows[0]?.requests ?? 0;
+  return {
+    requests: rows[0]?.requests ?? 0,
+    errors: rows[0]?.errors ?? 0,
+  };
 }
 
 async function ledgerBump(
@@ -357,8 +378,22 @@ function sha256(s: string | Uint8Array): string {
   return createHash("sha256").update(s).digest("hex");
 }
 
+/** The object Gemini must emit. A preprocess pipe stays on our side of the parse. */
+function responseSchema(schema: z.ZodType): z.ZodType {
+  let current = schema;
+  for (let i = 0; i < 5; i++) {
+    const def = (current as { def?: { type?: string; out?: z.ZodType } }).def;
+    if (def?.type === "pipe" && def.out) {
+      current = def.out;
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
 function toJsonSchema(schema: z.ZodType): Record<string, unknown> {
-  const js = z.toJSONSchema(schema, {
+  const js = z.toJSONSchema(responseSchema(schema), {
     target: "draft-7",
     io: "output",
   }) as Record<string, unknown>;
@@ -433,6 +468,128 @@ function isRetryable(status: number | undefined): boolean {
   return status === 429 || status === 503 || status === 500;
 }
 
+interface UsageCounts {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+}
+
+interface ModelCall {
+  prompt: string;
+  system?: string;
+  parts?: LlmPart[];
+  tier: LlmTier;
+  maxTokens?: number;
+  temperature?: number;
+  signal?: AbortSignal;
+  onThought?: (thought: { text: string; fresh: boolean }) => void;
+}
+
+/**
+ * Lowest thinking level that returns a displayable summary.
+ * MINIMAL and LOW produce zero thought tokens on gemini-3.6-flash.
+ * MEDIUM is the next supported level. HIGH is a longer pass and stays off.
+ */
+export function thinkingLevelFor(
+  tier: LlmTier,
+  thoughts: boolean,
+): ThinkingLevel {
+  if (tier === "bulk") return ThinkingLevel.MINIMAL;
+  if (thoughts) return ThinkingLevel.MEDIUM;
+  return ThinkingLevel.LOW;
+}
+
+function modelConfig(
+  o: ModelCall,
+  jsonSchema: Record<string, unknown>,
+  mediaRes: "low" | "medium" | "high" | undefined,
+  thoughts: boolean,
+) {
+  return {
+    systemInstruction: o.system,
+    responseMimeType: "application/json" as const,
+    responseJsonSchema: jsonSchema,
+    maxOutputTokens: o.maxTokens ?? (o.tier === "bulk" ? 2048 : 4096),
+    temperature: o.temperature ?? 0,
+    thinkingConfig: {
+      thinkingLevel: thinkingLevelFor(o.tier, thoughts),
+      ...(thoughts ? { includeThoughts: true as const } : {}),
+    },
+    ...(mediaRes ? { mediaResolution: RES_MAP[mediaRes] } : {}),
+    httpOptions: { timeout: TIMEOUT_MS },
+    abortSignal: o.signal,
+  };
+}
+
+function thoughtConfigRejected(error: unknown): boolean {
+  const status = errStatus(error);
+  if (status != null && status !== 400) return false;
+  const msg = errMessage(error).toLowerCase();
+  return msg.includes("thought") || msg.includes("thinking");
+}
+
+/**
+ * One model call. Thoughts stream only when a listener is attached, and only
+ * the summary text the API marks as a thought part. The JSON answer excludes
+ * those parts. A rejected thought config falls back to the unary call.
+ */
+async function completeCall(
+  o: ModelCall,
+  model: string,
+  jsonSchema: Record<string, unknown>,
+  mediaRes: "low" | "medium" | "high" | undefined,
+): Promise<{ text: string; usage?: UsageCounts }> {
+  const contents = [
+    { role: "user" as const, parts: toParts(o.prompt, o.parts ?? []) },
+  ];
+  const unary = async () => {
+    const res = await genai().models.generateContent({
+      model,
+      contents,
+      config: modelConfig(o, jsonSchema, mediaRes, false),
+    });
+    return { text: res.text ?? "", usage: res.usageMetadata };
+  };
+  if (!o.onThought) return unary();
+  try {
+    const streamed = await streamCall(o, model, jsonSchema, mediaRes);
+    if (streamed.text.trim()) return streamed;
+  } catch (error) {
+    if (!thoughtConfigRejected(error)) throw error;
+  }
+  // Thoughts were refused, or the JSON never arrived beside them.
+  return unary();
+}
+
+async function streamCall(
+  o: ModelCall,
+  model: string,
+  jsonSchema: Record<string, unknown>,
+  mediaRes: "low" | "medium" | "high" | undefined,
+): Promise<{ text: string; usage?: UsageCounts }> {
+  const stream = await genai().models.generateContentStream({
+    model,
+    contents: [{ role: "user", parts: toParts(o.prompt, o.parts ?? []) }],
+    config: modelConfig(o, jsonSchema, mediaRes, true),
+  });
+  const state: ThoughtScan = { answer: "", thought: "", thoughtOpen: false };
+  let usage: UsageCounts | undefined;
+  for await (const chunk of stream) {
+    if (o.signal?.aborted) throw o.signal.reason ?? new Error("aborted");
+    const parts = chunk.candidates?.[0]?.content?.parts ?? [];
+    const emitted = consumeThoughtParts(parts, state);
+    for (const thought of emitted) {
+      try {
+        o.onThought?.(thought);
+      } catch {
+        // The listener must not fail the call.
+      }
+    }
+    if (chunk.usageMetadata) usage = chunk.usageMetadata;
+  }
+  return { text: state.answer, usage };
+}
+
 function errStatus(e: unknown): number | undefined {
   if (e instanceof ApiError) return e.status;
   const s = (e as { status?: unknown })?.status;
@@ -468,7 +625,9 @@ export async function callStructured<T>(
   const parts = o.parts ?? [];
   const jsonSchema = toJsonSchema(o.schema);
   const cacheKey = cacheKeyFor(o as CallStructuredOptions<unknown>, jsonSchema);
-  const useCache = o.cache !== false;
+  // Chat turns always call the model. Do not read or write llm_cache for them.
+  // Historical rows stay. Guidance extraction and one-liners still cache.
+  const useCache = o.cache !== false && o.task !== "finnie";
   const started = Date.now();
 
   if (useCache) {
@@ -516,10 +675,20 @@ export async function callStructured<T>(
   )?.resolution;
 
   for (const model of ladder) {
-    const used = await ledgerRequests(model, datePt);
+    const state = await ledgerState(model, datePt);
     const cap = dailyCap(model);
-    if (used >= cap) {
-      log.warn({ model, used, cap, datePt }, "model at daily cap — skipping");
+    if (state.requests >= cap) {
+      log.warn(
+        { model, used: state.requests, cap, datePt },
+        "model at daily cap — skipping",
+      );
+      continue;
+    }
+    if (state.requests >= 3 && state.errors >= state.requests) {
+      log.warn(
+        { model, requests: state.requests, datePt },
+        "model failed every call today — skipping",
+      );
       continue;
     }
     anyAttempted = true;
@@ -528,25 +697,8 @@ export async function callStructured<T>(
       await acquire(o.tier, est, o.signal);
       const t0 = Date.now();
       try {
-        const res = await genai().models.generateContent({
-          model,
-          contents: [{ role: "user", parts: toParts(o.prompt, parts) }],
-          config: {
-            systemInstruction: o.system,
-            responseMimeType: "application/json",
-            responseJsonSchema: jsonSchema,
-            maxOutputTokens: o.maxTokens ?? (o.tier === "bulk" ? 2048 : 4096),
-            temperature: o.temperature ?? 0,
-            thinkingConfig: {
-              thinkingLevel:
-                o.tier === "bulk" ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
-            },
-            ...(mediaRes ? { mediaResolution: RES_MAP[mediaRes] } : {}),
-            httpOptions: { timeout: TIMEOUT_MS },
-            abortSignal: o.signal,
-          },
-        });
-        const usage = res.usageMetadata;
+        const completed = await completeCall(o, model, jsonSchema, mediaRes);
+        const usage = completed.usage;
         const tokensIn = usage?.promptTokenCount ?? est;
         const tokensOut = usage?.candidatesTokenCount ?? 0;
         const tokensThought = usage?.thoughtsTokenCount ?? 0;
@@ -558,11 +710,8 @@ export async function callStructured<T>(
           tokensThought,
         });
 
-        const text = res.text;
-        if (!text)
-          throw new Error(
-            `empty response (finishReason=${res.candidates?.[0]?.finishReason ?? "?"})`,
-          );
+        const text = completed.text;
+        if (!text) throw new Error("empty response");
         const parsed = o.schema.safeParse(parseJsonLoose(text));
         if (!parsed.success)
           throw new Error(
@@ -624,7 +773,8 @@ export async function callStructured<T>(
           msg.startsWith("schema validation failed") ||
           msg.includes("not JSON") ||
           msg.startsWith("empty response");
-        if ((isRetryable(status) || schemaFail) && attempt === 0) {
+        const quota = status === 429 && /quota/i.test(msg);
+        if ((isRetryable(status) || schemaFail) && attempt === 0 && !quota) {
           await sleep(1000 + Math.random() * 2000, o.signal);
           continue;
         }

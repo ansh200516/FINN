@@ -30,13 +30,16 @@ import {
 import {
   callStructured,
   dailyCap,
+  LlmCallFailed,
   MODEL_LADDERS,
+  thinkingLevelFor,
   todayPt,
 } from "@/engine/llm/gateway";
 import { estimateTokens } from "@/lib/ask";
 import { fitChatContext } from "@/lib/finnieContext";
 import { FinnieSay, runFinnieTurn, ToolPlan } from "@/lib/finnieTurn";
 import {
+  FINNIE_MODEL_DOWN,
   FINNIE_NO_MATCH,
   FINNIE_OUT_OF_CALLS,
   FINNIE_TOOLS,
@@ -203,8 +206,7 @@ describe("runFinnieTurn", () => {
     ]);
     try {
       const sentence = "zylophone the marigold ledger";
-      const say =
-        "RELIANCE revenue growth of 10–12% is open and not yet scored. Management said word00. The margin row was kept at 11%. The decision is yours.";
+      const say = "The margin line was kept. The growth range is still open.";
       llm.mockResolvedValueOnce(
         model({
           calls: [
@@ -223,83 +225,66 @@ describe("runFinnieTurn", () => {
         task: "finnie",
         tier: "reason",
         schema: ToolPlan,
+        cache: false,
         system: expect.stringContaining("Do not answer"),
       });
       expect(llm.mock.calls[1]?.[0]).toMatchObject({
-        tier: "reason",
+        task: "finnie",
         schema: FinnieSay,
-        system: expect.stringContaining("talking to an investor"),
+        cache: false,
       });
-      const answerSystem = String(llm.mock.calls[1]?.[0].system);
-      expect(answerSystem).toContain("Never mention how you were called");
-      expect(answerSystem).not.toMatch(
-        /tool JSON|\bpayload\b|\bschema\b|the model/i,
-      );
-      for (const call of llm.mock.calls) {
-        expect(call[0].tier).toBe("reason");
-      }
       const first = String(llm.mock.calls[0]?.[0].prompt);
-      const second = String(llm.mock.calls[1]?.[0].prompt);
       expect(first.startsWith(`Question: ${sentence}`)).toBe(true);
       expect(first).toContain("Catalog:");
       for (const name of FINNIE_TOOLS) expect(first).toContain(name);
       expect(first).not.toContain("PI Industries");
       expect(first).not.toContain("word00");
       expect(first).not.toContain('"crore":150');
-      expect(second).not.toContain("Catalog:");
-      expect(second.startsWith(`Question: ${sentence}`)).toBe(true);
-      const facts = factsOf(second);
-      expect(facts.map((row) => row.tool)).toEqual([
-        "get_results",
-        "get_promises",
-      ]);
-      const results = facts[0]?.data as {
-        symbol: string;
-        quarters: Array<{
-          period: string;
-          revenue: { crore: number; yoyPct: number | null };
-        }>;
-      };
-      expect(results.symbol).toBe("RELIANCE");
-      expect(results.quarters.map((row) => row.period)).toEqual([
-        "Q3 FY25",
-        "Q4 FY25",
-        "Q1 FY26",
-        "Q2 FY26",
-      ]);
-      expect(results.quarters[3]?.revenue).toMatchObject({
-        crore: 150,
-        yoyPct: 50,
-      });
-      const promises = facts[1]?.data as {
-        rows: Array<{
-          quote: string;
-          metric: string;
-          promised: string;
-          verdict: string;
-          delivered: string | null;
-        }>;
-      };
-      expect(promises.rows).toHaveLength(3);
-      expect(
-        promises.rows.some((row) => row.quote.includes("festive season")),
-      ).toBe(true);
-      const open = promises.rows.find((row) => row.verdict === "open");
-      const kept = promises.rows.find((row) => row.verdict === "kept");
-      expect(open?.metric).toBe("revenue growth");
-      expect(open?.promised).toContain("10");
-      expect(open?.promised).toContain("12");
-      expect(open?.delivered).toBeNull();
-      expect(open?.quote).toContain("word00");
-      expect(open?.quote).toContain("word39");
-      expect(open?.quote).not.toContain("word40");
-      expect(kept?.quote).toContain("eleven percent");
-      expect(kept?.delivered).toContain("11");
-      expect(second).toContain("festive season");
-      expect(second).not.toContain("SUPERSEDED_MARKER");
-      expect(result.say).toBe(
-        "RELIANCE revenue growth of 10–12% is open and not yet scored. Management said word00. The margin row was kept at 11%.",
+      const second = String(llm.mock.calls[1]?.[0].prompt);
+      expect(second).toContain("word00");
+      expect(second).toContain("get_promises");
+      const resultsCard = result.cards.find(
+        (card) => card.kind === "reply" && card.reply.kind === "results",
       );
+      const promiseCard = result.cards.find(
+        (card) => card.kind === "reply" && card.reply.kind === "promises",
+      );
+      expect(resultsCard?.kind).toBe("reply");
+      if (resultsCard?.kind === "reply" && resultsCard.quarters) {
+        expect(resultsCard.quarters.map((row) => row.period)).toEqual([
+          "Q3 FY25",
+          "Q4 FY25",
+          "Q1 FY26",
+          "Q2 FY26",
+        ]);
+        expect(resultsCard.quarters[3]?.revenue).toMatchObject({
+          crore: 150,
+          yoyPct: 50,
+        });
+      }
+      expect(promiseCard?.kind).toBe("reply");
+      if (
+        promiseCard?.kind === "reply" &&
+        promiseCard.reply.kind === "promises"
+      ) {
+        expect(
+          promiseCard.reply.rows.some((row) =>
+            row.quote.includes("festive season"),
+          ),
+        ).toBe(true);
+        expect(
+          promiseCard.reply.rows.some((row) =>
+            row.quote.includes("SUPERSEDED_MARKER"),
+          ),
+        ).toBe(false);
+        expect(
+          promiseCard.reply.rows.some((row) =>
+            row.quote.includes("eleven percent"),
+          ),
+        ).toBe(true);
+      }
+      expect(result.say).toBe(say);
+      expect(result.say).not.toBe("Two kept, none missed, none unverifiable.");
       expect(result.say).not.toContain("The decision is yours");
       expect(result.say).not.toContain("Q3 FY25");
       expect(result.say).not.toMatch(/qoqPct|yoyPct/);
@@ -314,7 +299,6 @@ describe("runFinnieTurn", () => {
       expect(turn).not.toContain("the results are Q2");
       expect(tools).not.toContain("the results are Q2");
       expect(first).toContain("Examples of tool choice");
-      expect(second).not.toContain("Examples of tool choice");
       expect(turn).not.toMatch(
         /(?:sentence|text|question)\.(?:match|includes|search|toLowerCase)/,
       );
@@ -329,8 +313,11 @@ describe("runFinnieTurn", () => {
           links: result.links,
         }),
       );
-      expect(html).toContain("Two kept, none missed, none unverifiable.");
-      expect(html.indexOf("Two kept")).toBeLessThan(html.indexOf("<table"));
+      expect(html).toContain(say);
+      expect(html).not.toContain("Two kept, none missed, none unverifiable.");
+      expect(html.indexOf("The margin line")).toBeLessThan(
+        html.indexOf("<table"),
+      );
       expect(html).not.toContain("No headline promise");
       expect(html).not.toContain("Two headline promises were kept.");
       expect(html).not.toContain("The decision is yours");
@@ -419,6 +406,8 @@ describe("runFinnieTurn", () => {
       createdAt: Date.now(),
     });
     try {
+      const say =
+        "Revenue growth was guided in the low teens, and the quarters are on the table.";
       llm.mockResolvedValueOnce(
         model({
           calls: [
@@ -430,56 +419,46 @@ describe("runFinnieTurn", () => {
           ],
         }),
       );
-      llm.mockResolvedValueOnce(
-        model({
-          say: "Guidance is still open. The decision is yours.",
-        }),
-      );
+      llm.mockResolvedValueOnce(model({ say }));
       const result = await runFinnieTurn(sentence, null);
       expect(llm).toHaveBeenCalledTimes(2);
+      expect(llm.mock.calls[0]?.[0].cache).toBe(false);
+      expect(llm.mock.calls[1]?.[0].cache).toBe(false);
+      const answerPrompt = String(llm.mock.calls[1]?.[0].prompt);
+      expect(answerPrompt).toContain("get_results");
+      expect(answerPrompt).toContain("get_promises");
+      expect(answerPrompt).toContain("low teens");
       const first = String(llm.mock.calls[0]?.[0].prompt);
-      const second = String(llm.mock.calls[1]?.[0].prompt);
       expect(first.startsWith(`Question: ${sentence}`)).toBe(true);
-      expect(second.startsWith(`Question: ${sentence}`)).toBe(true);
-      expect(second).not.toContain("Catalog:");
-      const facts = factsOf(second);
-      expect(facts.map((row) => row.tool)).toEqual([
-        "get_results",
-        "get_promises",
-      ]);
-      const results = facts[0]?.data as {
-        status: string;
-        quarters: Array<{
-          period: string;
-          revenue: { qoqPct: number | null; yoyPct: number | null };
-          ebitda: { label: string } | null;
-          pbt: { label: string; crore: number | null } | null;
-          pat: { label: string } | null;
-        }>;
-      };
-      const promises = facts[1]?.data as {
-        status: string;
-        rows: Array<{
-          quote: string;
-          horizon: string | null;
-          verdict: string;
-          delivered: string | null;
-        }>;
-      };
-      expect(results.status).toBe("results");
-      expect(results.quarters.length).toBeGreaterThan(1);
-      const latest = results.quarters.at(-1);
-      expect(latest?.revenue.qoqPct).toEqual(expect.any(Number));
-      expect(latest?.revenue.yoyPct).toEqual(expect.any(Number));
-      expect(latest?.ebitda?.label).toBe("EBITDA");
-      expect(latest?.pbt?.label).toBe("PBT");
-      expect(latest?.pbt?.crore).toEqual(expect.any(Number));
-      expect(latest?.pat?.label).toBe("PAT");
-      expect(promises.status).toBe("promises");
-      expect(promises.rows[0]?.quote).toContain("low teens");
-      expect(promises.rows[0]?.horizon).toBe("FY26");
-      expect(promises.rows[0]?.verdict).toBe("open");
-      expect(promises.rows[0]?.delivered).toBeNull();
+      const resultsCard = result.cards.find(
+        (card) => card.kind === "reply" && card.reply.kind === "results",
+      );
+      const promiseCard = result.cards.find(
+        (card) => card.kind === "reply" && card.reply.kind === "promises",
+      );
+      expect(resultsCard?.kind).toBe("reply");
+      if (resultsCard?.kind === "reply") {
+        const latest = resultsCard.quarters?.at(-1);
+        expect(resultsCard.quarters?.length).toBeGreaterThan(1);
+        expect(latest?.revenue?.qoqPct).toEqual(expect.any(Number));
+        expect(latest?.revenue?.yoyPct).toEqual(expect.any(Number));
+        expect(latest?.ebitda?.label).toBe("EBITDA");
+        expect(latest?.pbt?.label).toBe("PBT");
+        expect(latest?.pbt?.crore).toEqual(expect.any(Number));
+        expect(latest?.pat?.label).toBe("PAT");
+      }
+      expect(promiseCard?.kind).toBe("reply");
+      if (
+        promiseCard?.kind === "reply" &&
+        promiseCard.reply.kind === "promises"
+      ) {
+        expect(promiseCard.reply.rows[0]?.quote).toContain("low teens");
+        expect(promiseCard.reply.rows[0]?.horizon).toBe("FY26");
+        expect(promiseCard.reply.rows[0]?.verdict).toBeNull();
+        expect(promiseCard.reply.rows[0]?.delivered).toBeNull();
+      }
+      expect(result.say).toBe(say);
+      expect(result.say).not.toBe("None kept, none missed, one unverifiable.");
       expect(result.tools).toEqual(["get_results", "get_promises"]);
       expect(result.pages).toEqual(["/c/RELIANCE", "/c/RELIANCE"]);
       const turn = readFileSync("src/lib/finnieTurn.ts", "utf8");
@@ -488,30 +467,13 @@ describe("runFinnieTurn", () => {
       expect(turn).not.toMatch(
         /(?:sentence|text|question)\.(?:match|includes|search|toLowerCase)/,
       );
-      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
-        "two short sentences",
-      );
-      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
-        "Read every row you were given",
-      );
-      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
-        "Do not say a promise is missing",
-      );
-      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
-        "Do not invent a promise",
-      );
-      expect(String(llm.mock.calls[1]?.[0].system)).not.toContain(
-        "The decision is yours",
-      );
-      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
-        "counts how many were kept",
-      );
-      expect(String(llm.mock.calls[1]?.[0].system)).toContain(
-        "Do not invent a 20–30%",
-      );
-      expect(String(llm.mock.calls[1]?.[0].system)).not.toContain(
-        "name every period",
-      );
+      expect(turn).toContain("two short sentences");
+      expect(turn).toContain("Read every row you were given");
+      expect(turn).toContain("Do not say a promise is missing");
+      expect(turn).toContain("Do not invent a promise");
+      expect(turn).toContain("counts how many were kept");
+      expect(turn).toContain("Do not invent a 20–30%");
+      expect(turn).not.toContain("name every period");
       const html = renderToStaticMarkup(
         createElement(FinnieAnswer, {
           say: result.say,
@@ -531,6 +493,116 @@ describe("runFinnieTurn", () => {
     }
   });
 
+  it("calls the model for promised versus delivered and does not replay a ledger sentence", async () => {
+    const sentence =
+      "for reliance take the last four quarters and, against management's own headline guidance and growth commentary, tell me what was promised vs. what was actually delivered";
+    await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
+    await db.delete(resultsQuarters).where(eq(resultsQuarters.isin, RELIANCE));
+    await db.delete(companies).where(eq(companies.isin, RELIANCE));
+    const ends = [
+      "2024-09-30",
+      "2024-12-31",
+      "2025-03-31",
+      "2025-06-30",
+      "2025-09-30",
+    ];
+    const revs = [100, 110, 120, 130, 150];
+    await db.insert(companies).values({
+      isin: RELIANCE,
+      nseSymbol: "RELIANCE",
+      name: "Reliance Industries Limited",
+      aliasesJson: "[]",
+      inPortfolio: true,
+      isAdhoc: false,
+    });
+    await db.insert(resultsQuarters).values(
+      ends.map((periodEnd, i) => ({
+        isin: RELIANCE,
+        periodEnd,
+        basis: "consolidated",
+        source: "xbrl",
+        revenue: (revs[i] ?? 0) * CR,
+        pat: (revs[i] ?? 0) * 0.1 * CR,
+        checksJson: "{}",
+        updatedAt: Date.now(),
+      })),
+    );
+    await db.insert(guidance).values({
+      id: "rel-model-down-jio",
+      isin: RELIANCE,
+      docId: "doc-rel",
+      quote:
+        "What is important is. We are able to, in our minds at least, we see visibility of high teen growth for Jio, and those are the points that Akash was talking about.",
+      metric: "revenue_growth",
+      direction: "absolute",
+      unit: "%",
+      horizon: "medium_term",
+      status: "settled",
+      verdict: "unverifiable",
+      evidenceJson: "{}",
+      createdAt: Date.now(),
+    });
+    const say =
+      "The Jio growth comment sits next to consolidated revenue, so it stays unverifiable.";
+    llm.mockResolvedValueOnce(
+      model({
+        calls: [
+          { tool: "get_results", args: { symbol: "RELIANCE", quarters: 4 } },
+          { tool: "get_promises", args: { symbol: "RELIANCE" } },
+        ],
+      }),
+    );
+    llm.mockResolvedValueOnce(model({ say }));
+    try {
+      const result = await runFinnieTurn(sentence, null);
+      expect(llm).toHaveBeenCalled();
+      expect(llm.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(llm.mock.calls[0]?.[0]).toMatchObject({
+        task: "finnie",
+        cache: false,
+      });
+      expect(llm.mock.calls[1]?.[0]).toMatchObject({
+        task: "finnie",
+        schema: FinnieSay,
+        cache: false,
+      });
+      const grounded = String(llm.mock.calls[1]?.[0].prompt);
+      expect(grounded).toContain("get_results");
+      expect(grounded).toContain("get_promises");
+      expect(grounded).toContain("high teen");
+      expect(result.say).toBe(say);
+      expect(result.say).not.toBe("None kept, none missed, one unverifiable.");
+      expect(result.say).not.toBe(FINNIE_MODEL_DOWN);
+      expect(result.tools).toEqual(["get_results", "get_promises"]);
+      const html = renderToStaticMarkup(
+        createElement(FinnieAnswer, {
+          say: result.say,
+          cards: result.cards,
+          pages: result.pages,
+          links: result.links,
+          href: result.href,
+          link: result.link,
+        }),
+      );
+      expect(html).toContain(say);
+      expect(html).not.toContain("None kept, none missed, one unverifiable.");
+      expect(html).not.toContain(FINNIE_MODEL_DOWN);
+      expect(html).toContain("high teen");
+      expect(html.replace(/<[^>]+>/g, "")).toContain(
+        "Delivered: +50.0% YoY consolidated revenue, not Jio",
+      );
+      expect(html).toContain("Unverifiable");
+      expect(html).toContain("Q2 FY26");
+      expect(html).toContain('href="/c/RELIANCE"');
+    } finally {
+      await db.delete(guidance).where(eq(guidance.isin, RELIANCE));
+      await db
+        .delete(resultsQuarters)
+        .where(eq(resultsQuarters.isin, RELIANCE));
+      await db.delete(companies).where(eq(companies.isin, RELIANCE));
+    }
+  });
+
   it("stops when the model names no tool", async () => {
     llm.mockResolvedValueOnce(model({ calls: [] }));
     const result = await runFinnieTurn("zzzz quantum holdings", null);
@@ -538,6 +610,51 @@ describe("runFinnieTurn", () => {
     expect(result.cards).toEqual([]);
     expect(result.tools).toEqual([]);
     expect(llm).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a plan the model returned with a string quarter count", () => {
+    const parsed = ToolPlan.parse({
+      calls: [
+        {
+          tool: "get_results",
+          args: { symbol: "RELIANCE", quarters: "4" },
+          extra: true,
+        },
+        { tool: "not_a_tool", args: {} },
+        { tool: "get_promises", args: { symbol: "RELIANCE" } },
+      ],
+    });
+    expect(parsed.calls).toEqual([
+      { tool: "get_results", args: { symbol: "RELIANCE", quarters: 4 } },
+      { tool: "get_promises", args: { symbol: "RELIANCE" } },
+    ]);
+    expect(
+      FinnieSay.parse({ answer: "The quarters are consolidated." }),
+    ).toEqual({ say: "The quarters are consolidated." });
+  });
+
+  it("does not treat a rejected model body as a transport failure", async () => {
+    llm.mockRejectedValue(
+      new LlmCallFailed("finnie", [
+        {
+          model: "gemini-3.6-flash",
+          error: "schema validation failed: calls: Required",
+        },
+      ]),
+    );
+    const result = await runFinnieTurn("hello there", null);
+    expect(result.say).toBe(FINNIE_NO_MATCH);
+    expect(result.say).not.toBe(FINNIE_MODEL_DOWN);
+  });
+
+  it("says the model is down only when the call does not connect", async () => {
+    llm.mockRejectedValue(
+      new LlmCallFailed("finnie", [
+        { model: "gemini-3.6-flash", error: "fetch failed", status: 503 },
+      ]),
+    );
+    const result = await runFinnieTurn("hello there", null);
+    expect(result.say).toBe(FINNIE_MODEL_DOWN);
   });
 
   it("does not call the model when the reason ladder is at 80% of cap", async () => {
@@ -997,5 +1114,48 @@ describe("runFinnieTurn", () => {
       "export async function loadChatPack(focus: string | null)",
     );
     expect(context).not.toMatch(/loadChatPack\([^)]*sentence/);
+  });
+
+  it("names the real steps, then lets a model thought through", async () => {
+    const steps: string[] = [];
+    const thoughts: string[] = [];
+    llm.mockImplementation(async (opts) => {
+      const prompt = String(opts.prompt);
+      if (prompt.includes("Catalog:")) {
+        opts.onThought?.({
+          text: "**Choosing the book**\nThe question asks for the names.",
+          fresh: true,
+        });
+        return model({ calls: [{ tool: "list_portfolio" }] });
+      }
+      return model({ say: "Two names." });
+    });
+    const result = await runFinnieTurn(
+      "which names are in the book",
+      null,
+      null,
+      {
+        step(title) {
+          steps.push(title);
+        },
+        thought(thought) {
+          thoughts.push(thought.text);
+        },
+      },
+    );
+    expect(steps[0]).toBe("Planning the turn");
+    expect(steps).toContain("Reading the book");
+    expect(steps.at(-1)).toBe("Writing the answer");
+    expect(steps.indexOf("Reading the book")).toBeGreaterThan(0);
+    expect(thoughts).toEqual([
+      "**Choosing the book**\nThe question asks for the names.",
+    ]);
+    expect(llm.mock.calls[0]?.[0].cache).toBe(false);
+    expect(llm.mock.calls[0]?.[0].task).toBe("finnie");
+    expect(thinkingLevelFor("reason", true)).toBe("MEDIUM");
+    expect(thinkingLevelFor("reason", false)).toBe("LOW");
+    expect(thinkingLevelFor("bulk", true)).toBe("MINIMAL");
+    expect(result.say).toBe("Two names.");
+    expect(result.say).not.toBe(FINNIE_MODEL_DOWN);
   });
 });

@@ -6,6 +6,7 @@
 import {
   type FiscalPeriod,
   parsePeriodLabel,
+  quarterEndsOf,
 } from "@/engine/extract/transcript";
 import type { ResultsCard } from "@/engine/types";
 import type { ChatQuarter } from "@/lib/finnieTypes";
@@ -29,7 +30,7 @@ export interface ComparisonRow {
   promised: string;
   /** Null when no quarter covers the horizon yet. */
   delivered: string | null;
-  verdict: "kept" | "missed" | "open" | "unverifiable";
+  verdict: "kept" | "beat" | "missed" | "open" | "unverifiable";
 }
 
 const HEADLINE = new Set([
@@ -173,10 +174,6 @@ function isCurrentHorizon(horizon: string): boolean {
   return key === "medium term" || key === "near term" || key === "short term";
 }
 
-function num(value: number): string {
-  return groupIndian(value, Number.isInteger(value) ? 0 : 1);
-}
-
 function qualitativePromise(quote: string): string {
   const teen = TEEN.exec(quote);
   if (teen) return teen[0].replace(/[\s-]+/g, " ").toLowerCase();
@@ -277,6 +274,18 @@ function promiseSentence(quote: string, promised: string): string {
   const digits = [...promised.matchAll(/\d+(?:\.\d+)?/g)].map(
     (match) => match[0] ?? "",
   );
+  const numbered = parts.filter(
+    (part) =>
+      digits.length > 0 && digits.every((digit) => part.includes(digit)),
+  );
+  if (numbered.length) {
+    const best = [...numbered].sort((a, b) => {
+      const score = (part: string) =>
+        (part.match(/\d/g)?.length ?? 0) + (/[.!?]$/.test(part) ? 1 : 0);
+      return score(b) - score(a);
+    });
+    return fitQuote(best[0] ?? numbered[0] ?? clean);
+  }
   const phrase = promised
     .replace(/%/g, "")
     .replace(/[–-]/g, " ")
@@ -309,6 +318,10 @@ function promiseSentence(quote: string, promised: string): string {
 
 /** "growth for Jio" names a business the consolidated quarter does not print. */
 function namedLine(quote: string): string | null {
+  if (/\bnew energy\b/i.test(quote)) return "new energy";
+  if (/\bpiping\b/i.test(quote)) return "piping";
+  if (/\bexports?\b/i.test(quote)) return "export";
+  if (/\bjio\b/i.test(quote)) return "Jio";
   const re = /\bfor\s+([A-Za-z][A-Za-z0-9]*)\b/g;
   for (const match of quote.matchAll(re)) {
     const name = match[1] ?? "";
@@ -328,23 +341,107 @@ function lineName(row: PromiseSource): string {
   return "revenue";
 }
 
+const CRORE = 1e7;
+
+/** Absolute rupees (unit INR, at least one crore) become crore. Crore stays crore. */
+function asCrore(value: number, unit: string | null): number {
+  if (unit === "INR" && Math.abs(value) >= CRORE) return value / CRORE;
+  return value;
+}
+
+function isMoneyUnit(unit: string | null): boolean {
+  return unit === "INR" || unit === "INR_cr";
+}
+
+function bandNumber(value: number, unit: string | null): string {
+  const shown = isMoneyUnit(unit) ? asCrore(value, unit) : value;
+  const decimals = isMoneyUnit(unit)
+    ? Math.abs(shown) < 100
+      ? 1
+      : 0
+    : Number.isInteger(shown)
+      ? 0
+      : 1;
+  return groupIndian(shown, decimals);
+}
+
 function promisedText(row: PromiseSource): string {
   const unit = row.unit ?? null;
+  if (unit === "USD") {
+    const n = finite(row.low) ?? finite(row.high);
+    if (n == null) return qualitativePromise(row.quote ?? "");
+    if (Math.abs(n) >= 1_000_000) {
+      const millions = n / 1_000_000;
+      return `USD ${groupIndian(millions, Number.isInteger(millions) ? 0 : 1)} million`;
+    }
+    return `USD ${groupIndian(n, 0)}`;
+  }
   const suffix =
-    unit === "%"
-      ? "%"
-      : unit === "bp"
-        ? " bp"
-        : unit === "INR" || unit === "INR_cr"
-          ? " cr"
-          : "";
+    unit === "%" ? "%" : unit === "bp" ? " bp" : isMoneyUnit(unit) ? " cr" : "";
+  const rupee = isMoneyUnit(unit) ? "₹ " : "";
   const low = finite(row.low);
   const high = finite(row.high);
   if (low != null && high != null && low !== high)
-    return `${num(low)}–${num(high)}${suffix}`;
+    return `${rupee}${bandNumber(low, unit)}–${bandNumber(high, unit)}${suffix}`;
   const value = low ?? high;
-  if (value != null) return `${num(value)}${suffix}`;
+  if (value != null) return `${rupee}${bandNumber(value, unit)}${suffix}`;
   return qualitativePromise(row.quote ?? "");
+}
+
+type LevelField = "revenueCr" | "ebitdaCr" | "pbtCr" | "patCr";
+
+/** A rupee total (not a percent, margin, or growth rate). */
+function levelField(row: PromiseSource): LevelField | null {
+  const unit = (row.unit ?? "").toLowerCase();
+  if (unit === "%" || unit === "bp" || unit === "qualitative" || unit === "x")
+    return null;
+  const metric = metricKey(row);
+  if (
+    metric.endsWith("_growth") ||
+    metric.includes("margin") ||
+    metric === "nim"
+  )
+    return null;
+  if (metric === "revenue" || metric === "total_income" || metric === "nii")
+    return "revenueCr";
+  if (metric === "ebitda" || metric === "ppop") return "ebitdaCr";
+  if (metric === "pbt") return "pbtCr";
+  if (metric === "pat") return "patCr";
+  return null;
+}
+
+function spansMultiple(parsed: FiscalPeriod | null): parsed is FiscalPeriod {
+  return parsed?.kind === "year" || parsed?.kind === "half";
+}
+
+function sliceCovering(pool: Slice[], end: string): Slice | undefined {
+  return pool.find((slice) => {
+    const parsed = parsePeriodLabel(slice.period);
+    return parsed?.kind === "quarter" && parsed.end === end;
+  });
+}
+
+/** Sum every quarter of a year or half. Null when any quarter is missing. */
+function summedLevel(
+  row: PromiseSource,
+  pool: Slice[],
+  period: FiscalPeriod,
+): Reading | null {
+  const field = levelField(row);
+  if (!field) return null;
+  let sum = 0;
+  for (const end of quarterEndsOf(period)) {
+    const value = sliceCovering(pool, end)?.[field];
+    if (value == null) return null;
+    sum += value;
+  }
+  return { value: sum, kind: "level" };
+}
+
+function ledgerVerdict(row: PromiseSource): "kept" | "beat" | "missed" | null {
+  if (row.verdict === "kept" || row.verdict === "beat") return row.verdict;
+  if (row.verdict === "missed" || row.verdict === "cut") return "missed";
+  return null;
 }
 
 function ratio(part: number | null, base: number | null): number | null {
@@ -442,7 +539,7 @@ function deliveredText(reading: Reading): string {
   if (reading.kind === "margin")
     return formatPct(reading.value, { signed: false });
   const decimals = Math.abs(reading.value) < 100 ? 1 : 0;
-  return `${groupIndian(reading.value, decimals)} cr`;
+  return `₹ ${groupIndian(reading.value, decimals)} cr`;
 }
 
 function covers(horizon: FiscalPeriod, quarter: FiscalPeriod): boolean {
@@ -465,19 +562,31 @@ function judge(
   actual: number,
   row: PromiseSource,
   kind: Reading["kind"],
-): "kept" | "missed" | "unverifiable" {
+): "kept" | "beat" | "missed" | "unverifiable" {
+  const scale = (value: number) =>
+    kind === "level" ? asCrore(value, row.unit ?? null) : value;
   const low = finite(row.low);
   const high = finite(row.high);
-  const lo = low ?? high;
-  const hi = high ?? low;
-  if (lo == null || hi == null) return withoutBand(row);
+  const lo = low == null ? null : scale(low);
+  const hi = high == null ? null : scale(high);
+  if (lo == null && hi == null) return withoutBand(row);
   const tol = (edge: number) =>
     kind === "margin"
       ? 0.5
       : kind === "yoy" || row.unit === "%"
         ? 1
         : Math.abs(edge) * 0.03;
-  if (actual < lo - tol(lo)) return "missed";
+  if (lo != null && hi != null) {
+    if (actual < lo - tol(lo)) return "missed";
+    if (actual > hi + tol(hi)) return "beat";
+    return "kept";
+  }
+  if (lo != null) {
+    if (actual < lo - tol(lo)) return "missed";
+    if (actual > lo + 2 * tol(lo)) return "beat";
+    return "kept";
+  }
+  if (hi != null && actual > hi + tol(hi)) return "beat";
   return "kept";
 }
 
@@ -528,8 +637,25 @@ export function comparisonsFor(
     } else {
       const latest = pool[pool.length - 1];
       if (!latest) continue;
-      const reading = readMetric(row, latest) ?? ledgerReading(row);
-      const period = periodLabel(horizon, latest.period);
+      // A full-year (or half-year) rupee band is not the latest quarter.
+      // The ledger's delivered figure is that period; otherwise sum every
+      // quarter of the horizon. A lone quarter must not be scored as the year.
+      const multi = spansMultiple(parsed);
+      const span = multi && levelField(row) != null;
+      // A full-year margin is not one quarter. A growth rate can still
+      // be read against the latest quarter inside that year.
+      const marginYear =
+        multi &&
+        (metricKey(row).includes("margin") || metricKey(row) === "nim");
+      const fromLedger = ledgerReading(row);
+      const summed = span && parsed ? summedLevel(row, pool, parsed) : null;
+      const reading = span
+        ? (fromLedger ?? summed)
+        : marginYear
+          ? fromLedger
+          : (readMetric(row, latest) ?? fromLedger);
+      const period =
+        span || marginYear ? horizon : periodLabel(horizon, latest.period);
       if (segment) {
         out.push({
           period,
@@ -545,16 +671,20 @@ export function comparisonsFor(
           period,
           quote,
           promised,
-          delivered: "not the consolidated line",
-          verdict: withoutBand(row),
+          delivered:
+            span || marginYear
+              ? "not the full period"
+              : "not the consolidated line",
+          verdict: span || marginYear ? "unverifiable" : withoutBand(row),
         });
       } else {
+        const settled = span || marginYear ? ledgerVerdict(row) : null;
         out.push({
           period,
           quote,
           promised,
           delivered: deliveredText(reading),
-          verdict: judge(reading.value, row, reading.kind),
+          verdict: settled ?? judge(reading.value, row, reading.kind),
         });
       }
     }
@@ -627,7 +757,9 @@ export function comparisonBubble(
   sources: PromiseSource[] = [],
 ): string {
   if (!rows.length) return exclusionLead(sources);
-  const kept = rows.filter((row) => row.verdict === "kept").length;
+  const kept = rows.filter(
+    (row) => row.verdict === "kept" || row.verdict === "beat",
+  ).length;
   const missed = rows.filter((row) => row.verdict === "missed").length;
   const unverifiable = rows.filter(
     (row) => row.verdict === "unverifiable",

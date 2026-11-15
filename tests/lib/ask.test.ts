@@ -6,6 +6,7 @@ import {
   ASK_TOKEN_CAP,
   type AskCorpus,
   answerWithContext,
+  askInputError,
   estimateTokens,
   groundCitations,
   readAskCount,
@@ -125,6 +126,20 @@ describe("groundCitations", () => {
         (c) => c.kind === "guidance" && c.quote === "14% to 14.5%",
       ),
     ).toBe(true);
+  });
+});
+
+describe("ask input", () => {
+  it("says a 501-character question is too long", () => {
+    expect(
+      askInputError({ symbol: "RELIANCE", question: "a".repeat(501) }),
+    ).toBe("Ask is limited to 500 characters.");
+    expect(askInputError({ symbol: "", question: "" })).toBe(
+      "symbol and question are required",
+    );
+    expect(
+      askInputError({ symbol: "RELIANCE", question: "margin" }),
+    ).toBeNull();
   });
 });
 

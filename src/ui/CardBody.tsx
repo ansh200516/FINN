@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { ResultsCard } from "@/engine/types";
 import { groupIndian, humanise } from "@/lib/format";
+import { repairPdfWords } from "@/lib/pdfWords";
 import { formatIst } from "@/lib/time";
 import type { EventCard, ManagementChangeCard } from "./model";
 import { actionVerb, mergePeople, type PersonChange, peopleOf } from "./people";
@@ -44,8 +45,9 @@ function ProfileExcerpt({
   const badge = verbatim
     ? "from the filing · SEBI LODR Sch. III A.7.3 · verbatim"
     : "from the filing · SEBI LODR Sch. III A.7.3 · summarised";
+  const shown = repairPdfWords(text);
   // ~3 lines of 15 px serif in a 430 px column ≈ 180 characters
-  const needsMore = text.length > lines * 62;
+  const needsMore = shown.length > lines * 62;
   if (!expandable || !needsMore) {
     const clamp = expandable
       ? ""
@@ -54,7 +56,7 @@ function ProfileExcerpt({
         : "line-clamp-3";
     return (
       <blockquote className="mt-1.5 border-l-2 border-rule pl-3">
-        <p className={`quote text-ink-2 ${clamp}`}>“{text}”</p>
+        <p className={`quote text-ink-2 ${clamp}`}>“{shown}”</p>
         <p className="receipt mt-1 text-[10px] leading-[14px]">{badge}</p>
       </blockquote>
     );
@@ -64,7 +66,7 @@ function ProfileExcerpt({
     <blockquote className="mt-1.5 border-l-2 border-rule pl-3">
       <details className="xp" style={vars}>
         <summary className="no-callout">
-          <span className="xp-text quote text-ink-2">“{text}”</span>
+          <span className="xp-text quote text-ink-2">“{shown}”</span>
           <span className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0">
             <span className="xp-more receipt text-accent whitespace-nowrap shrink-0" />
             <span className="receipt text-[10px] leading-[14px]">{badge}</span>
@@ -174,7 +176,7 @@ export function ManagementChangeBody({
         summary ? (
           <div className="mt-2 border-l-2 border-rule pl-3">
             <p className={`small text-ink-2 ${compact ? "line-clamp-3" : ""}`}>
-              {summary}
+              {repairPdfWords(summary)}
             </p>
             <p className="receipt mt-1 text-[10px] leading-[14px]">
               summary of the filing's brief profile · not verbatim
@@ -449,6 +451,7 @@ export function CardBody({
         <ResultsGrid
           card={c}
           periodEnd={periodEnd}
+          filingTitle={event.title}
           withSpark
           showMeta={!compact}
           compactMeta={compact}

@@ -23,6 +23,7 @@ import {
   isNull,
   lte,
   max,
+  or,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -49,6 +50,7 @@ import type {
   Verdict,
 } from "@/engine/types";
 import { CATEGORIES } from "@/engine/types";
+import { quartersUpToFiling } from "@/lib/resultsAlign";
 import {
   addDaysKey,
   formatIst,
@@ -310,7 +312,10 @@ export async function attachResultsCards(cards: EventCard[]): Promise<void> {
     try {
       const list = byIsin.get(c.isin);
       if (!list?.length) continue;
-      const quarters = list.map(rowToResultsQuarter);
+      // A Q2 title with only a Q1 row on file must not become a verified Q1 grid.
+      const picked = quartersUpToFiling(list, `${c.title} ${c.oneLiner ?? ""}`);
+      if (!picked?.length) continue;
+      const quarters = picked.map(rowToResultsQuarter);
       const card =
         analyse.computeResultsCard(quarters, "consolidated") ??
         analyse.computeResultsCard(quarters, "standalone");
@@ -1256,6 +1261,17 @@ export async function getCompanyPage(
 // ---------------------------------------------------------------------------
 // Companies index
 // ---------------------------------------------------------------------------
+
+/** Portfolio names plus ad-hoc research names, as the company rows define them. */
+export async function listTrackedIsins(): Promise<string[]> {
+  const rows = await db
+    .select({ isin: t.companies.isin })
+    .from(t.companies)
+    .where(
+      or(eq(t.companies.inPortfolio, true), eq(t.companies.isAdhoc, true)),
+    );
+  return rows.map((r) => r.isin);
+}
 
 export async function getCompaniesIndex(
   isins: string[],

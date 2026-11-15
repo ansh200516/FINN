@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { markInboxRead } from "@/app/inbox/actions";
 import { getInbox } from "@/lib/queries";
 import { formatIst } from "@/lib/time";
 import { Empty } from "@/ui/Empty";
+import { MarkInboxRead } from "@/ui/MarkInboxRead";
 import { TierHeader } from "@/ui/TierHeader";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,7 @@ function Channel({ name, status }: { name: string; status: string }) {
 }
 
 export default async function InboxPage() {
+  await markInboxRead();
   const items = await getInbox();
   const unread = items.filter((i) => !i.readAt).length;
   const byDay = new Map<string, typeof items>();
@@ -42,6 +45,7 @@ export default async function InboxPage() {
 
   return (
     <main className="flex-1 pb-8">
+      <MarkInboxRead />
       <header className="gutter pt-5">
         <p className="eyebrow reveal">Inbox</p>
         <h1

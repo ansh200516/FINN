@@ -2,13 +2,16 @@
  * One chat turn. The first call sees the tool catalog and the thread,
  * and names the calls. It does not answer. The second call sees the
  * sentence, the thread, and the JSON those calls returned, and writes
- * the bubble. The code does not pick a tool from the wording.
+ * the bubble. Quarters and guidance are grounding for that call.
+ * The bubble is the model's sentence. Chat does not read or write a
+ * stored completion.
  */
 import { z } from "zod";
 import {
   callStructured,
   dailyCap,
   LlmBudgetExhausted,
+  LlmCallFailed,
   MODEL_LADDERS,
   remainingBudget,
 } from "@/engine/llm/gateway";
@@ -21,6 +24,14 @@ import {
 } from "@/lib/companyMatch";
 import { repairSay } from "@/lib/finnieSay";
 import { executeTool } from "@/lib/finnieTools";
+import {
+  companyLabel,
+  type FinnieTrace,
+  planMoment,
+  scoreMoment,
+  toolMoment,
+  writeMoment,
+} from "@/lib/finnieTrace";
 import {
   FINNIE_CHAIN_CAP,
   FINNIE_MODEL_DOWN,
@@ -36,6 +47,7 @@ import {
   type ToolOutcome,
 } from "@/lib/finnieTypes";
 import { dropUngroundedSentences, ungroundedNumbers } from "@/lib/groundedSay";
+import { comparisonBubble, comparisonsFor } from "@/lib/promiseCompare";
 import { listCompanyNames } from "@/lib/queries";
 
 const CHAIN_USER_CAP = 500;
@@ -71,15 +83,110 @@ const ToolCallSchema = z.object({
   args: ToolArgsSchema.optional(),
 });
 
+const PLAN_ARG_STRINGS = [
+  "symbol",
+  "symbolA",
+  "symbolB",
+  "which",
+  "name",
+  "scope",
+  "kind",
+  "window",
+] as const;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function coercePlanArgs(value: unknown): Record<string, unknown> | undefined {
+  const rec = asRecord(value);
+  if (!rec) return undefined;
+  const args: Record<string, unknown> = {};
+  for (const key of PLAN_ARG_STRINGS) {
+    const item = rec[key];
+    if (typeof item === "string" && item.trim()) args[key] = item.trim();
+  }
+  for (const key of ["pct", "quarters"] as const) {
+    const n = finiteNumber(rec[key]);
+    if (n !== undefined) args[key] = n;
+  }
+  if (typeof rec.enabled === "boolean") args.enabled = rec.enabled;
+  const params = asRecord(rec.params);
+  if (params) {
+    const next: Record<string, unknown> = {};
+    for (const key of ["pct", "ratio", "lookbackDays"] as const) {
+      const n = finiteNumber(params[key]);
+      if (n !== undefined) next[key] = n;
+    }
+    if (Array.isArray(params.categories)) {
+      const categories = params.categories.filter(
+        (item): item is string => typeof item === "string",
+      );
+      if (categories.length) next.categories = categories;
+    }
+    if (typeof params.pattern === "string") next.pattern = params.pattern;
+    if (typeof params.flags === "string") next.flags = params.flags;
+    if (Object.keys(next).length) args.params = next;
+  }
+  return Object.keys(args).length ? args : undefined;
+}
+
+/** Keep a Gemini plan that used a string number, an extra call, or an unknown tool. */
+function normalizePlan(value: unknown): unknown {
+  const rec = asRecord(value);
+  const list = Array.isArray(value)
+    ? value
+    : Array.isArray(rec?.calls)
+      ? rec.calls
+      : null;
+  if (!list) return value;
+  const calls: Array<{ tool: string; args?: Record<string, unknown> }> = [];
+  for (const item of list) {
+    const row = asRecord(item);
+    if (!row || typeof row.tool !== "string") continue;
+    const tool = row.tool.trim();
+    if (!(FINNIE_TOOLS as readonly string[]).includes(tool)) continue;
+    const args = coercePlanArgs(row.args);
+    calls.push(args ? { tool, args } : { tool });
+    if (calls.length >= MAX_TOOL_CALLS) break;
+  }
+  return { calls };
+}
+
+function normalizeSay(value: unknown): unknown {
+  if (typeof value === "string") return { say: value };
+  const rec = asRecord(value);
+  if (!rec) return value;
+  if (typeof rec.say === "string") return { say: rec.say };
+  for (const key of ["answer", "text", "reply", "sentence"] as const) {
+    if (typeof rec[key] === "string") return { say: rec[key] };
+  }
+  return value;
+}
+
 /** The first call. An empty list means nothing in the catalog applies. */
-export const ToolPlan = z.object({
-  calls: z.array(ToolCallSchema).max(MAX_TOOL_CALLS),
-});
+export const ToolPlan = z.preprocess(
+  normalizePlan,
+  z.object({
+    calls: z.array(ToolCallSchema).max(MAX_TOOL_CALLS),
+  }),
+);
 
 /** The second call. say is the bubble. */
-export const FinnieSay = z.object({
-  say: z.string(),
-});
+export const FinnieSay = z.preprocess(
+  normalizeSay,
+  z.object({
+    say: z.string(),
+  }),
+);
 
 const TOOL_LINES: Record<FinnieTool, string> = {
   list_portfolio: "Symbols and names in the book.",
@@ -134,7 +241,7 @@ const PLAN_SYSTEM = [
   "args are optional. args.symbol is the NSE symbol of the company the latest sentence names. Do not substitute a similar ticker. HDFC Bank is HDFCBANK. IndusInd Bank is INDUSINDBK.",
   "get_results may set args.quarters from 1 to 8. Omitted, it is 4.",
   "Promised versus delivered over recent quarters is get_results and get_promises together.",
-  "A results question is get_results. A management change is get_management. A filing digest is get_brief. Whether a filing earns a card or one line, or whether a filing deserves attention, is get_brief with that company's symbol. A dividend, a split, or a bonus is get_corporate_actions. A threshold to watch is set_alert. One pull-menu reading is get_reading.",
+  "A results question that wants the quarters listed is get_results. Headline numbers at a glance, margins, and key ratios are get_reading with which Financial snapshot, not get_results. What the company does, its segments, and the revenue mix are get_reading Business snapshot. What is growing or compressing is get_reading Trajectory. Debt, leverage, working capital, and funding are get_reading Balance sheet. Whether profit turns into cash is get_reading Cash quality. Where the story and the figures agree or diverge is get_reading Narrative vs. numbers. Explicit guidance is get_reading Guidance. A bull case and a bear case are get_reading Bull vs. bear. A management change is get_management. A filing digest is get_brief. Whether a filing earns a card or one line, or whether a filing deserves attention, is get_brief with that company's symbol. A dividend, a split, or a bonus is get_corporate_actions. A threshold to watch is set_alert.",
   "The examples under the catalog illustrate tool choice. They are not strings to match.",
   "Do not invent a tool.",
 ].join(" ");
@@ -152,7 +259,7 @@ const ANSWER_SYSTEM = [
   "When you were given results and no guidance rows, say is at most two short sentences. Do not list every quarter's Revenue, EBITDA, PBT, and PAT. When the lines are NII and PPOP, do not list every quarter of those either. Name what stands out. The screen draws one table for the quarters. Do not write qoqPct or yoyPct. Do not say the results are missing when the quarters are present.",
   "When you were given guidance rows, read every row, including a comment that is not a numeric range. If they asked promised versus delivered, say is one sentence that counts how many were kept, how many were missed, and how many are unverifiable. The screen lists each quote as a pair: the complete sentence, what was promised, what was delivered, and a chip of Kept, Missed, or Unverifiable. A quote about Jio or one business, next to a consolidated quarter, is unverifiable: name the consolidated figure you were given and say it is not that business. If no quarter metric matches, say not the consolidated line. Do not invent a promise. Do not invent a 20–30% range that you were not given. Do not say a promise is missing if a guidance row was given. Do not answer with only that the quarters cannot be scored when a quote was given. No buy or sell.",
   "A management-change question names the person and the profile, including prior roles when you were given them.",
-  "A pull reading answers from that reading's verdict, lines, and table.",
+  "A pull reading answers the question from that reading's verdict, lines, and table. Say what the company does, the segments, and the mix when those lines are present. If a line says the mix, the cycle, or a figure is not in the filings, say that in a full sentence. Do not stop at a fragment. A financial snapshot names the latest period and the headline lines, not every quarter. A bank line named NII is not called revenue. Basis points stay basis points.",
   "When the question asks whether a filing earns a card or one line, or whether a filing deserves attention, use the filings you were given. Name the company and the filing sentence, then say it earns a card when surface is card, or one line when surface is line. Write a full sentence. If there is no filing, say there is no filing in the window. Do not answer with only the word card or the words one line.",
   "When the question asks for a judgment, or asks whether to buy, sell, or for a target price or a put, refuse the trade. Use the filings or the price you were given.",
   'Do not answer a trade question with only "No buy." Use the filings or the price you were given.',
@@ -184,23 +291,32 @@ export async function runFinnieTurn(
   sentence: string,
   focus: string | null,
   prior?: unknown,
+  trace?: FinnieTrace,
 ): Promise<FinnieTurnResult> {
   const text = sentence.trim().replace(/\s+/g, " ").slice(0, 500);
   if (!text) return quiet("Name a company.");
   const open = focusSymbol(focus);
   const memory = clipChain(prior);
+  const planning = planMoment(null);
+  trace?.step(planning.title, planning.text);
   if (await reasonAtSoftCap()) return quiet(FINNIE_OUT_OF_CALLS);
-
   const directory = await companyDirectory();
   const named = companiesMentioned(text, directory);
   const earlier = earlierCompanies(memory, open, directory);
   const allowed = named.length ? named : earlier;
   const toolFocus = named.length === 1 ? (named[0] ?? null) : open;
+  const label = named.length === 1 ? companyLabel(named[0], directory) : null;
+  if (label) {
+    const namedPlan = planMoment(label);
+    trace?.step(namedPlan.title, namedPlan.text);
+  }
+
   let calls: PlanCall[];
   try {
-    calls = await planCalls(text, memory);
+    calls = await planCalls(text, memory, undefined, trace);
   } catch (error) {
     if (error instanceof LlmBudgetExhausted) return quiet(FINNIE_OUT_OF_CALLS);
+    if (modelReplied(error)) return quiet(FINNIE_NO_MATCH);
     return quiet(FINNIE_MODEL_DOWN);
   }
   if (!calls.length) return quiet(FINNIE_NO_MATCH);
@@ -208,7 +324,7 @@ export async function runFinnieTurn(
     const hint = allowed.length === 1 ? allowed[0] : allowed.join(" and ");
     if (hint) {
       try {
-        const retried = await planCalls(text, memory, hint);
+        const retried = await planCalls(text, memory, hint, trace);
         if (retried.length) calls = retried;
       } catch (error) {
         if (error instanceof LlmBudgetExhausted)
@@ -224,48 +340,57 @@ export async function runFinnieTurn(
   calls = calls.filter((call) => callFits(call, allowed, directory));
   if (!calls.length) return quiet(FINNIE_NO_MATCH);
 
-  const ran: Ran[] = [];
-  for (const call of calls) {
-    try {
-      const outcome = await executeTool(
-        call.tool,
-        call.args,
-        toolFocus,
-        Boolean(toolFocus),
-      );
-      ran.push({ tool: call.tool, outcome });
-    } catch {
-      ran.push({
-        tool: call.tool,
-        outcome: {
-          fact: { error: "That did not run.", tool: call.tool },
-          card: null,
-          symbol: null,
-          href: null,
-          link: null,
-          book: null,
-        },
-      });
-    }
-  }
+  const ran = await runCalls(calls, toolFocus, directory, trace);
+  if (trace?.signal?.aborted) throw new Error("aborted");
 
   finnieFactTap?.(
     ran.map((item) => ({ tool: item.tool, data: item.outcome.fact })),
   );
 
+  const ready = sentenceAlreadyOnScreen(ran);
+  if (ready) {
+    return ensureCompanyLinks(
+      present(ready, ran, toolFocus ?? open, allowed, named.length > 0),
+      named,
+    );
+  }
+
+  const results = ran.find((item) => item.tool === "get_results");
+  const promises = ran.find((item) => item.tool === "get_promises");
+  const quarterRows = results?.outcome.fact.quarters;
+  const quarterN = Array.isArray(quarterRows) ? quarterRows.length : 0;
+  const scoreLabel = companyLabel(toolFocus ?? named[0], directory);
+  const canScore =
+    Boolean(results) &&
+    Boolean(promises) &&
+    !results?.outcome.fact.error &&
+    !promises?.outcome.fact.error &&
+    quarterN > 0;
+  if (canScore) {
+    const scoring = scoreMoment(scoreLabel, quarterN);
+    trace?.step(scoring.title, scoring.text);
+  } else {
+    const writing = writeMoment();
+    trace?.step(writing.title, writing.text);
+  }
+
   let say = "";
   try {
-    const answered = await callWithRetry(() =>
-      callStructured({
-        task: "finnie",
-        tier: "reason",
-        schema: FinnieSay,
-        prompt: answerPrompt(text, memory, ran),
-        system: ANSWER_SYSTEM,
-        promptVersion: "answer-11",
-        temperature: 0,
-        maxTokens: 2048,
-      }),
+    const answered = await callWithRetry(
+      () =>
+        callStructured({
+          task: "finnie",
+          tier: "reason",
+          schema: FinnieSay,
+          prompt: answerPrompt(text, memory, ran),
+          system: ANSWER_SYSTEM,
+          promptVersion: "answer-11",
+          temperature: 0,
+          maxTokens: 4096,
+          cache: false,
+          ...listen(trace),
+        }),
+      trace?.signal,
     );
     say = cleanSay(answered.data.say);
     const facts = ran.map((item) => ({
@@ -274,22 +399,26 @@ export async function runFinnieTurn(
     }));
     if (ungroundedNumbers(say, text, facts).length) {
       try {
-        const again = await callWithRetry(() =>
-          callStructured({
-            task: "finnie",
-            tier: "reason",
-            schema: FinnieSay,
-            prompt: answerPrompt(
-              text,
-              memory,
-              ran,
-              ungroundedNumbers(say, text, facts),
-            ),
-            system: ANSWER_SYSTEM,
-            promptVersion: "answer-11",
-            temperature: 0,
-            maxTokens: 2048,
-          }),
+        const again = await callWithRetry(
+          () =>
+            callStructured({
+              task: "finnie",
+              tier: "reason",
+              schema: FinnieSay,
+              prompt: answerPrompt(
+                text,
+                memory,
+                ran,
+                ungroundedNumbers(say, text, facts),
+              ),
+              system: ANSWER_SYSTEM,
+              promptVersion: "answer-11",
+              temperature: 0,
+              maxTokens: 4096,
+              cache: false,
+              ...listen(trace),
+            }),
+          trace?.signal,
         );
         say = cleanSay(again.data.say);
       } catch {
@@ -306,6 +435,8 @@ export async function runFinnieTurn(
   } catch (error) {
     if (error instanceof LlmBudgetExhausted)
       return present(FINNIE_OUT_OF_CALLS, ran, open, allowed, named.length > 0);
+    if (modelReplied(error))
+      return present(FINNIE_NO_MATCH, ran, open, allowed, named.length > 0);
     return present(FINNIE_MODEL_DOWN, ran, open, allowed, named.length > 0);
   }
   if (!say) {
@@ -317,16 +448,46 @@ export async function runFinnieTurn(
   );
 }
 
-const RETRY_PAUSE_MS = 2_500;
+const RETRY_PAUSE_MS = process.env.VITEST ? 0 : 2_500;
 
-async function callWithRetry<T>(run: () => Promise<T>): Promise<T> {
+/** The model answered, and the body was rejected. That is not a transport failure. */
+function modelReplied(error: unknown): boolean {
+  if (!(error instanceof LlmCallFailed) || !error.causes.length) return false;
+  return error.causes.every((cause) => {
+    if (cause.status != null) return false;
+    const message = cause.error;
+    return (
+      message.startsWith("schema validation failed") ||
+      message.includes("not JSON") ||
+      message.startsWith("empty response")
+    );
+  });
+}
+
+async function callWithRetry<T>(
+  run: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   try {
     return await run();
   } catch (error) {
     if (error instanceof LlmBudgetExhausted) throw error;
+    if (signal?.aborted) throw error;
     await new Promise((resolve) => setTimeout(resolve, RETRY_PAUSE_MS));
+    if (signal?.aborted) throw error;
     return run();
   }
+}
+
+function listen(trace: FinnieTrace | undefined): {
+  signal?: AbortSignal;
+  onThought?: FinnieTrace["thought"];
+} {
+  if (!trace) return {};
+  return {
+    signal: trace.signal,
+    onThought: (thought) => trace.thought(thought),
+  };
 }
 
 async function companyDirectory(): Promise<CompanyName[]> {
@@ -341,18 +502,23 @@ async function planCalls(
   sentence: string,
   memory: FinnieMemory[],
   company?: string,
+  trace?: FinnieTrace,
 ): Promise<PlanCall[]> {
-  const planned = await callWithRetry(() =>
-    callStructured({
-      task: "finnie",
-      tier: "reason",
-      schema: ToolPlan,
-      prompt: planPrompt(sentence, memory, company),
-      system: PLAN_SYSTEM,
-      promptVersion: company ? "plan-7" : "plan-6",
-      temperature: 0,
-      maxTokens: 512,
-    }),
+  const planned = await callWithRetry(
+    () =>
+      callStructured({
+        task: "finnie",
+        tier: "reason",
+        schema: ToolPlan,
+        prompt: planPrompt(sentence, memory, company),
+        system: PLAN_SYSTEM,
+        promptVersion: company ? "plan-7" : "plan-6",
+        temperature: 0,
+        maxTokens: 4096,
+        cache: false,
+        ...listen(trace),
+      }),
+    trace?.signal,
   );
   return planned.data.calls.map((call) => ({
     tool: call.tool,
@@ -467,6 +633,14 @@ function answerPrompt(
     data: item.outcome.fact,
   }));
   lines.push("", "Tools:", JSON.stringify(facts));
+  const scored = scoredPairs(ran);
+  if (scored) {
+    lines.push(
+      "",
+      "Scored pairs on the card. Count these chips in the sentence. A piping, gas, export, Jio, or new-energy line is not consolidated revenue. A full-year band is not one quarter.",
+      scored,
+    );
+  }
   if (stray?.length) {
     lines.push(
       "",
@@ -474,6 +648,33 @@ function answerPrompt(
     );
   }
   return lines.join("\n");
+}
+
+function scoredPairs(ran: Ran[]): string {
+  const results = ran.find((item) => item.tool === "get_results")?.outcome.card;
+  const promises = ran.find((item) => item.tool === "get_promises")?.outcome
+    .card;
+  if (!results || results.kind !== "reply" || !results.quarters?.length)
+    return "";
+  if (
+    !promises ||
+    promises.kind !== "reply" ||
+    promises.reply.kind !== "promises"
+  )
+    return "";
+  const rows = comparisonsFor(
+    results.quarters,
+    promises.reply.rows,
+    results.periodCards,
+  );
+  if (!rows.length) return "";
+  return [
+    comparisonBubble(rows),
+    ...rows.map(
+      (row) =>
+        `${row.verdict} · ${row.period} · promised ${row.promised} · delivered ${row.delivered ?? "none"} · ${row.quote}`,
+    ),
+  ].join("\n");
 }
 
 function catalogText(): string {
@@ -524,6 +725,65 @@ function ensureCompanyLinks(
     symbol = symbols[0];
   }
   return { ...result, links, href, symbol };
+}
+
+async function runCalls(
+  calls: PlanCall[],
+  toolFocus: string | null,
+  rows: Array<{ symbol: string; name: string }>,
+  trace?: FinnieTrace,
+): Promise<Ran[]> {
+  const ran: Ran[] = [];
+  for (const call of calls) {
+    const moment = toolMoment(call.tool, call.args, rows);
+    trace?.step(moment.title, moment.text);
+    if (trace?.signal?.aborted) break;
+    try {
+      const outcome = await executeTool(
+        call.tool,
+        call.args,
+        toolFocus,
+        Boolean(toolFocus),
+      );
+      ran.push({ tool: call.tool, outcome });
+    } catch {
+      ran.push({
+        tool: call.tool,
+        outcome: {
+          fact: { error: "That did not run.", tool: call.tool },
+          card: null,
+          symbol: null,
+          href: null,
+          link: null,
+          book: null,
+        },
+      });
+    }
+  }
+  return ran;
+}
+
+/**
+ * A confirm step or a one-tool quote is already the sentence.
+ * A promised-versus-delivered walk is not. That sentence comes from the model.
+ */
+function sentenceAlreadyOnScreen(ran: Ran[]): string | null {
+  for (const item of ran) {
+    const card = item.outcome.card;
+    if (card?.kind === "reply" && card.reply.kind === "confirm")
+      return card.reply.sentence;
+  }
+  if (ran.length === 1) {
+    const fact = ran[0]?.outcome.fact;
+    const card = ran[0]?.outcome.card;
+    const headline = fact?.headline;
+    const sentence = fact?.sentence;
+    if (card && typeof headline === "string" && headline.trim())
+      return headline.trim();
+    if (card && typeof sentence === "string" && sentence.trim())
+      return sentence.trim();
+  }
+  return null;
 }
 
 function present(

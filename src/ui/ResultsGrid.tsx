@@ -1,6 +1,7 @@
 import { resultsVerified } from "@/engine/analyse/results";
 import type { ResultsCard, ResultsVerification } from "@/engine/types";
 import { formatCrore, groupIndian, quarterLabel } from "@/lib/format";
+import { gridMatchesFiling } from "@/lib/resultsAlign";
 import { DeltaChip } from "./DeltaChip";
 import { FormulaPopover } from "./FormulaPopover";
 import { Sparkline } from "./Sparkline";
@@ -120,12 +121,15 @@ export function snapshotChip(snapshot: {
 }
 
 /** One-line receipt for the brief card: "Consolidated · ₹ cr · XBRL ✓ · bank format". */
-export function compactMetaLine(card: ResultsCard): string {
+export function compactMetaLine(card: ResultsCard, aligned = true): string {
   const basisWord = card.basis === "standalone" ? "Standalone" : "Consolidated";
   const parts = [basisWord, "₹ cr"];
   const failed = checkFailureLine(card);
   parts.push(
-    failed ?? (card.checksum === "exchange_xbrl" ? "XBRL ✓" : "preliminary ◐"),
+    !aligned
+      ? `XBRL on file is ${periodLabelOf(card)}`
+      : (failed ??
+          (card.checksum === "exchange_xbrl" ? "XBRL ✓" : "preliminary ◐")),
   );
   if (card.variant === "bank") parts.push("bank format");
   else if (card.variant === "nbfc") parts.push("NBFC format");
@@ -138,6 +142,7 @@ export function compactMetaLine(card: ResultsCard): string {
 export function ResultsGrid({
   card,
   periodEnd,
+  filingTitle,
   withSpark = true,
   showMeta = true,
   compactMeta = false,
@@ -145,6 +150,8 @@ export function ResultsGrid({
 }: {
   card: ResultsCard;
   periodEnd?: string | null;
+  /** Filing title. A different quarter withholds the exchange-verified badge. */
+  filingTitle?: string | null;
   withSpark?: boolean;
   /** basis chips, verification badge, formula popover */
   showMeta?: boolean;
@@ -168,7 +175,8 @@ export function ResultsGrid({
   const basis =
     card.basisLabel ??
     `${card.basis === "standalone" ? "Standalone" : "Consolidated"} · ₹ cr`;
-  const verified = resultsVerified(card);
+  const aligned = gridMatchesFiling(card, filingTitle);
+  const verified = aligned && resultsVerified(card);
   const failedCheck = checkFailureLine(card);
   const h1 = card.verification?.h1Check;
   const exceptionalCr = card.exceptional?.currentCr ?? null;
@@ -285,6 +293,14 @@ export function ResultsGrid({
               <span aria-hidden="true">✓</span>
               <span>Exchange XBRL verified</span>
             </span>
+          ) : !aligned ? (
+            <span
+              className="chip chip-warn"
+              title={`The filing names a different quarter. XBRL on file is ${period}.`}
+            >
+              <span aria-hidden="true">!</span>
+              <span>XBRL on file is {period}</span>
+            </span>
           ) : failedCheck ? (
             <span className="chip chip-warn" title={failedCheck}>
               <span aria-hidden="true">!</span>
@@ -336,7 +352,7 @@ export function ResultsGrid({
           ) : null}
         </div>
       ) : compactMeta ? (
-        <p className="receipt mt-1.5">{compactMetaLine(card)}</p>
+        <p className="receipt mt-1.5">{compactMetaLine(card, aligned)}</p>
       ) : null}
     </div>
   );

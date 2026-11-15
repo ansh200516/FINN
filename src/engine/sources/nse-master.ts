@@ -114,8 +114,15 @@ export async function fetchEquityMaster(
   });
   const csv = bytesToText(res.bytes);
   const rows = parseEquityMasterCsv(csv); // validates before caching
-  mkdirSync(dirname(cachePath), { recursive: true });
-  writeFileSync(cachePath, csv);
+  try {
+    mkdirSync(dirname(cachePath), { recursive: true });
+    writeFileSync(cachePath, csv);
+  } catch (e) {
+    log.warn(
+      { cachePath, err: e instanceof Error ? e.message : String(e) },
+      "equity master cache write failed",
+    );
+  }
   log.info(
     { rows: rows.length, bytes: res.bytes.byteLength, ms: res.latencyMs },
     "equity master downloaded",

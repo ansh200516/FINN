@@ -156,6 +156,75 @@ describe("gates", () => {
     );
     expect(v).toMatchObject({ low: 700e7, high: 750e7, unit: "INR" });
   });
+  it("points a turn-start page at the single extracted page that contains the quote", () => {
+    const quote = "operating margin between 14% to 14.5%";
+    const pages = [
+      {
+        page: 3,
+        text: "M. P. Taparia: The quarter was steady and volumes held.",
+      },
+      { page: 4, text: `For the year, ${quote} remains the plan.` },
+    ];
+    const spanning: TranscriptTurn = {
+      ...turn,
+      page: 3,
+      text: `${pages[0]?.text} ${pages[1]?.text}`,
+    };
+    const v = gateStatement(
+      ms({ quote }),
+      {
+        ...ctx(),
+        turns: new Map([[7, spanning]]),
+        docText: { docId: "d1", pages },
+      },
+      stats(),
+    );
+    expect(v).toMatchObject({ page: 4, verifiedAgainst: "turn" });
+  });
+  it("keeps the turn page when the quote is split across two extracted pages", () => {
+    const pages = [
+      { page: 3, text: "operating margin between 14%" },
+      { page: 4, text: "to 14.5% for the full year ahead" },
+    ];
+    const quote = "operating margin between 14% to 14.5%";
+    const spanning: TranscriptTurn = {
+      ...turn,
+      page: 3,
+      text: `${pages[0]?.text} ${pages[1]?.text}`,
+    };
+    const v = gateStatement(
+      ms({ quote }),
+      {
+        ...ctx(),
+        turns: new Map([[7, spanning]]),
+        docText: { docId: "d1", pages },
+      },
+      stats(),
+    );
+    expect(v).toMatchObject({ page: 3, verifiedAgainst: "turn" });
+  });
+  it("keeps the turn page when the same quote is on more than one extracted page", () => {
+    const quote = "operating margin between 14% to 14.5%";
+    const pages = [
+      { page: 2, text: `Opening remarks. ${quote} for the year.` },
+      { page: 9, text: `Repeated later. ${quote} for the year.` },
+    ];
+    const spanning: TranscriptTurn = {
+      ...turn,
+      page: 8,
+      text: quote,
+    };
+    const v = gateStatement(
+      ms({ quote }),
+      {
+        ...ctx(),
+        turns: new Map([[7, spanning]]),
+        docText: { docId: "d1", pages },
+      },
+      stats(),
+    );
+    expect(v).toMatchObject({ page: 8, verifiedAgainst: "turn" });
+  });
   it("finds a quote the model attributed to the wrong turn and fixes the page", () => {
     const other: TranscriptTurn = {
       ...turn,
@@ -496,6 +565,13 @@ describe("extractGuidanceDetailed (mocked model)", () => {
       numberRejected: 1,
       kept: 1,
     });
+    const quotePage = d.pages.find((p) =>
+      /we expect company-\s*wide volume growth of about 10% for FY27/i.test(
+        p.text,
+      ),
+    )?.page;
+    expect(t.page).toBe(3);
+    expect(quotePage).toBe(4);
     expect(r.statements[0]).toMatchObject({
       metric: "volume_growth",
       low: 10,
@@ -503,7 +579,7 @@ describe("extractGuidanceDetailed (mocked model)", () => {
       approx: true,
       unit: "%",
       horizon: "FY27",
-      page: t.page,
+      page: quotePage,
       speaker: "M. P. Taparia",
       model: "mock-flash-lite",
     });

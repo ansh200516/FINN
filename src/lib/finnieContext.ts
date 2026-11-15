@@ -25,6 +25,8 @@ import {
   guidanceVerdictGroups,
 } from "@/lib/queries";
 import {
+  attentionRank,
+  isRoutineDirectorAppointment,
   judgeEvent,
   judgeMove,
   showAsMoveCard,
@@ -286,16 +288,28 @@ async function loadBrief(
     ...new Set([...view.tier1, ...view.tier2].map((event) => event.isin)),
   ];
   const ledgers = tallyByIsin(await guidanceVerdictGroups(filingIsins));
-  const act: ActLine[] = [];
+  const ranked: Array<{ line: ActLine; rank: number }> = [];
   let watch = 0;
   for (const event of [...view.tier1, ...view.tier2]) {
-    const judged = judgeEvent(event, ledgers.get(event.isin) ?? null);
+    const ledger = ledgers.get(event.isin) ?? null;
+    const judged = judgeEvent(event, ledger);
     if (judged.decision === "watch") watch += 1;
     if (judged.decision !== "act") continue;
-    act.push({
-      symbol: event.symbol,
-      sentence: judged.sentence,
-      href: `/e/${encodeURIComponent(event.eventKey)}`,
+    const broken = (ledger?.missed ?? 0) > 0 || (ledger?.cut ?? 0) > 0;
+    ranked.push({
+      line: {
+        symbol: event.symbol,
+        sentence: judged.sentence,
+        href: `/e/${encodeURIComponent(event.eventKey)}`,
+      },
+      rank: attentionRank({
+        decision: judged.decision,
+        category: event.category,
+        broken,
+        routineDirector: isRoutineDirectorAppointment(event),
+        priority: event.priority,
+        at: event.filedAtMs,
+      }),
     });
   }
   for (const anomaly of view.anomalies) {
@@ -308,12 +322,24 @@ async function loadBrief(
     const judged = judgeMove(move);
     if (judged.decision === "watch") watch += 1;
     if (judged.decision !== "act") continue;
-    act.push({
-      symbol: anomaly.symbol,
-      sentence: judged.sentence,
-      href: `/c/${encodeURIComponent(anomaly.symbol)}`,
+    ranked.push({
+      line: {
+        symbol: anomaly.symbol,
+        sentence: judged.sentence,
+        href: `/c/${encodeURIComponent(anomaly.symbol)}`,
+      },
+      rank: attentionRank({
+        decision: judged.decision,
+        priceRule: true,
+        priority: Math.round(
+          Math.abs(anomaly.pctMove ?? anomaly.volumeRatio ?? 0) * 5,
+        ),
+        at: Date.parse(`${anomaly.date}T00:00:00Z`),
+      }),
     });
   }
+  ranked.sort((a, b) => a.rank - b.rank);
+  const act = ranked.map((row) => row.line);
   const upcoming = (view.upcoming ?? []).map((item) => ({
     symbol: item.symbol,
     what: item.what,

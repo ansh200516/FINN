@@ -1,10 +1,13 @@
 /**
  * One chat turn. The first call sees the tool catalog and the thread,
- * and names the calls. It does not answer. The second call sees the
- * sentence, the thread, and the JSON those calls returned, and writes
- * the bubble. Quarters and guidance are grounding for that call.
- * The bubble is the model's sentence. Chat does not read or write a
- * stored completion.
+ * and names up to four requirements. It does not answer. A price or a
+ * single reading stays one requirement. Independent requirements then
+ * run together, at most four at a time. The second call, when the
+ * screen does not already show the sentence, sees the tool JSON only
+ * and writes the bubble. It does not invent a number. Quarters and
+ * guidance are joined before that call, so crore figures and the
+ * same-quantity rule are already in the payload. Chat does not read
+ * or write a stored completion.
  */
 import { z } from "zod";
 import {
@@ -235,7 +238,7 @@ const PLAN_SYSTEM = [
   "You are Finnie.",
   "Choose tools for the latest sentence. Do not answer it.",
   "The catalog is the only data in this call. The book is not included.",
-  "Return 1 to 4 calls. Use an empty calls list only when the sentence asks for nothing in the catalog.",
+  "Return 1 to 4 calls. Each call is one requirement. Independent calls run together. Use an empty calls list only when the sentence asks for nothing in the catalog. A price is one get_quote. One reading is one get_reading. Do not split those. When the sentence asks for quarters, guidance, and a reading, those are three calls. Do not add a call the sentence did not ask for.",
   "A buy, a sell, a target price, or a put still needs get_results or get_quote for the company named in the sentence or already in the thread. Do not skip the tools.",
   "If the sentence says it, that, or the same company, keep the company from the thread.",
   "args are optional. args.symbol is the NSE symbol of the company the latest sentence names. Do not substitute a similar ticker. HDFC Bank is HDFCBANK. IndusInd Bank is INDUSINDBK.",
@@ -252,7 +255,7 @@ const ANSWER_SYSTEM = [
   "Write one or two plain sentences about what management said and what the quarters show.",
   "Never mention how you were called.",
   "say is that answer. Be concise.",
-  "Do not state a number or a name that you were not given.",
+  "Do not state a number or a name that you were not given. The bubble uses only the tool JSON. Do not invent a number.",
   "Do not add numbers to make a total. A count has to be a count you were already given.",
   "No buy. No sell. No target price. No news.",
   "Read every row you were given and answer the question.",
@@ -384,7 +387,7 @@ export async function runFinnieTurn(
           schema: FinnieSay,
           prompt: answerPrompt(text, memory, ran),
           system: ANSWER_SYSTEM,
-          promptVersion: "answer-11",
+          promptVersion: "answer-12",
           temperature: 0,
           maxTokens: 4096,
           cache: false,
@@ -412,7 +415,7 @@ export async function runFinnieTurn(
                 ungroundedNumbers(say, text, facts),
               ),
               system: ANSWER_SYSTEM,
-              promptVersion: "answer-11",
+              promptVersion: "answer-12",
               temperature: 0,
               maxTokens: 4096,
               cache: false,
@@ -512,7 +515,7 @@ async function planCalls(
         schema: ToolPlan,
         prompt: planPrompt(sentence, memory, company),
         system: PLAN_SYSTEM,
-        promptVersion: company ? "plan-7" : "plan-6",
+        promptVersion: company ? "plan-9" : "plan-8",
         temperature: 0,
         maxTokens: 4096,
         cache: false,
@@ -727,6 +730,47 @@ function ensureCompanyLinks(
   return { ...result, links, href, symbol };
 }
 
+/** Independent tool requirements in one turn. mark_read stays in order. */
+export const TOOL_CONCURRENCY = 4;
+
+const SERIAL_TOOLS = new Set<FinnieTool>(["mark_read"]);
+
+/**
+ * Run items together, never more than `limit` at once. Results stay in
+ * input order, including when a later item finishes first.
+ */
+export async function mapBounded<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const cap = Math.max(1, Math.trunc(limit));
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Math.min(cap, items.length);
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      for (;;) {
+        const index = next;
+        next += 1;
+        if (index >= items.length) return;
+        results[index] = await run(items[index] as T, index);
+      }
+    }),
+  );
+  return results;
+}
+
+function finishedTitle(title: string): string | null {
+  if (title.startsWith("Reading ")) {
+    return `Read ${title.slice("Reading ".length)}`;
+  }
+  if (title.startsWith("Checking ")) {
+    return `Checked ${title.slice("Checking ".length)}`;
+  }
+  return null;
+}
+
 async function runCalls(
   calls: PlanCall[],
   toolFocus: string | null,
@@ -734,10 +778,12 @@ async function runCalls(
   trace?: FinnieTrace,
 ): Promise<Ran[]> {
   const ran: Ran[] = [];
-  for (const call of calls) {
+  let batch: PlanCall[] = [];
+
+  const runOne = async (call: PlanCall): Promise<Ran | null> => {
+    if (trace?.signal?.aborted) return null;
     const moment = toolMoment(call.tool, call.args, rows);
     trace?.step(moment.title, moment.text);
-    if (trace?.signal?.aborted) break;
     try {
       const outcome = await executeTool(
         call.tool,
@@ -745,9 +791,11 @@ async function runCalls(
         toolFocus,
         Boolean(toolFocus),
       );
-      ran.push({ tool: call.tool, outcome });
+      const doneTitle = finishedTitle(moment.title);
+      if (doneTitle) trace?.step(doneTitle, moment.text);
+      return { tool: call.tool, outcome };
     } catch {
-      ran.push({
+      return {
         tool: call.tool,
         outcome: {
           fact: { error: "That did not run.", tool: call.tool },
@@ -757,9 +805,34 @@ async function runCalls(
           link: null,
           book: null,
         },
-      });
+      };
     }
+  };
+
+  const flush = async () => {
+    if (!batch.length) return;
+    const ready = batch;
+    batch = [];
+    const done = await mapBounded(ready, TOOL_CONCURRENCY, (call) =>
+      runOne(call),
+    );
+    for (const item of done) {
+      if (item) ran.push(item);
+    }
+  };
+
+  for (const call of calls) {
+    if (trace?.signal?.aborted) break;
+    if (SERIAL_TOOLS.has(call.tool)) {
+      await flush();
+      if (trace?.signal?.aborted) break;
+      const item = await runOne(call);
+      if (item) ran.push(item);
+      continue;
+    }
+    batch.push(call);
   }
+  if (!trace?.signal?.aborted) await flush();
   return ran;
 }
 

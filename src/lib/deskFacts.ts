@@ -13,7 +13,8 @@ import {
 } from "@/lib/queries";
 import { formatIst } from "@/lib/time";
 import {
-  decisionRank,
+  attentionRank,
+  isRoutineDirectorAppointment,
   judgeEvent,
   judgeMove,
   showAsMoveCard,
@@ -77,16 +78,22 @@ export async function loadDeskFacts(now = Date.now()): Promise<DeskFacts> {
   const rows: Array<DeskLine & { decision: "act" | "watch"; rank: number }> =
     [];
   for (const ev of [...brief.tier1, ...brief.tier2]) {
-    const j = judgeEvent(ev, ledgers.get(ev.isin) ?? null);
+    const ledger = ledgers.get(ev.isin) ?? null;
+    const j = judgeEvent(ev, ledger);
     if (j.decision === "nothing") continue;
+    const broken = (ledger?.missed ?? 0) > 0 || (ledger?.cut ?? 0) > 0;
     rows.push({
       symbol: ev.symbol,
       sentence: j.sentence,
       decision: j.decision,
-      rank:
-        decisionRank(j.decision) * 1_000_000 -
-        ev.priority * 1_000 -
-        Math.floor(ev.filedAtMs / 1000),
+      rank: attentionRank({
+        decision: j.decision,
+        category: ev.category,
+        broken,
+        routineDirector: isRoutineDirectorAppointment(ev),
+        priority: ev.priority,
+        at: ev.filedAtMs,
+      }),
     });
   }
   for (const a of brief.anomalies) {
@@ -102,9 +109,12 @@ export async function loadDeskFacts(now = Date.now()): Promise<DeskFacts> {
       symbol: a.symbol,
       sentence: j.sentence,
       decision: j.decision,
-      rank:
-        decisionRank(j.decision) * 1_000_000 -
-        Math.round(Math.abs(a.pctMove ?? a.volumeRatio ?? 0) * 5) * 1_000,
+      rank: attentionRank({
+        decision: j.decision,
+        priceRule: true,
+        priority: Math.round(Math.abs(a.pctMove ?? a.volumeRatio ?? 0) * 5),
+        at: Date.parse(`${a.date}T00:00:00Z`),
+      }),
     });
   }
   rows.sort((a, b) => a.rank - b.rank);

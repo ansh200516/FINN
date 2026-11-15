@@ -58,6 +58,8 @@ import {
 } from "@/lib/queries";
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
 import {
+  attentionRank,
+  isRoutineDirectorAppointment,
   judgeEvent,
   judgeMove,
   showAsMoveCard,
@@ -980,18 +982,33 @@ async function briefFor(
       windowLabel = wider.window.label;
     }
   }
-  const act: FinnieLine[] = [];
-  const watchLines: FinnieLine[] = [];
+  const ranked: Array<{
+    line: FinnieLine;
+    decision: "act" | "watch";
+    rank: number;
+  }> = [];
   for (const event of [...view.tier1, ...view.tier2]) {
     if (only && event.symbol.toUpperCase() !== only) continue;
-    const judged = judgeEvent(event, ledgers.get(event.isin) ?? null);
-    const line: FinnieLine = {
-      symbol: event.symbol,
-      text: judged.sentence,
-      href: `/e/${encodeURIComponent(event.eventKey)}`,
-    };
-    if (judged.decision === "watch") watchLines.push(line);
-    if (judged.decision === "act") act.push(line);
+    const ledger = ledgers.get(event.isin) ?? null;
+    const judged = judgeEvent(event, ledger);
+    if (judged.decision === "nothing") continue;
+    const broken = (ledger?.missed ?? 0) > 0 || (ledger?.cut ?? 0) > 0;
+    ranked.push({
+      line: {
+        symbol: event.symbol,
+        text: judged.sentence,
+        href: `/e/${encodeURIComponent(event.eventKey)}`,
+      },
+      decision: judged.decision,
+      rank: attentionRank({
+        decision: judged.decision,
+        category: event.category,
+        broken,
+        routineDirector: isRoutineDirectorAppointment(event),
+        priority: event.priority,
+        at: event.filedAtMs,
+      }),
+    });
   }
   for (const anomaly of view.anomalies) {
     if (only && anomaly.symbol.toUpperCase() !== only) continue;
@@ -1002,14 +1019,31 @@ async function briefFor(
     };
     if (!showAsMoveCard(move, thresholds.pricePct)) continue;
     const judged = judgeMove(move);
-    const line: FinnieLine = {
-      symbol: anomaly.symbol,
-      text: judged.sentence,
-      href: "/",
-    };
-    if (judged.decision === "watch") watchLines.push(line);
-    if (judged.decision === "act") act.push(line);
+    if (judged.decision === "nothing") continue;
+    ranked.push({
+      line: {
+        symbol: anomaly.symbol,
+        text: judged.sentence,
+        href: "/",
+      },
+      decision: judged.decision,
+      rank: attentionRank({
+        decision: judged.decision,
+        priceRule: true,
+        priority: Math.round(
+          Math.abs(anomaly.pctMove ?? anomaly.volumeRatio ?? 0) * 5,
+        ),
+        at: Date.parse(`${anomaly.date}T00:00:00Z`),
+      }),
+    });
   }
+  ranked.sort((a, b) => a.rank - b.rank);
+  const act = ranked
+    .filter((row) => row.decision === "act")
+    .map((row) => row.line);
+  const watchLines = ranked
+    .filter((row) => row.decision === "watch")
+    .map((row) => row.line);
   const watch = watchLines.length;
   const stacks = [...act, ...watchLines];
   if (!only && view.counts.filedAway > 0) {

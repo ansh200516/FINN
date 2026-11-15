@@ -9,6 +9,7 @@ import type { ResultsCard } from "@/engine/types";
 import { tallyLedger } from "@/lib/ledger-counts";
 import { DecisionCard } from "@/ui/DecisionCard";
 import {
+  attentionRank,
   editionHeadline,
   hasFigures,
   judgeEvent,
@@ -16,6 +17,7 @@ import {
   type LedgerCounts,
   oneFact,
   showAsMoveCard,
+  stackRank,
 } from "@/ui/decision";
 import type { EventCard } from "@/ui/model";
 import { WatchLine } from "@/ui/WatchLine";
@@ -138,6 +140,50 @@ describe("judgeEvent", () => {
     expect(j.sentence).toBe("Revenue up 29% year on year. No promise broken.");
   });
 
+  it("keeps a routine director appointment out of the act stack", () => {
+    const appointed = judgeEvent(
+      ev({
+        category: "management_change",
+        title: "Rohit Jawa Appointed as Independent Director",
+        oneLiner:
+          "Mr. Rohit Jawa was appointed as an Additional Director in the capacity of Independent Director.",
+        card: {
+          changes: [
+            {
+              person: "Mr. Rohit Jawa",
+              role: "Independent Director",
+              action: "appointed",
+              effective_date: "January 1, 2027",
+              reason: null,
+              successor: null,
+              brief_profile_excerpt: null,
+              prior_roles: [],
+            },
+          ],
+        },
+      }),
+    );
+    expect(appointed.decision).toBe("watch");
+    const unnamed = judgeEvent(
+      ev({
+        category: "management_change",
+        title: "Change in Director(s) of the company",
+        oneLiner: "Change in Director(s) of the company",
+        card: null,
+      }),
+    );
+    expect(unnamed.decision).toBe("watch");
+    const resigned = judgeEvent(
+      ev({
+        category: "management_change",
+        title: "Resignation of Director/KMP/SMP",
+        oneLiner: "Resignation of Director/KMP/SMP",
+        card: null,
+      }),
+    );
+    expect(resigned.decision).toBe("act");
+  });
+
   it("names the person and points at the profile", () => {
     const j = judgeEvent(
       ev({
@@ -209,6 +255,44 @@ describe("judgeMove", () => {
     const j = judgeMove({ pct: -17, volumeRatio: 17, ruleHit: true });
     expect(j.decision).toBe("act");
     expect(j.sentence).toBe("Down 17% on 17× volume. You asked to be told.");
+  });
+
+  it("does not turn a default price-rule line into an act", () => {
+    const j = judgeMove({ pct: 4.1, volumeRatio: 1.2, ruleHit: true });
+    expect(j.decision).toBe("watch");
+    expect(j.sentence).toBe("Up 4.1% on 1.2× volume. A price rule fired.");
+    expect(j.sentence).not.toContain("You asked to be told");
+  });
+
+  it("ranks a promise break above a price line and a director appointment", () => {
+    const breakRank = stackRank({ category: "results", broken: true });
+    const results = stackRank({ category: "results" });
+    const price = stackRank({ priceRule: true });
+    const director = stackRank({ routineDirector: true });
+    expect(breakRank).toBeLessThan(results);
+    expect(results).toBeLessThan(price);
+    expect(price).toBeLessThan(director);
+    const promise = attentionRank({
+      decision: "act",
+      category: "results",
+      broken: true,
+      priority: 70,
+      at: 1,
+    });
+    const loud = attentionRank({
+      decision: "act",
+      priceRule: true,
+      priority: 85,
+      at: 2,
+    });
+    const routine = attentionRank({
+      decision: "watch",
+      routineDirector: true,
+      priority: 100,
+      at: 3,
+    });
+    expect(promise).toBeLessThan(loud);
+    expect(loud).toBeLessThan(routine);
   });
 
   it("keeps initials inside the sentence", () => {

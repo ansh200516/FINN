@@ -137,15 +137,33 @@ describe("thought titles", () => {
       fresh: false,
       text: "**Scoring two quarters**\nKept against the guidance. One is open.",
     });
+    expect(items.map((item) => item.title)).toEqual(["Scoring two quarters"]);
+    expect(items[0]?.source).toBe("thought");
     items = reduceTrace(items, {
       type: "step",
-      title: "Writing the answer",
-      text: "Writing the answer from the filings just read.",
+      title: "Reading the last four quarters",
+      text: "Reading HDFC Bank's last four quarters.",
     });
-    expect(items.map((item) => item.title)).toEqual(["Scoring two quarters"]);
+    items = reduceTrace(items, {
+      type: "step",
+      title: "Read the last four quarters",
+      text: "Reading HDFC Bank's last four quarters.",
+    });
+    expect(items.map((item) => item.title)).toEqual([
+      "Scoring two quarters",
+      "Reading the last four quarters",
+      "Read the last four quarters",
+    ]);
     expect(items[0]?.text).toContain("One is open.");
     expect(items[0]?.source).toBe("thought");
-    expect(items.some((item) => item.source === "step")).toBe(false);
+    items = reduceTrace(items, {
+      type: "thought",
+      fresh: true,
+      text: "**Writing from the rows**\nThe count is the chips.",
+    });
+    expect(items.map((item) => item.source)).toEqual(["thought", "thought"]);
+    expect(items[0]?.text).toContain("One is open.");
+    expect(items[1]?.title).toBe("Writing from the rows");
   });
 
   it("updates the collapsed title as the thought text arrives", () => {

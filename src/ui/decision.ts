@@ -3,10 +3,16 @@
  * The sentence is built from the category, the one-liner, the results
  * headline deltas, and the ledger counts. No model call.
  *
- *   Act    — a missed or cut promise, a management change, or a price /
- *            volume rule the investor set
- *   Watch  — results filed, open promises, or a large move under that rule
+ *   Act    — a missed or cut promise, a material management change, or a
+ *            loud move past the investor's price rule
+ *   Watch  — results with the promise kept, a routine director appointment,
+ *            a default price-rule line, open promises, or a large move
+ *            under the rule
  *   Nothing — neither. Tier 3 stays a count in the fold, not a card.
+ *
+ * Results and real promise breaks sort above default price-rule lines and
+ * routine director appointments. A day of ordinary 4% closes must not become
+ * a stack of "You asked to be told."
  */
 import type { ResultsCard } from "@/engine/types";
 import { formatRatio } from "@/lib/format";
@@ -63,6 +69,42 @@ export function decisionRank(d: Decision): number {
   if (d === "act") return 0;
   if (d === "watch") return 1;
   return 2;
+}
+
+/**
+ * Order inside a decision. Lower is earlier.
+ *   0 promise break · 1 results · 2 a filing that matters
+ *   3 default price-rule line · 4 routine director appointment
+ */
+export function stackRank(input: {
+  category?: string | null;
+  broken?: boolean;
+  routineDirector?: boolean;
+  priceRule?: boolean;
+}): number {
+  if (input.broken) return 0;
+  if (input.category === "results") return 1;
+  if (input.routineDirector) return 4;
+  if (input.priceRule) return 3;
+  return 2;
+}
+
+/** Act first, then the stack above, then a louder filing, then a newer one. */
+export function attentionRank(input: {
+  decision: Decision;
+  category?: string | null;
+  broken?: boolean;
+  routineDirector?: boolean;
+  priceRule?: boolean;
+  priority?: number;
+  at?: number;
+}): number {
+  return (
+    decisionRank(input.decision) * 1_000_000_000 +
+    stackRank(input) * 100_000_000 -
+    (input.priority ?? 0) * 100_000 -
+    Math.floor((input.at ?? 0) / 1000)
+  );
 }
 
 /** Dateline counts Act only. Watch is a line under the cards. */
@@ -388,6 +430,56 @@ function openClause(L: LedgerCounts): string {
   return L.open === 1 ? "One promise still open." : "Promises still open.";
 }
 
+function roleIsMaterial(role: string): boolean {
+  const r = role.toLowerCase();
+  if (
+    /independent/.test(r) &&
+    !/managing|chief executive|\bceo\b|chief financial|\bcfo\b|chair/.test(r)
+  )
+    return false;
+  return /chair|managing director|\bmd\b|chief executive|\bceo\b|chief financial|\bcfo\b|chief operating|\bcoo\b|auditor/.test(
+    r,
+  );
+}
+
+/**
+ * An appointment or reappointment of a director who is not the chair, MD,
+ * CEO, CFO, COO, or auditor. A resignation stays a decision. A filing that
+ * only says "Change in Director(s)" and names nobody material is the same
+ * routine line.
+ */
+export function isRoutineDirectorAppointment(event: EventCard): boolean {
+  if (event.category !== "management_change") return false;
+  const card = asMgmt(event.card);
+  const people = card ? peopleOf(card).filter((p) => usableName(p.person)) : [];
+  if (people.length) {
+    return people.every((p) => {
+      if (isDeparture(p.action)) return false;
+      const role = (p.role ?? "").toLowerCase();
+      if (roleIsMaterial(role)) return false;
+      const action = (p.action ?? "").toLowerCase();
+      const appointing = !action || /appoint|redesignat/.test(action);
+      if (!appointing) return false;
+      if (!role) return false;
+      if (/whole[- ]time/.test(role) && !/non[- ]executive/.test(role))
+        return false;
+      return /director/.test(role);
+    });
+  }
+  const text = `${event.title} ${event.oneLiner}`.toLowerCase();
+  if (/resign|retir|ceas|demise|vacat|superannuat/.test(text)) return false;
+  if (roleIsMaterial(text)) return false;
+  return /director/.test(text);
+}
+
+/** Past a graze of the default line: 8% or more, or 5× volume on a real move. */
+export function isLoudMove(m: MoveFact): boolean {
+  const pct = Math.abs(m.pct ?? 0);
+  const vol = m.volumeRatio ?? 0;
+  if (pct >= 8) return true;
+  return vol >= 5 && pct >= LARGE_PCT;
+}
+
 /**
  * Chip and sentence for a filing. A missed or cut promise counts only on
  * the results that settle it. Open promises lift any other filing to Watch.
@@ -398,10 +490,12 @@ export function judgeEvent(
 ): Judgement {
   const L = ledger ?? EMPTY_LEDGER;
   const broken = L.missed > 0 || L.cut > 0;
+  const routine = isRoutineDirectorAppointment(event);
   let decision: Decision;
   if (event.category === "results" && broken) decision = "act";
-  else if (event.category === "management_change") decision = "act";
-  else if (event.category === "results" || L.open > 0) decision = "watch";
+  else if (event.category === "management_change" && !routine) decision = "act";
+  else if (event.category === "results" || routine || L.open > 0)
+    decision = "watch";
   else decision = "nothing";
 
   let sentence: string;
@@ -442,11 +536,21 @@ export function showAsMoveCard(m: MoveFact, pricePct: number): boolean {
   return (m.volumeRatio ?? 0) >= 5;
 }
 
-/** A session move. A rule hit is Act. A large move under the line is Watch. */
+/**
+ * A session move. A loud rule hit is Act. Crossing the default line without
+ * that tape is Watch — one line, not another "You asked to be told."
+ */
 export function judgeMove(m: MoveFact): Judgement {
   const beatText = moveBeat(m);
-  if (m.ruleHit)
+  if (m.ruleHit && isLoudMove(m))
     return { decision: "act", sentence: `${beatText} You asked to be told.` };
+  if (m.ruleHit) {
+    const sentence =
+      beatText === "A price rule fired."
+        ? beatText
+        : `${beatText} A price rule fired.`;
+    return { decision: "watch", sentence };
+  }
   if (isLarge(m))
     return { decision: "watch", sentence: `${beatText} Under your line.` };
   return { decision: "nothing", sentence: beatText };

@@ -11,7 +11,9 @@
  *      from the table in docs/research/02 §2.3, `isExplicit=false`.
  *   4. horizon → fiscal label + period end (relative terms resolved from the call's period).
  *
- * Speaker and page always come from the parser (turn id), never from the model.
+ * Speaker comes from the parser, never from the model. The stored page is the
+ * extracted page that contains the quote when that page is unique; otherwise
+ * it stays the page the speaker turn started on.
  */
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -25,6 +27,7 @@ import {
   verifyQuote,
 } from "@/engine/llm/verify";
 import { logger } from "@/lib/logger";
+import { pageForQuote } from "@/lib/quotePage";
 import type {
   DocumentText,
   GuidanceDirection,
@@ -909,6 +912,10 @@ export function gateStatement(
       if (!turn) turn = null;
     }
   }
+  // The turn page is where the speaker started. A quote later in that turn,
+  // or one matched across a page pair, moves only when one extracted page
+  // actually contains it.
+  page = pageForQuote(quote, ctx.docText.pages, page);
 
   // --- unit + values -----------------------------------------------------------------
   const uf = UNIT_FACTOR[s.unit] ?? UNIT_FACTOR.text;

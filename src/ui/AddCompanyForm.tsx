@@ -75,16 +75,19 @@ export function AddCompanyForm({
   const [toast, setToast] = useState<string | null>(null);
   const [undone, setUndone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const loadingList = useRef(false);
   const portfolio = useMemo(() => new Set(inPortfolio), [inPortfolio]);
 
   const load = useCallback(async () => {
-    if (rows || loadError) return;
+    if (rows || loadError || loadingList.current) return;
+    loadingList.current = true;
     try {
       const r = await fetch("/data/symbols.json", { cache: "force-cache" });
       if (!r.ok) throw new Error(String(r.status));
       const j = (await r.json()) as SymbolsFile;
       setRows(j.rows);
     } catch {
+      loadingList.current = false;
       setLoadError(
         "Could not load the NSE symbol list; type an exact symbol and ISIN below.",
       );
@@ -154,6 +157,7 @@ export function AddCompanyForm({
           onChange={(e) => {
             setQ(e.target.value);
             setPicked(null);
+            void load();
           }}
           className="mt-1 block w-full hit rounded-[var(--r-chip)] border border-rule bg-surface px-3 text-[16px] text-ink placeholder:text-ink-3"
           aria-autocomplete="list"
@@ -240,6 +244,7 @@ export function AddCompanyForm({
               </button>
               <Link
                 href={`/c/${encodeURIComponent(picked[0])}`}
+                prefetch={false}
                 className="hit inline-flex items-center rounded-[var(--r-chip)] border border-rule bg-surface px-4 text-ink"
               >
                 Open page

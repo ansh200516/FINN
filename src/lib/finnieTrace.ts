@@ -1,8 +1,9 @@
 /**
  * Titles for a chat turn while it is still running.
- * A step is the fallback line before the first thought token. A thought is
- * the displayable model summary. Once a thought exists, it replaces the step
- * title. Signatures and redacted parts stay off the screen.
+ * A step is the line before the first thought, and again while branches
+ * run. The first thought replaces that planning step. A later step keeps
+ * the thought in the list and moves the title. A click still shows the
+ * thought. Signatures and redacted parts stay off the screen.
  */
 
 const TITLE_WORDS = 6;
@@ -406,21 +407,28 @@ export function reduceTrace(
     | { type: "thought"; text: string; fresh: boolean },
 ): TraceItem[] {
   if (event.type === "step") {
-    // A thought already on screen is the title. Later steps do not take it back.
-    if (items.some((item) => item.source === "thought")) return items;
     const title = event.title.trim();
     const text = event.text.trim();
     if (!title) return items;
     const last = items.at(-1);
     // One current step covers the gap before the first thought. Not a ledger.
-    return [
-      {
-        id: last?.id ?? 1,
-        title,
-        text: text || title,
-        source: "step",
-      },
-    ];
+    if (!items.some((item) => item.source === "thought")) {
+      return [
+        {
+          id: last?.id ?? 1,
+          title,
+          text: text || title,
+          source: "step",
+        },
+      ];
+    }
+    // A branch step moves the title and leaves the thought for the click.
+    return items.concat({
+      id: (last?.id ?? 0) + 1,
+      title,
+      text: text || title,
+      source: "step",
+    });
   }
   const raw = event.text.trim();
   if (!raw) return items;

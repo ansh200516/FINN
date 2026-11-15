@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
+import { companyHasSubstance, companyRouteMode } from "@/lib/companyRoute";
 import {
   categoryLabel,
   dayLabel,
@@ -12,12 +13,15 @@ import {
   quarterLabel,
   quarterMonths,
 } from "@/lib/format";
+import { getJobStatus, researchJobId, startResearch } from "@/lib/jobs";
 import { loadPullMenu } from "@/lib/pullRead";
 import { getAskBudget, getCompanyPage } from "@/lib/queries";
 import { formatIst } from "@/lib/time";
 import { loadTranscriptPendingBy } from "@/lib/transcriptPending";
 import { AskSheet } from "@/ui/AskSheet";
 import { CategoryGlyph } from "@/ui/CategoryGlyph";
+import { CompanyCold } from "@/ui/CompanyCold";
+import { CompanyResearch } from "@/ui/CompanyResearch";
 import { DeltaChip } from "@/ui/DeltaChip";
 import { Empty } from "@/ui/Empty";
 import { filedStamp } from "@/ui/FilingCard";
@@ -222,11 +226,51 @@ export default async function CompanyPage({
   params: Promise<{ symbol: string }>;
 }) {
   const { symbol } = await params;
-  const [model, budget] = await Promise.all([
-    getCompanyPage(symbol),
-    getAskBudget(),
-  ]);
-  if (!model) notFound();
+  const typed = symbol.trim().toUpperCase();
+  let model = await getCompanyPage(typed);
+  const job = await getJobStatus(researchJobId(model?.company.symbol ?? typed));
+  const mode = companyRouteMode({
+    onFile: model != null,
+    inPortfolio: model?.company.inPortfolio ?? false,
+    hasSubstance: model ? companyHasSubstance(model) : false,
+    researchFinished: job?.done ?? false,
+    jobOpen: job != null && !job.done && !job.failed,
+    jobFailed: job?.failed ?? false,
+  });
+
+  if (mode === "start") {
+    const started = await startResearch(typed, { portfolio: false });
+    if (!started.ok) {
+      return <CompanyCold symbol={typed} error={started.error} />;
+    }
+    if (started.symbol !== typed) {
+      redirect(`/c/${encodeURIComponent(started.symbol)}`);
+    }
+    const startedJob = await getJobStatus(started.jobId);
+    if (!startedJob) {
+      return (
+        <CompanyCold
+          symbol={started.symbol}
+          error="The research job did not start."
+        />
+      );
+    }
+    if (!startedJob.done) return <CompanyResearch status={startedJob} />;
+    model = (await getCompanyPage(started.symbol)) ?? model;
+  } else if (mode === "receipt" && job) {
+    return <CompanyResearch status={job} />;
+  }
+
+  if (!model) {
+    return (
+      <CompanyCold
+        symbol={typed}
+        error={`${typed} is not an NSE-listed equity.`}
+      />
+    );
+  }
+
+  const budget = await getAskBudget();
   const {
     company,
     snapshot,

@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Add company" };
 
 /**
  * /add                      search + confirm (AddCompanyForm) → addToPortfolio → /add?job=research:SYM
- * /add?job=research:SYM     the live working receipt for that job (polls + continues it)
+ * /add?job=research:SYM     the live working receipt; when the job finishes, the company page opens
  * /add?research=SYM         start (or re-queue) ad-hoc research for SYM and show its receipt
  */
 export default async function AddCompanyPage({
@@ -61,7 +61,7 @@ export default async function AddCompanyPage({
 
       {status ? (
         <section className="gutter mt-5" aria-label="Research receipt">
-          <JobReceipt jobId={status.id} initial={status} />
+          <JobReceipt jobId={status.id} initial={status} whenDone="open" />
         </section>
       ) : jobId ? (
         <section className="gutter mt-5">

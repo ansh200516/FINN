@@ -50,6 +50,7 @@ import type {
   Verdict,
 } from "@/engine/types";
 import { CATEGORIES } from "@/engine/types";
+import { pageForQuote } from "@/lib/quotePage";
 import { quartersUpToFiling } from "@/lib/resultsAlign";
 import {
   addDaysKey,
@@ -1111,6 +1112,24 @@ export async function getLedger(isin: string): Promise<LedgerRowView[]> {
     .leftJoin(t.documents, eq(t.guidance.docId, t.documents.id))
     .where(eq(t.guidance.isin, isin))
     .orderBy(desc(t.guidance.createdAt));
+  const docIds = [...new Set(rows.map(({ g }) => g.docId))];
+  const byDoc = new Map<string, { page: number; text: string }[]>();
+  if (docIds.length) {
+    const pageRows = await db
+      .select({
+        docId: t.documentPages.docId,
+        page: t.documentPages.page,
+        text: t.documentPages.text,
+      })
+      .from(t.documentPages)
+      .where(inArray(t.documentPages.docId, docIds));
+    for (const row of pageRows) {
+      const item = { page: row.page, text: row.text };
+      const list = byDoc.get(row.docId);
+      if (list) list.push(item);
+      else byDoc.set(row.docId, [item]);
+    }
+  }
   return rows.map(({ g, d }) => {
     const evidence = parseJsonColumn(
       z.record(z.string(), z.unknown()),
@@ -1129,7 +1148,7 @@ export async function getLedger(isin: string): Promise<LedgerRowView[]> {
       quote: g.quote,
       speaker: g.speaker,
       role: g.role,
-      page: g.page,
+      page: pageForQuote(g.quote, byDoc.get(g.docId) ?? [], g.page),
       metric: g.metric,
       direction: (g.direction ?? "qualitative") as GuidanceDirection,
       low: g.low,

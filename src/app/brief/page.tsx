@@ -22,9 +22,10 @@ import { ComingUp } from "@/ui/ComingUp";
 import { Dateline } from "@/ui/Dateline";
 import { DecisionCard } from "@/ui/DecisionCard";
 import {
-  decisionRank,
+  attentionRank,
   editionHeadline,
   hasFigures,
+  isRoutineDirectorAppointment,
   judgeEvent,
   judgeMove,
   showAsMoveCard,
@@ -80,8 +81,7 @@ interface Item {
   sentence: string;
   href: string;
   action: string;
-  priority: number;
-  at: number;
+  rank: number;
   event?: EventCard;
 }
 
@@ -154,7 +154,9 @@ export default async function BriefPage({
 
   const items: Item[] = [];
   for (const ev of [...brief.tier1, ...brief.tier2]) {
-    const j = judgeEvent(ev, ledgers.get(ev.isin) ?? null);
+    const ledger = ledgers.get(ev.isin) ?? null;
+    const j = judgeEvent(ev, ledger);
+    const broken = (ledger?.missed ?? 0) > 0 || (ledger?.cut ?? 0) > 0;
     items.push({
       key: ev.eventKey,
       symbol: ev.symbol,
@@ -163,8 +165,14 @@ export default async function BriefPage({
       sentence: j.sentence,
       href: `/e/${encodeURIComponent(ev.eventKey)}`,
       action: "Filing",
-      priority: ev.priority,
-      at: ev.filedAtMs,
+      rank: attentionRank({
+        decision: j.decision,
+        category: ev.category,
+        broken,
+        routineDirector: isRoutineDirectorAppointment(ev),
+        priority: ev.priority,
+        at: ev.filedAtMs,
+      }),
       event: ev,
     });
   }
@@ -180,6 +188,7 @@ export default async function BriefPage({
       continue;
     }
     const j = judgeMove(move);
+    const at = Date.parse(`${a.date}T00:00:00Z`);
     items.push({
       key: `${a.isin}-${a.date}`,
       symbol: a.symbol,
@@ -188,16 +197,15 @@ export default async function BriefPage({
       sentence: j.sentence,
       href: `/c/${encodeURIComponent(a.symbol)}`,
       action: "The close",
-      priority: Math.round(Math.abs(a.pctMove ?? a.volumeRatio ?? 0) * 5),
-      at: Date.parse(`${a.date}T00:00:00Z`),
+      rank: attentionRank({
+        decision: j.decision,
+        priceRule: true,
+        priority: Math.round(Math.abs(a.pctMove ?? a.volumeRatio ?? 0) * 5),
+        at,
+      }),
     });
   }
-  items.sort(
-    (a, b) =>
-      decisionRank(a.decision) - decisionRank(b.decision) ||
-      b.priority - a.priority ||
-      b.at - a.at,
-  );
+  items.sort((a, b) => a.rank - b.rank);
 
   const act = items.filter((i) => i.decision === "act");
   const watch = items.filter((i) => i.decision === "watch");

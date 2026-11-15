@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { JobStatus } from "@/lib/jobs";
 import { Receipt, type ReceiptStep } from "@/ui/Receipt";
@@ -27,21 +28,38 @@ function elapsedLabel(ms: number): string {
  * The live working receipt for a research job. Polls the status endpoint
  * every 2 s; while the job is unfinished each poll also asks the server to
  * continue work (`POST /api/jobs/research?id=…`), so no background worker is
- * needed — the page itself is the scheduler. Partial results are visible on
- * the company page throughout; the link is live as soon as the symbol resolves.
+ * needed — the page itself is the scheduler. When the job finishes, the
+ * receipt opens the company page (or refreshes into it, when already there).
  */
 export function JobReceipt({
   jobId,
   initial,
+  whenDone = "stay",
 }: {
   jobId: string;
   initial: JobStatus;
+  /**
+   * stay — leave the receipt on screen.
+   * refresh — re-render this route once the job is done (the company page).
+   * open — go to the company page once the job is done.
+   */
+  whenDone?: "stay" | "refresh" | "open";
 }) {
+  const router = useRouter();
   const [status, setStatus] = useState<JobStatus>(initial);
   const [netError, setNetError] = useState<string | null>(null);
   const [continues, setContinues] = useState(0);
   const inflight = useRef(false);
+  const settled = useRef(false);
   const finished = status.done || status.failed;
+  const onThisPage = whenDone === "refresh";
+
+  useEffect(() => {
+    if (!status.done || whenDone === "stay" || settled.current) return;
+    settled.current = true;
+    if (whenDone === "refresh") router.refresh();
+    else if (status.href) router.push(status.href);
+  }, [status.done, status.href, whenDone, router]);
 
   useEffect(() => {
     if (finished) return;
@@ -138,9 +156,11 @@ export function JobReceipt({
           {status.summary ??
             (finished
               ? ""
-              : "partial results appear on the company page as each step verifies")}
+              : onThisPage
+                ? "this page becomes the company page when the job finishes"
+                : "partial results appear on the company page as each step verifies")}
         </p>
-        {status.href ? (
+        {status.href && !onThisPage ? (
           <Link
             href={status.href}
             className="hit inline-flex items-center rounded-[var(--r-chip)] bg-ink px-4 text-bg font-medium shrink-0"

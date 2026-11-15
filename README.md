@@ -8,11 +8,11 @@ Send the covering note to assessment@enam.com. The subject line is exactly:
 
 The note is [`docs/submission/covering-note.md`](docs/submission/covering-note.md). How the app was built is [`docs/submission/build-history.md`](docs/submission/build-history.md).
 
-Ask answers a price, the index, and corporate actions from [NSE's official MCP](https://www.nseindia.com/nse-mcp); five of 36 tools are wired, and the inventory is [`docs/research/30-nse-mcp-tools.md`](docs/research/30-nse-mcp-tools.md) (`527f876`).
+Chat answers a price, the index, and corporate actions from [NSE's official MCP](https://www.nseindia.com/nse-mcp); five of 36 tools are wired, and the inventory is [`docs/research/30-nse-mcp-tools.md`](docs/research/30-nse-mcp-tools.md) (`527f876`).
 
 Ten minutes on a phone:
 
-1. Open the brief and read it through to "You're done". The window is the last 24 hours and widens when that day is empty. Use **7 d** for a longer book.
+1. Open the brief and read it through to "You're done". The window starts at the last 24 hours. When that day is empty it widens, and the page says so. On the live app, Sunday 15 Nov 2026, that cold brief is the last 30 days and says 11 to act on. The 7-day control is an empty week. Leave it alone.
 2. Open a results card, under Needs you or inside the filed-away fold, and read the basis chip.
 3. Open Supreme's promise ledger: [https://finn-gray.vercel.app/c/SUPREMEIND](https://finn-gray.vercel.app/c/SUPREMEIND).
 4. Open **Alerts**, move the price or volume threshold, and press **Save alerts**.
@@ -38,12 +38,11 @@ row** (pull), **Condition → Tripwire** (configurable alerts).
 ```sh
 pnpm i
 pnpm db:migrate     # creates data/finn.db from drizzle/ migrations
-pnpm db:seed        # loads the committed snapshot in data/seed/
+pnpm db:seed        # companies only; see data/seed/README.md
 pnpm dev            # http://localhost:3000 (LAN-bound for phone testing)
 ```
 
-No API keys are needed for the seeded portfolio. Set `GEMINI_API_KEY` in
-`.env.local` (see `.env.example`) for live extraction and the Ask sheet.
+The app boots with no API keys. `pnpm db:seed` loads companies only, not prices, filings, results, or guidance. Set `GEMINI_API_KEY` in `.env.local` (see `.env.example`) for live extraction. Chat calls a live model and does not answer from `llm_cache`. If Gemini is out of quota or credit, Finnie tries Groq, then OpenRouter, when those keys are set. Cerebras is wired and is skipped when `CEREBRAS_API_KEY` is empty.
 
 Jobs (same code as the CLIs; each call runs until a 50 s deadline and can be
 continued): `curl -X POST -H "Authorization: Bearer $JOBS_SECRET" localhost:3000/api/jobs/eod`.
@@ -61,7 +60,8 @@ The deployed database is Supabase Postgres on the existing project **ENAM** (Syd
 Env is set on the Vercel project, not in git:
 
 - `DATABASE_URL`
-- `GEMINI_API_KEY` — live extraction. Leave `FINN_LLM_CACHE_ONLY` unset when this is set.
+- `GEMINI_API_KEY` — live extraction. Chat does not read `llm_cache`. Leave `FINN_LLM_CACHE_ONLY` unset when this is set.
+- `GROQ_API_KEY`, then `OPENROUTER_API_KEY` — chat fallbacks after Gemini, when set. `CEREBRAS_API_KEY` is wired; leave it empty to skip Cerebras.
 - `JOBS_SECRET` — bearer for `/api/jobs/*`
 - `CRON_SECRET` — the same value, so the weekday cron is accepted
 - `NEXT_PUBLIC_APP_URL` — `https://finn-gray.vercel.app`
@@ -71,7 +71,7 @@ Apply the schema with `pnpm db:push:pg`, then load a sqlite snapshot with `pnpm 
 ## Layout
 
 ```
-src/app         routes: / (brief) /c/[symbol] /alerts /inbox /add /status, api/health, api/jobs/*
+src/app         routes: / (redirects to /brief) /brief /chat /c/[symbol] /alerts /inbox /add /status, api/health, api/jobs/*
 src/db          Drizzle. libSQL for file: and libsql:; Postgres when DATABASE_URL is postgres://
 src/engine      sources/ ingest/ extract/ analyse/ llm/ — the headless engine (see src/engine/README.md)
 src/lib         env, logger, IST + NSE trading-calendar helpers

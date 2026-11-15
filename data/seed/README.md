@@ -1,10 +1,9 @@
 # data/seed
 
-The committed snapshot that makes `pnpm dev` and the production deploy work
-with **zero live calls**. `pnpm db:seed` runs `seed.ts`, which inserts
-`portfolio.json` into `companies` (symbol, name, portfolio flag, ad-hoc flag,
-aliases). It does not load prices, announcements, results, or guidance.
-Those JSON files can sit in this folder; the loader does not upsert them.
+`pnpm db:seed` runs `seed.ts`, which inserts `portfolio.json` into `companies`
+(symbol, name, portfolio flag, ad-hoc flag, aliases). It does not load prices,
+announcements, results, or guidance, and it does not call out. Those JSON
+files can sit in this folder; the loader does not upsert them.
 
 Files (JSON, small — keep the folder < 30 MB; no PDFs):
 

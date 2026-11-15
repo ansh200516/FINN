@@ -642,7 +642,7 @@ describe("runFinnieTurn", () => {
         },
       ]),
     );
-    const result = await runFinnieTurn("hello there", null);
+    const result = await runFinnieTurn("what about the marigold ledger", null);
     expect(result.say).toBe(FINNIE_NO_MATCH);
     expect(result.say).not.toBe(FINNIE_MODEL_DOWN);
   });
@@ -653,7 +653,7 @@ describe("runFinnieTurn", () => {
         { model: "gemini-3.6-flash", error: "fetch failed", status: 503 },
       ]),
     );
-    const result = await runFinnieTurn("hello there", null);
+    const result = await runFinnieTurn("what about the marigold ledger", null);
     expect(result.say).toBe(FINNIE_MODEL_DOWN);
   });
 

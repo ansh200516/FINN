@@ -23,10 +23,10 @@ import {
   type CompanyName,
   companiesMentioned,
   matchCompanyName,
-  mentionsToken,
   omitCompaniesAbsentFrom,
 } from "@/lib/companyMatch";
 import { repairSay } from "@/lib/finnieSay";
+import { socialReply } from "@/lib/finnieSocial";
 import { executeTool } from "@/lib/finnieTools";
 import {
   companyLabel,
@@ -53,6 +53,7 @@ import {
 import { dropUngroundedSentences, ungroundedNumbers } from "@/lib/groundedSay";
 import { comparisonBubble, comparisonsFor } from "@/lib/promiseCompare";
 import { listCompanyNames } from "@/lib/queries";
+import { utteranceHasSymbol } from "@/lib/spokenSymbols";
 
 const CHAIN_USER_CAP = 500;
 const CHAIN_SAY_CAP = 800;
@@ -299,6 +300,8 @@ export async function runFinnieTurn(
 ): Promise<FinnieTurnResult> {
   const text = sentence.trim().replace(/\s+/g, " ").slice(0, 500);
   if (!text) return quiet("Name a company.");
+  const hello = socialReply(text);
+  if (hello) return quiet(hello);
   const open = focusSymbol(focus);
   const memory = clipChain(prior);
   const planning = planMoment(null);
@@ -343,11 +346,12 @@ export async function runFinnieTurn(
       withCompany(call, allowed[0] ?? "", named.length === 1, directory, text),
     );
   }
-  calls = calls.filter((call) => callFits(call, allowed, directory));
+  calls = calls.filter((call) => callFits(call, allowed, directory, text));
   if (!calls.length) return quiet(FINNIE_NO_MATCH);
 
   const ran = await runCalls(calls, toolFocus, directory, trace);
   if (trace?.signal?.aborted) throw new Error("aborted");
+  const shown = companiesOnTurn(allowed, ran, text);
 
   finnieFactTap?.(
     ran.map((item) => ({ tool: item.tool, data: item.outcome.fact })),
@@ -356,7 +360,7 @@ export async function runFinnieTurn(
   const ready = sentenceAlreadyOnScreen(ran);
   if (ready) {
     return ensureCompanyLinks(
-      present(ready, ran, toolFocus ?? open, allowed, named.length > 0),
+      present(ready, ran, toolFocus ?? open, shown, named.length > 0),
       named,
     );
   }
@@ -440,16 +444,16 @@ export async function runFinnieTurn(
     say = omitCompaniesAbsentFrom(say, facts, directory);
   } catch (error) {
     if (error instanceof LlmBudgetExhausted)
-      return present(FINNIE_OUT_OF_CALLS, ran, open, allowed, named.length > 0);
+      return present(FINNIE_OUT_OF_CALLS, ran, open, shown, named.length > 0);
     if (modelReplied(error))
-      return present(FINNIE_NO_MATCH, ran, open, allowed, named.length > 0);
-    return present(FINNIE_MODEL_DOWN, ran, open, allowed, named.length > 0);
+      return present(FINNIE_NO_MATCH, ran, open, shown, named.length > 0);
+    return present(FINNIE_MODEL_DOWN, ran, open, shown, named.length > 0);
   }
   if (!say) {
-    return present(FINNIE_NO_MATCH, ran, open, allowed, named.length > 0);
+    return present(FINNIE_NO_MATCH, ran, open, shown, named.length > 0);
   }
   return ensureCompanyLinks(
-    present(say, ran, toolFocus ?? open, allowed, named.length > 0),
+    present(say, ran, toolFocus ?? open, shown, named.length > 0),
     named,
   );
 }
@@ -570,7 +574,7 @@ function callMissesCompany(
   const args = symbolArgs(call.args);
   if (!args.length) return false;
   for (const raw of args) {
-    if (mentionsToken(utterance, raw)) continue;
+    if (utteranceHasSymbol(utterance, raw)) continue;
     const resolved = matchCompanyName(raw, rows)?.symbol ?? null;
     if (resolved && allowed.includes(resolved)) continue;
     return true;
@@ -588,7 +592,7 @@ function withCompany(
   if (!symbol || !SYMBOL_TOOLS.has(call.tool)) return call;
   const args = { ...call.args };
   const current = typeof args.symbol === "string" ? args.symbol.trim() : "";
-  if (current && mentionsToken(utterance, current)) return call;
+  if (current && utteranceHasSymbol(utterance, current)) return call;
   const resolved = current
     ? (matchCompanyName(current, rows)?.symbol ?? null)
     : null;
@@ -599,7 +603,7 @@ function withCompany(
   if (
     typeof args.scope === "string" &&
     args.scope.trim().toLowerCase() !== "book" &&
-    !mentionsToken(utterance, args.scope)
+    !utteranceHasSymbol(utterance, args.scope)
   ) {
     const scope = matchCompanyName(args.scope, rows)?.symbol ?? null;
     if (scope !== symbol) args.scope = symbol;
@@ -854,6 +858,12 @@ function sentenceAlreadyOnScreen(ran: Ran[]): string | null {
     const card = ran[0]?.outcome.card;
     const headline = fact?.headline;
     const sentence = fact?.sentence;
+    if (
+      fact?.status === "no_close" &&
+      typeof sentence === "string" &&
+      sentence.trim()
+    )
+      return sentence.trim();
     if (card && typeof headline === "string" && headline.trim())
       return headline.trim();
     if (card && typeof sentence === "string" && sentence.trim())
@@ -888,8 +898,19 @@ function present(
       pages.push(pageOk(page, allowed) ? page : null);
     } else if (!outcome.card) {
       const page = pageFor(outcome);
-      if (page && pageOk(page, allowed))
+      if (page && pageOk(page, allowed)) {
         links.push({ href: page, label: "Full page" });
+        if (
+          outcome.fact.status === "no_close" &&
+          outcome.symbol &&
+          links.length < LINK_CAP
+        ) {
+          links.push({
+            href: `/add?research=${encodeURIComponent(outcome.symbol)}`,
+            label: "Add",
+          });
+        }
+      }
     }
     if (book && outcome.href && pageOk(outcome.href, allowed)) {
       href = outcome.href;
@@ -969,9 +990,11 @@ function callFits(
   call: PlanCall,
   allowed: string[],
   rows: CompanyName[],
+  utterance: string,
 ): boolean {
   if (!allowed.length || !SYMBOL_TOOLS.has(call.tool)) return true;
   for (const raw of symbolArgs(call.args)) {
+    if (utteranceHasSymbol(utterance, raw)) continue;
     const resolved = matchCompanyName(raw, rows)?.symbol ?? null;
     if (resolved) {
       if (!allowed.includes(resolved)) return false;
@@ -982,6 +1005,22 @@ function callFits(
     if (/^[A-Z0-9&.-]{1,20}$/.test(token)) return false;
   }
   return true;
+}
+
+/** A symbol the sentence asked for stays on the card even when it is not in the book. */
+function companiesOnTurn(
+  allowed: string[],
+  ran: Ran[],
+  utterance: string,
+): string[] {
+  const out = [...allowed];
+  for (const item of ran) {
+    const symbol = item.outcome.symbol?.trim().toUpperCase() ?? "";
+    if (!symbol || out.includes(symbol)) continue;
+    if (!utteranceHasSymbol(utterance, symbol)) continue;
+    out.push(symbol);
+  }
+  return out;
 }
 
 /** The open chip, or the company the previous turn already used. */

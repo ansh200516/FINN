@@ -17,6 +17,7 @@ import { companies, users } from "@/db/schema";
 import { jsonTextArrayHasUpper } from "@/db/sql";
 import { type CompanyName, matchCompanyName } from "@/lib/companyMatch";
 import { logger } from "@/lib/logger";
+import { SPOKEN_SYMBOLS } from "@/lib/spokenSymbols";
 import {
   fetchEquityMaster,
   indexMaster,
@@ -154,6 +155,19 @@ function matchMasterName(query: string, rows: Row[]): ResolvedSymbol | null {
 export async function resolveNseSymbol(
   query: string,
 ): Promise<ResolvedSymbol | null> {
+  const typed = query.trim();
+  const upper = typed.toUpperCase();
+  const spoken = SPOKEN_SYMBOLS[upper];
+  const found = await resolveListing(spoken ?? typed);
+  if (!found || !spoken || found.symbol.toUpperCase() === upper) return found;
+  return {
+    ...found,
+    typed: found.typed ?? upper,
+    via: found.via === "db" ? "alias" : found.via,
+  };
+}
+
+async function resolveListing(query: string): Promise<ResolvedSymbol | null> {
   const q = query.trim().toUpperCase();
   if (!q) return null;
 

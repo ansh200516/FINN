@@ -12,9 +12,9 @@ import { buildResultsCard } from "@/engine/analyse/results";
 import { resolveNseSymbol } from "@/engine/jobs/resolve";
 import {
   answerNse,
+  dateKeyLabel,
   NSE_FEED_FAILED,
   NseFeedError,
-  quoteCard,
 } from "@/engine/sources/nse-mcp";
 import {
   CATEGORIES,
@@ -36,7 +36,7 @@ import type {
   ToolArgs,
   ToolOutcome,
 } from "@/lib/finnieTypes";
-import { categoryLabel, dayLabel, formatInr } from "@/lib/format";
+import { categoryLabel, dayLabel } from "@/lib/format";
 import { PULL_TITLES, type PullTitle } from "@/lib/pull";
 import { loadPullMenu } from "@/lib/pullRead";
 import {
@@ -56,6 +56,11 @@ import {
   getTripwires,
   guidanceVerdictGroups,
 } from "@/lib/queries";
+import {
+  latestEquityClose,
+  noSessionClose,
+  sessionCloseSentence,
+} from "@/lib/sessionClose";
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
 import {
   attentionRank,
@@ -69,6 +74,7 @@ import {
 import { promised } from "@/ui/LedgerList";
 import type { LedgerRowView, ManagementChangeCard } from "@/ui/model";
 import { peopleOf } from "@/ui/people";
+import { priceHeadline } from "@/ui/prices";
 
 /** One chat request may advance research, not run the whole pipeline. */
 const RESEARCH_STEPS = [
@@ -418,34 +424,79 @@ async function quoteFor(
     "quote",
   );
   if (typeof live.fact.error !== "string") return live;
-  const series = await getPriceSeries(found.isin, 5).catch(() => null);
-  if (!series || series.lastClose == null) return live;
-  const pct = series.lastPct;
-  const price = formatInr(series.lastClose, { decimals: 2 });
-  const headline =
-    pct == null
-      ? `${found.symbol} ${price}.`
-      : quoteCard({
-          symbol: found.symbol,
-          last: series.lastClose,
-          changePct: pct,
-          asOf: series.lastDate,
-        }).headline;
-  const note = series.lastDate
-    ? `Stored close · ${series.lastDate}`
-    : "Stored close";
+  const stored = await storedClose(found.isin);
+  if (stored) return closeQuote(found.symbol, stored, "stored");
+  const printed = await latestEquityClose(found.symbol).catch(() => null);
+  if (printed) {
+    return closeQuote(
+      found.symbol,
+      {
+        close: printed.close,
+        date: printed.date,
+        changePct: changePct(printed.close, printed.prevClose),
+      },
+      "bhavcopy",
+    );
+  }
+  return missingClose(found.symbol);
+}
+
+async function storedClose(isin: string): Promise<{
+  close: number;
+  date: string;
+  changePct: number | null;
+} | null> {
+  const series = await getPriceSeries(isin, 8).catch(() => null);
+  if (!series) return null;
+  const head = priceHeadline(series);
+  if (head.close == null || !head.dateKey) return null;
+  return { close: head.close, date: head.dateKey, changePct: head.pct };
+}
+
+function changePct(close: number, prev: number | null): number | null {
+  if (prev == null || !Number.isFinite(prev) || prev === 0) return null;
+  return ((close - prev) / prev) * 100;
+}
+
+function closeQuote(
+  symbol: string,
+  session: { close: number; date: string; changePct: number | null },
+  source: "stored" | "bhavcopy",
+): ToolOutcome {
+  const headline = sessionCloseSentence(
+    symbol,
+    session.close,
+    session.date,
+    session.changePct,
+  );
+  const when = dateKeyLabel(session.date);
+  const note = when ? `Session close · ${when}` : "Session close";
   const reply: CompanyReply = { kind: "nse", headline, note };
   return {
     fact: {
       status: "quote",
-      symbol: found.symbol,
+      symbol,
       headline,
       note,
-      source: "stored",
+      source,
+      close: session.close,
+      date: session.date,
     },
-    card: { kind: "reply", symbol: found.symbol, reply },
-    symbol: found.symbol,
-    ...linkFor(reply, found.symbol),
+    card: { kind: "reply", symbol, reply },
+    symbol,
+    ...linkFor(reply, symbol),
+    book: null,
+  };
+}
+
+function missingClose(symbol: string): ToolOutcome {
+  const sentence = noSessionClose(symbol);
+  return {
+    fact: { status: "no_close", symbol, sentence },
+    card: null,
+    symbol,
+    href: `/c/${encodeURIComponent(symbol)}`,
+    link: "Full page",
     book: null,
   };
 }

@@ -55,6 +55,30 @@ The first deployed brief never left its loading shell. Supavisor in transaction 
 
 On 10 November Ask was wired to NSE's official MCP, the page at [https://www.nseindia.com/nse-mcp](https://www.nseindia.com/nse-mcp). NSE publishes two public Streamable HTTP servers there, with no API key. End-of-day is `https://mcp.nseindia.in/bhavcopy/cm/mcp`. Delayed prices, 1–3 minutes, are `https://mcp.nseindia.in/cmmkt/mcp`. `tools/list` returned 36 tools. FINN wires five: a live stock quote, a live index quote, data status, corporate actions, and one index close on a date. Commit `79f9ec3` wired the live quote, the live index, and data status. Commit `527f876` added corporate actions, one index close on a date, and the inventory. The other 31 are not used: calculated screens (moving averages, beta, mood), mover boards, bonds, SME and derivatives, and history the app already stores. NSE does not publish announcements, board meetings, shareholding, delivery, or whether the market is open on these servers. Data status is the crawl time, not an open flag. A live quote never replaces an XBRL result or a promise-ledger verdict. "reliance price" is the delayed NSE quote. "results" stays the filing. The inventory is [`docs/research/30-nse-mcp-tools.md`](../research/30-nse-mcp-tools.md).
 
+## The brief stayed home, and chat learned the book
+
+On 10 November the desk became Finnie. The greeting and the typed examples are `77781a7`. That evening `/` opened on chat (`eef4344`). On 15 November the front door went back to the brief (`f143131`). `/` replaces itself with `/brief`, and a window query such as `/?w=7d` is kept. Chat stayed a tab.
+
+The turn plans tool calls and answers from the tool JSON (`cd356bd`, `d287855`). A promised-versus-delivered question is `get_results` and `get_promises` together (`6f1732a`). The card is one pair per quote: the sentence, what was promised, what was delivered, and a chip (`78d5e21`, `src/lib/promiseCompare.ts`). A quote is scored against the quarter it names (`e5df47c`). The bubble stays a short sentence (`3c12203`, `8ae5a0b`). Both Finnie steps use the Flash ladder. Flash-Lite remains the last rung on that ladder, and it remains the bulk extractor.
+
+While a turn runs, the screen shows step titles, and a thought only when the model actually returns one (`src/lib/finnieTrace.ts`, `src/ui/ThoughtRow.tsx`). Signatures and redacted parts stay off the screen. A fallback provider does not invent a thought summary. The titles already shown stay.
+
+Independent tool calls in one turn run together, four at a time. `mark_read` stays in order (`01feff5`, `TOOL_CONCURRENCY` in `src/lib/finnieTurn.ts`). On the brief, a real promise break sorts above a results card, and both sort above routine noise (`attentionRank` in `src/ui/decision.ts`).
+
+## When one provider is out of credit
+
+Finnie still tries Gemini first. On a daily cap, or a quota, 429, credit 403, or 503, the plan or the answer tries the next configured provider (`302116b`, `src/engine/llm/providers.ts`): Groq `openai/gpt-oss-20b`, then OpenRouter `openrouter/free`, then Cerebras `qwen-3.8-27b`. An empty key skips that provider. Those calls use the same JSON schema and do not read or write `llm_cache`. Production has Groq and OpenRouter set beside Gemini. Cerebras is not set, so that provider is not called.
+
+## Citations, an unpicked symbol, and three different quantities
+
+A guidance row stores the page its speaker turn started on. The quote can sit later in that turn. `pageForQuote` (`01feff5`, `src/lib/quotePage.ts`) opens the extracted page that contains the quote when that page is the only match. When the stored page itself contains the quote, that page stays, including when the same sentence also appears elsewhere. When the quote is on no extracted page, or on several pages and not the stored one, the stored page is kept. The chip still shows the quote. A `#page=` link is not reliable on every phone.
+
+An NSE symbol that is not already on the book is still carried to `/c/<symbol>` (`01feff5`, `ensureCompanyLinks` in `src/lib/finnieTurn.ts`). The company route starts the existing research job (`src/lib/companyRoute.ts`). Until that job finishes, the page is a receipt that says the name is not in the book yet. A name already in the portfolio keeps its page. A symbol the exchange does not list gets the cold state, not an empty ledger.
+
+The company pull menu is eight readings from the filings, with no model call. A segment table, a leverage ratio, and a guidance quote are different quantities (`302116b`, `src/lib/pull.ts`). A segment-revenue table stays in the business snapshot. Debt-equity, interest coverage, and borrowings stay on the balance sheet, and a ratio is not paired with the next printed number. Guidance is the headline guidance rows. On the deployed Supreme page the business snapshot is the printed turnover mix, piping 70%, packaging 15%, industrial 11%, consumer 4%, and the FY26 revenue promise is the ledger row.
+
+The alias https://finn-gray.vercel.app was serving commit `302116b` on 15 November 2026, in Mumbai. These submission documents are a later commit. The running app does not serve them.
+
 ## What this file is not
 
-Agent transcripts are not pasted here, and no line above is presented as something an agent said. This repository does not contain a Cursor session export or any other saved build dialogue. The narrative is taken from the experiment log and the commits it names. The covering note, ready to paste, is [`covering-note.md`](covering-note.md).
+Raw agent transcripts are not pasted here. No line above is presented as something an agent said. This repository does not contain a Cursor session export or any other saved build dialogue. The narrative is taken from the experiment log, the commits it names, and the code those commits left. The covering note, ready to paste, is [`covering-note.md`](covering-note.md).

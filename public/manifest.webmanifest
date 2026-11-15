@@ -40,7 +40,7 @@
   ],
   "shortcuts": [
     {
-      "name": "Brief",
+      "name": "For you",
       "url": "/brief",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     },

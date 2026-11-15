@@ -185,6 +185,114 @@ describe("sbi price when the live quote throws", () => {
     expect(llm).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the latest stored close, not an older bar", async () => {
+    const date = lastMarketClose(new Date()).dateKey;
+    await db.insert(companies).values({
+      isin: SBIN,
+      nseSymbol: "SBIN",
+      name: "State Bank of India",
+      aliasesJson: "[]",
+      inPortfolio: true,
+      isAdhoc: false,
+    });
+    await db.insert(prices).values([
+      {
+        isin: SBIN,
+        date: "2026-09-30",
+        close: 262.75,
+        prevClose: 265.1,
+        sessionType: "normal",
+        source: "nse_bhav",
+      },
+      {
+        isin: SBIN,
+        date,
+        close: 1000,
+        prevClose: 980,
+        sessionType: "normal",
+        source: "nse_bhav",
+      },
+    ]);
+    planQuote("sbi");
+    const result = await runFinnieTurn(
+      "whats the last closing price of sbi",
+      null,
+    );
+    expect(bhav).not.toHaveBeenCalled();
+    expect(result.say).toBe(
+      sessionCloseSentence("SBIN", 1000, date, ((1000 - 980) / 980) * 100),
+    );
+    expect(result.say).not.toContain("262.75");
+    expect(result.say).not.toContain("30 Sep");
+  });
+
+  it("uses a later bhavcopy when the stored bar is older than the last session", async () => {
+    const date = lastMarketClose(new Date()).dateKey;
+    await db.insert(companies).values({
+      isin: SBIN,
+      nseSymbol: "SBIN",
+      name: "State Bank of India",
+      aliasesJson: "[]",
+      inPortfolio: true,
+      isAdhoc: false,
+    });
+    await db.insert(prices).values({
+      isin: SBIN,
+      date: "2026-09-30",
+      close: 262.75,
+      prevClose: 265.1,
+      sessionType: "normal",
+      source: "nse_bhav",
+    });
+    const close = 991.5;
+    const prev = 980;
+    bhav.mockImplementation(async () => [bar("SBIN", close, prev, date)]);
+    planQuote("sbi");
+    const result = await runFinnieTurn(
+      "whats the last closing price of sbi",
+      null,
+    );
+    expect(bhav).toHaveBeenCalled();
+    expect(result.say).toBe(
+      sessionCloseSentence("SBIN", close, date, ((close - prev) / prev) * 100),
+    );
+    expect(result.say).not.toContain("262.75");
+    expect(result.say).not.toContain("30 Sep");
+  });
+
+  it("says 30 Sep only after the latest bhavcopy has no later bar", async () => {
+    await db.insert(companies).values({
+      isin: SBIN,
+      nseSymbol: "SBIN",
+      name: "State Bank of India",
+      aliasesJson: "[]",
+      inPortfolio: true,
+      isAdhoc: false,
+    });
+    await db.insert(prices).values({
+      isin: SBIN,
+      date: "2026-09-30",
+      close: 262.75,
+      prevClose: 265.1,
+      sessionType: "normal",
+      source: "nse_bhav",
+    });
+    planQuote("sbi");
+    const result = await runFinnieTurn(
+      "whats the last closing price of sbi",
+      null,
+    );
+    expect(bhav).toHaveBeenCalled();
+    expect(result.say).toBe(
+      sessionCloseSentence(
+        "SBIN",
+        262.75,
+        "2026-09-30",
+        ((262.75 - 265.1) / 265.1) * 100,
+      ),
+    );
+  });
+
   it("does not invent a price when no session close exists", async () => {
     planQuote("sbi");
     const result = await runFinnieTurn("find last traded price of sbi", null);

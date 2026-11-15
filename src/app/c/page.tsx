@@ -57,7 +57,10 @@ export default async function CompaniesPage() {
 
   return (
     <main className="flex-1 pb-8">
-      <header className="gutter pt-5 flex items-end justify-between gap-3">
+      <header
+        data-tour="companies"
+        className="gutter pt-5 flex items-end justify-between gap-3"
+      >
         <div>
           <p className="eyebrow reveal">Companies</p>
           <h1

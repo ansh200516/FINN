@@ -23,7 +23,7 @@ export function WindowScrubber({
   const today = istDateKey(now);
   const fromKey = istDateKey(window.fromMs);
   return (
-    <nav className="gutter mt-4" aria-label="Brief window">
+    <nav className="gutter mt-4" aria-label="For you">
       <div className="segmented">
         {PRESETS.map((p) => (
           <a

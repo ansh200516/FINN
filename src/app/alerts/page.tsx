@@ -49,7 +49,7 @@ export default async function AlertsPage() {
 
   return (
     <main className="flex-1">
-      <header className="gutter pb-8 pt-6">
+      <header data-tour="alerts" className="gutter pb-8 pt-6">
         <p className="eyebrow reveal">Alerts</p>
         <h1
           className="dateline text-ink mt-2 reveal"

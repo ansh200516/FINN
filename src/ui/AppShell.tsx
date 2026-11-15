@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { getNavCounts } from "@/lib/queries";
 import { BottomNav } from "./BottomNav";
+import { FirstRunGuide } from "./FirstRunGuide";
 
 /** 430 px column + bottom bar. The column is the phone; desktop gets hairline edges. */
 export async function AppShell({ children }: { children: ReactNode }) {
@@ -13,6 +14,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="shell">{children}</div>
+      <FirstRunGuide />
       <BottomNav counts={counts} />
     </>
   );

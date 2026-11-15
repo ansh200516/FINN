@@ -33,7 +33,7 @@ export default function ErrorPage({
           href="/brief"
           className="hit inline-flex items-center rounded-[var(--r-chip)] border border-rule bg-surface px-4 text-ink small"
         >
-          Back to the brief
+          For you
         </Link>
       </div>
     </main>

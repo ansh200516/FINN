@@ -10,6 +10,7 @@ export function Dateline({
   deck,
   note,
   className = "",
+  tour,
 }: {
   eyebrow: string;
   children: ReactNode;
@@ -17,9 +18,11 @@ export function Dateline({
   /** optional one-line explanation (auto-widened window, holiday) */
   note?: ReactNode;
   className?: string;
+  /** First-run guide target. */
+  tour?: string;
 }) {
   return (
-    <header className={`gutter pt-5 ${className}`}>
+    <header data-tour={tour} className={`gutter pt-5 ${className}`}>
       <p className="eyebrow reveal">{eyebrow}</p>
       <h1
         className="dateline mt-1 text-ink reveal"

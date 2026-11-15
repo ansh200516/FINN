@@ -42,7 +42,7 @@ import { WindowScrubber } from "@/ui/WindowScrubber";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "Brief" };
+export const metadata: Metadata = { title: "For you" };
 
 function holidayLine(now: number): string | null {
   const today = istDateKey(now);
@@ -216,6 +216,7 @@ export default async function BriefPage({
   return (
     <main className="flex-1 pb-6">
       <Dateline
+        tour="edition"
         eyebrow={editionLabel(now)}
         note={
           win.widened ??

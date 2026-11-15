@@ -32,11 +32,13 @@ export function composerBoxHeight(
 }
 
 export const COMPOSER_EXAMPLES: readonly string[] = [
-  "reliance results",
-  "reliance promises",
-  "whats in my portfolio",
-  "reliance price",
-  "set a price alert to 4%",
+  "How did Supreme Industries' last four quarters land against management's FY26 revenue guidance?",
+  "What does Reliance do, and how does revenue split across O2C, retail, and the other printed segments?",
+  "What are Voltas's segments, and what revenue mix is printed for them?",
+  "What were HDFC Bank's net interest income, margin, and profit after tax in the latest quarter?",
+  "Does Amber's profit turn into cash?",
+  "How do L&T's debt-equity, working capital, and funding read in the filings?",
+  "How did PI Industries' last four quarters compare with management's guidance?",
 ];
 
 export function composerExamples(): readonly string[] {

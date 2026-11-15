@@ -12,11 +12,12 @@ Chat answers a price, the index, and corporate actions from [NSE's official MCP]
 
 Ten minutes on a phone:
 
-1. Open the brief and read it through to "You're done". The window starts at the last 24 hours. When that day is empty it widens, and the page says so. On the live app, Sunday 15 Nov 2026, that cold brief is the last 30 days and says 11 to act on. The 7-day control is an empty week. Leave it alone.
-2. Open a results card, under Needs you or inside the filed-away fold, and read the basis chip.
-3. Open Supreme's promise ledger: [https://finn-gray.vercel.app/c/SUPREMEIND](https://finn-gray.vercel.app/c/SUPREMEIND).
-4. Open **Alerts**, move the price or volume threshold, and press **Save alerts**.
-5. Open **Companies**, then **+ Add** ([https://finn-gray.vercel.app/add](https://finn-gray.vercel.app/add)), and enter an NSE symbol that is not already on the book.
+1. Open [https://finn-gray.vercel.app](https://finn-gray.vercel.app). Chat is the first screen. Finnie greets you. The box cycles an example; an empty send asks the line on screen.
+2. Open **For you** and read it through to "You're done". Stay on the edition the page already opened. The window starts at the last 24 hours. When that day is empty it widens, and the page says so.
+3. Open a results card, under the items to act on or inside the filed-away fold, and read the basis chip.
+4. Open Supreme's promise ledger: [https://finn-gray.vercel.app/c/SUPREMEIND](https://finn-gray.vercel.app/c/SUPREMEIND).
+5. Open **Alerts**, move the price or volume threshold, and press **Save alerts**.
+6. Open **Companies**, then **+ Add** ([https://finn-gray.vercel.app/add](https://finn-gray.vercel.app/add)), and enter an NSE symbol that is not already on the book.
 
 # FINN
 
@@ -71,7 +72,7 @@ Apply the schema with `pnpm db:push:pg`, then load a sqlite snapshot with `pnpm 
 ## Layout
 
 ```
-src/app         routes: / (redirects to /brief) /brief /chat /c/[symbol] /alerts /inbox /add /status, api/health, api/jobs/*
+src/app         routes: / (redirects to /chat) /brief /chat /c/[symbol] /alerts /inbox /add /status, api/health, api/jobs/*
 src/db          Drizzle. libSQL for file: and libsql:; Postgres when DATABASE_URL is postgres://
 src/engine      sources/ ingest/ extract/ analyse/ llm/ — the headless engine (see src/engine/README.md)
 src/lib         env, logger, IST + NSE trading-calendar helpers

@@ -33,24 +33,67 @@ export function pickEquityClose(
   };
 }
 
-/** Latest published bhavcopy close for one symbol. Null when none exists. */
-export async function latestEquityClose(
+export type EquityLookup =
+  | { status: "hit"; print: SessionPrint }
+  | { status: "none" }
+  | { status: "unread" };
+
+/** True when this bar is already the last completed session. */
+export function storedCoversSession(
+  date: string,
+  now: Date = new Date(),
+): boolean {
+  try {
+    return date >= lastMarketClose(now).dateKey;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The later session wins. A stored bar is kept when it is the same day or
+ * newer. Nothing here invents a price.
+ */
+export function chooseSessionClose(
+  stored: SessionPrint | null,
+  printed: SessionPrint | null,
+): { print: SessionPrint; source: "stored" | "bhavcopy" } | null {
+  if (stored && printed) {
+    if (printed.date > stored.date)
+      return { print: printed, source: "bhavcopy" };
+    return { print: stored, source: "stored" };
+  }
+  if (stored) return { print: stored, source: "stored" };
+  if (printed) return { print: printed, source: "bhavcopy" };
+  return null;
+}
+
+/**
+ * Latest published bhavcopy close. `none` means a file was read and the
+ * symbol was not in the recent sessions. `unread` means the check did not
+ * finish, so an older stored bar is not confirmed as the last close.
+ */
+export async function lookupEquityClose(
   symbol: string,
   now: Date = new Date(),
-): Promise<SessionPrint | null> {
+): Promise<EquityLookup> {
   let date: string;
   try {
     date = lastMarketClose(now).dateKey;
   } catch {
-    return null;
+    return { status: "unread" };
   }
+  let read = false;
+  let failed = false;
   for (let i = 0; i < LOOKBACK; i++) {
     try {
       const rows = await fetchBhavcopy(date);
+      read = true;
       const hit = pickEquityClose(rows, symbol);
-      if (hit) return { ...hit, date };
+      if (hit) return { status: "hit", print: { ...hit, date } };
     } catch (error) {
       if (!(error instanceof BhavcopyNotAvailable)) {
+        failed = true;
         log.warn(
           {
             date,
@@ -63,10 +106,20 @@ export async function latestEquityClose(
     try {
       date = previousTradingDay(date);
     } catch {
-      return null;
+      break;
     }
   }
-  return null;
+  if (failed || !read) return { status: "unread" };
+  return { status: "none" };
+}
+
+/** Latest published bhavcopy close for one symbol. Null when none exists. */
+export async function latestEquityClose(
+  symbol: string,
+  now: Date = new Date(),
+): Promise<SessionPrint | null> {
+  const found = await lookupEquityClose(symbol, now);
+  return found.status === "hit" ? found.print : null;
 }
 
 export function sessionCloseSentence(

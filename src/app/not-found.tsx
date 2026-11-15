@@ -17,7 +17,7 @@ export default function NotFound() {
           href="/brief"
           className="hit inline-flex items-center rounded-[var(--r-chip)] bg-ink px-4 text-bg small font-medium"
         >
-          Back to the brief
+          For you
         </Link>
         <Link
           href="/add"

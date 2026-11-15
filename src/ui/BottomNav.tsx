@@ -56,28 +56,33 @@ function Glyph({ name }: { name: string }) {
 const TABS = [
   {
     href: "/brief",
-    label: "Brief",
+    label: "For you",
+    icon: "Brief",
     match: (p: string) =>
       p === "/brief" || p.startsWith("/brief/") || p.startsWith("/e/"),
   },
   {
     href: "/c",
     label: "Companies",
+    icon: "Companies",
     match: (p: string) => p === "/c" || p.startsWith("/c/") || p === "/add",
   },
   {
     href: "/chat",
     label: "Chat",
+    icon: "Chat",
     match: (p: string) => p === "/chat" || p.startsWith("/chat/"),
   },
   {
     href: "/alerts",
     label: "Alerts",
+    icon: "Alerts",
     match: (p: string) => p.startsWith("/alerts"),
   },
   {
     href: "/inbox",
     label: "Inbox",
+    icon: "Inbox",
     match: (p: string) => p.startsWith("/inbox"),
   },
 ];
@@ -135,7 +140,7 @@ export function BottomNav({
                 }`}
               >
                 <span className="relative inline-flex">
-                  <Glyph name={t.label} />
+                  <Glyph name={t.icon} />
                   {badge ? (
                     <span
                       aria-hidden="true"

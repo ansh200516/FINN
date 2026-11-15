@@ -46,7 +46,7 @@ export default async function InboxPage() {
   return (
     <main className="flex-1 pb-8">
       <MarkInboxRead />
-      <header className="gutter pt-5">
+      <header data-tour="inbox" className="gutter pt-5">
         <p className="eyebrow reveal">Inbox</p>
         <h1
           className="dateline text-ink mt-1 reveal"

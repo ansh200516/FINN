@@ -12,7 +12,7 @@ import {
   parseDeskTurn,
 } from "@/lib/deskTurn";
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
-import { FINNIE_GREETING } from "@/ui/composer";
+import { COMPOSER_EXAMPLES, FINNIE_GREETING } from "@/ui/composer";
 import { BookNames, Desk, FinnieAnswer } from "@/ui/Desk";
 import { ThoughtRow } from "@/ui/ThoughtRow";
 
@@ -388,7 +388,9 @@ describe("desk markup", () => {
     expect(html).not.toContain("Ask when you want to.");
     expect(html).toContain('data-composer=""');
     expect(html).toContain("<textarea");
-    expect(html).toContain('placeholder="reliance results"');
+    expect(html).toContain(
+      `placeholder="${COMPOSER_EXAMPLES[0]?.replaceAll("'", "&#x27;")}"`,
+    );
     expect(html).not.toContain("<input");
     expect(html).toContain('aria-label="Send"');
     expect(html).not.toContain("mode-btn");

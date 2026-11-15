@@ -51,15 +51,17 @@ import {
   getEngineQuarters,
   getInbox,
   getLedger,
-  getPriceSeries,
   getQuarters,
   getTripwires,
   guidanceVerdictGroups,
 } from "@/lib/queries";
 import {
-  latestEquityClose,
+  chooseSessionClose,
+  lookupEquityClose,
   noSessionClose,
+  type SessionPrint,
   sessionCloseSentence,
+  storedCoversSession,
 } from "@/lib/sessionClose";
 import { cardHref, cardLinkLabel } from "@/ui/cardHref";
 import {
@@ -74,7 +76,6 @@ import {
 import { promised } from "@/ui/LedgerList";
 import type { LedgerRowView, ManagementChangeCard } from "@/ui/model";
 import { peopleOf } from "@/ui/people";
-import { priceHeadline } from "@/ui/prices";
 
 /** One chat request may advance research, not run the whole pipeline. */
 const RESEARCH_STEPS = [
@@ -424,33 +425,65 @@ async function quoteFor(
     "quote",
   );
   if (typeof live.fact.error !== "string") return live;
-  const stored = await storedClose(found.isin);
-  if (stored) return closeQuote(found.symbol, stored, "stored");
-  const printed = await latestEquityClose(found.symbol).catch(() => null);
-  if (printed) {
-    return closeQuote(
-      found.symbol,
-      {
-        close: printed.close,
-        date: printed.date,
-        changePct: changePct(printed.close, printed.prevClose),
-      },
-      "bhavcopy",
-    );
+  const stored = await latestStoredBar(found.isin);
+  let printed: SessionPrint | null = null;
+  if (!stored || !storedCoversSession(stored.date)) {
+    let lookup: Awaited<ReturnType<typeof lookupEquityClose>> = {
+      status: "unread",
+    };
+    try {
+      lookup = await lookupEquityClose(found.symbol);
+    } catch {
+      lookup = { status: "unread" };
+    }
+    if (lookup.status === "hit") printed = lookup.print;
+    if (
+      stored &&
+      !storedCoversSession(stored.date) &&
+      !printed &&
+      lookup.status !== "none"
+    ) {
+      return missingClose(found.symbol);
+    }
   }
-  return missingClose(found.symbol);
+  const chosen = chooseSessionClose(stored, printed);
+  if (!chosen) return missingClose(found.symbol);
+  return closeQuote(
+    found.symbol,
+    {
+      close: chosen.print.close,
+      date: chosen.print.date,
+      changePct: changePct(chosen.print.close, chosen.print.prevClose),
+    },
+    chosen.source,
+  );
 }
 
-async function storedClose(isin: string): Promise<{
-  close: number;
-  date: string;
-  changePct: number | null;
-} | null> {
-  const series = await getPriceSeries(isin, 8).catch(() => null);
-  if (!series) return null;
-  const head = priceHeadline(series);
-  if (head.close == null || !head.dateKey) return null;
-  return { close: head.close, date: head.dateKey, changePct: head.pct };
+/** Newest stored bar by session date. An earlier row is not the last close. */
+async function latestStoredBar(isin: string): Promise<SessionPrint | null> {
+  if (!isin) return null;
+  const rows = await db
+    .select({
+      close: prices.close,
+      prevClose: prices.prevClose,
+      date: prices.date,
+    })
+    .from(prices)
+    .where(eq(prices.isin, isin))
+    .orderBy(desc(prices.date))
+    .limit(4);
+  for (const row of rows) {
+    if (row.close == null || !Number.isFinite(row.close)) continue;
+    return {
+      close: row.close,
+      prevClose:
+        row.prevClose != null && Number.isFinite(row.prevClose)
+          ? row.prevClose
+          : null,
+      date: row.date,
+    };
+  }
+  return null;
 }
 
 function changePct(close: number, prev: number | null): number | null {

@@ -49,11 +49,55 @@ import { ResultsGrid } from "./ResultsGrid";
 import { ThoughtRow } from "./ThoughtRow";
 import { VerdictBadge } from "./VerdictBadge";
 
-/** Grow with the draft. An empty field stays one line so the placeholder cannot stretch it. */
-function fitComposerField(el: HTMLTextAreaElement, text = el.value) {
-  if (text.length === 0) {
+/** Height of wrapped placeholder text, so a long example stays readable. */
+function measureWrapped(el: HTMLTextAreaElement, text: string): number {
+  const width = el.clientWidth;
+  if (!width || typeof document === "undefined") return 0;
+  const style = window.getComputedStyle(el);
+  const mirror = document.createElement("div");
+  mirror.style.position = "fixed";
+  mirror.style.left = "0";
+  mirror.style.top = "0";
+  mirror.style.visibility = "hidden";
+  mirror.style.pointerEvents = "none";
+  mirror.style.boxSizing = "border-box";
+  mirror.style.width = `${width}px`;
+  mirror.style.padding = style.padding;
+  mirror.style.font = style.font;
+  mirror.style.lineHeight = style.lineHeight;
+  mirror.style.letterSpacing = style.letterSpacing;
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.overflowWrap = "anywhere";
+  mirror.style.wordBreak = "break-word";
+  mirror.textContent = text;
+  document.body.appendChild(mirror);
+  const height = mirror.offsetHeight;
+  mirror.remove();
+  return height;
+}
+
+/** Grow with the draft. An empty field grows with the example, up to six lines. */
+function fitComposerField(
+  el: HTMLTextAreaElement,
+  text = el.value,
+  hint = el.placeholder,
+) {
+  const shown = text.length === 0 ? hint : "";
+  if (text.length === 0 && !shown) {
     el.style.height = "";
     el.style.overflowY = "hidden";
+    return;
+  }
+  if (text.length === 0) {
+    const full = measureWrapped(el, shown);
+    if (!full) {
+      el.style.height = "";
+      el.style.overflowY = "hidden";
+      return;
+    }
+    const box = composerBoxHeight(full, true);
+    el.style.height = `${box.height}px`;
+    el.style.overflowY = box.scroll ? "auto" : "hidden";
     return;
   }
   el.style.overflowY = "hidden";
@@ -148,8 +192,8 @@ export function Desk({
 
   useLayoutEffect(() => {
     const el = fieldRef.current;
-    if (el) fitComposerField(el, draft);
-  }, [draft]);
+    if (el) fitComposerField(el, draft, hint.placeholder);
+  }, [draft, hint.placeholder]);
 
   useEffect(() => {
     const el = fieldRef.current;
@@ -380,6 +424,7 @@ export function Desk({
 
       <form
         data-composer=""
+        data-tour="chat"
         className="composer-dock"
         onSubmit={(event) => {
           event.preventDefault();

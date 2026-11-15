@@ -1175,6 +1175,88 @@
   .meter > i.hot {
     background: var(--warn);
   }
+  .tour {
+    position: fixed;
+    left: 50%;
+    z-index: 40;
+    box-sizing: border-box;
+    width: min(430px, calc(100% - 24px));
+    transform: translateX(-50%);
+    padding: 14px 14px 12px;
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--accent);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  }
+  .tour-top {
+    top: calc(env(safe-area-inset-top) + 12px);
+  }
+  .tour-bottom {
+    bottom: calc(var(--bar-h) + env(safe-area-inset-bottom) + 12px);
+  }
+  .tour-kicker {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 14px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .tour-title {
+    margin: 6px 0 0;
+    font-size: 18px;
+    line-height: 24px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .tour-body {
+    margin: 6px 0 0;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--ink-2);
+  }
+  .tour-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .tour-skip {
+    min-height: 32px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink-3);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .tour-next {
+    min-height: 32px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.4);
+    background: rgba(6, 182, 212, 0.16);
+    color: #a5f3fc;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 500;
+  }
+  .tour-skip:hover,
+  .tour-next:hover {
+    color: var(--ink);
+  }
+  .tour-ring {
+    position: fixed;
+    z-index: 35;
+    pointer-events: none;
+    border-radius: 10px;
+    box-shadow:
+      0 0 0 1px rgba(34, 211, 238, 0.9),
+      0 0 0 5px rgba(34, 211, 238, 0.14);
+  }
 }
 
 /* No `@view-transition { navigation: auto }`. Chrome paints a full-viewport

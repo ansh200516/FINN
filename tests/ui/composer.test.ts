@@ -14,20 +14,27 @@ import {
 } from "@/ui/composer";
 
 describe("composer examples", () => {
-  it("rotates results, promises, the portfolio, a price, and an alert", () => {
+  it("rotates questions the book can answer", () => {
     expect(composerExamples()).toEqual([
-      "reliance results",
-      "reliance promises",
-      "whats in my portfolio",
-      "reliance price",
-      "set a price alert to 4%",
+      "How did Supreme Industries' last four quarters land against management's FY26 revenue guidance?",
+      "What does Reliance do, and how does revenue split across O2C, retail, and the other printed segments?",
+      "What are Voltas's segments, and what revenue mix is printed for them?",
+      "What were HDFC Bank's net interest income, margin, and profit after tax in the latest quarter?",
+      "Does Amber's profit turn into cash?",
+      "How do L&T's debt-equity, working capital, and funding read in the filings?",
+      "How did PI Industries' last four quarters compare with management's guidance?",
     ]);
     expect(composerExamples()).toBe(COMPOSER_EXAMPLES);
     const list = composerExamples();
-    expect(list.length).toBeGreaterThan(1);
+    expect(list.length).toBeGreaterThanOrEqual(5);
+    expect(list.length).toBeLessThanOrEqual(7);
+    expect(list).not.toContain("hi");
+    expect(list).not.toContain("reliance price");
+    expect(list).not.toContain("reliance results");
     for (const a of list) {
       expect(plainHint(a)).toBe(a);
       expect(a).not.toMatch(/[[\]]/);
+      expect(a.endsWith("?")).toBe(true);
       for (const b of list) {
         if (a !== b) expect(b.startsWith(a)).toBe(false);
       }
@@ -67,7 +74,7 @@ describe("typed example", () => {
     const examples = composerExamples();
     let state: GhostState = { index: 0, shown: "", phase: "typing" };
     const held: string[] = [];
-    for (let i = 0; i < 500 && held.length < examples.length; i++) {
+    for (let i = 0; i < 4000 && held.length < examples.length; i++) {
       if (state.phase === "holding") held.push(state.shown);
       const current = examples[state.index] ?? examples[0] ?? "";
       const expected =
@@ -82,21 +89,17 @@ describe("typed example", () => {
     expect(held).toEqual([...examples]);
   });
 
-  it("uses the first example while a line is incomplete", () => {
+  it("uses the example on screen, not a different one", () => {
     const examples = composerExamples();
-    expect(exampleForEmptySend(examples, "reli")).toBe("reliance results");
-    expect(exampleForEmptySend(examples, "reliance results")).toBe(
-      "reliance results",
-    );
-    expect(exampleForEmptySend(examples, "reliance price")).toBe(
-      "reliance price",
-    );
-    expect(exampleForEmptySend(examples, "reliance p", 3)).toBe(
-      "reliance price",
-    );
-    expect(exampleForEmptySend(examples, "set a pr", 4)).toBe(
-      "set a price alert to 4%",
-    );
+    const first = examples[0] ?? "";
+    const fourth = examples[3] ?? "";
+    const last = examples.at(-1) ?? "";
+    expect(exampleForEmptySend(examples, first.slice(0, 12))).toBe(first);
+    expect(exampleForEmptySend(examples, first)).toBe(first);
+    expect(exampleForEmptySend(examples, fourth.slice(0, 10), 3)).toBe(fourth);
+    expect(
+      exampleForEmptySend(examples, last.slice(0, 8), examples.length - 1),
+    ).toBe(last);
   });
 
   it("shows a static placeholder when motion is reduced", () => {
@@ -109,8 +112,8 @@ describe("typed example", () => {
         shown: "set a pr",
       }),
     ).toEqual({
-      placeholder: "reliance results",
-      submit: "reliance results",
+      placeholder: examples[0],
+      submit: examples[0],
     });
     expect(
       fieldHint({
@@ -119,7 +122,7 @@ describe("typed example", () => {
         examples,
         shown: "set a pr",
       }).placeholder,
-    ).toBe("reliance results");
+    ).toBe(examples[0]);
   });
 
   it("types into the placeholder and never a bracket or the field value", () => {
@@ -137,6 +140,6 @@ describe("typed example", () => {
       expect(hint).not.toHaveProperty("ghost");
       state = advanceGhost(state, examples);
     }
-    expect(plainHint("reliance results]")).toBe("reliance results");
+    expect(plainHint(`${examples[0]}]`)).toBe(examples[0]);
   });
 });

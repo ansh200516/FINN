@@ -23,6 +23,7 @@ export function FilingIndex({
       className="mt-4 reveal"
       style={{ animationDelay: "170ms" }}
       aria-label="From the filings"
+      data-tour="readings"
     >
       <TierHeader>From the filings</TierHeader>
       <ul className="gutter mt-2 grid grid-cols-2 gap-x-4">

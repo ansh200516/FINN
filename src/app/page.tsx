@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 
 /**
- * The edition is the front door. A brief window query keeps its parameters,
- * so older links such as `/?w=7d` still open that window.
+ * Chat is the front door. A window query still opens the edition, so an
+ * older link such as `/?w=7d` keeps that window.
  */
 export default async function Home({
   searchParams,
@@ -20,5 +20,5 @@ export default async function Home({
     if (to) q.set("to", to);
     redirect(`/brief?${q.toString()}`);
   }
-  redirect("/brief");
+  redirect("/chat");
 }

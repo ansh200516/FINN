@@ -18,6 +18,7 @@ import {
   MODEL_LADDERS,
   remainingBudget,
 } from "@/engine/llm/gateway";
+import { fallbackProviderConfigured } from "@/engine/llm/providers";
 import {
   type CompanyName,
   companiesMentioned,
@@ -302,7 +303,9 @@ export async function runFinnieTurn(
   const memory = clipChain(prior);
   const planning = planMoment(null);
   trace?.step(planning.title, planning.text);
-  if (await reasonAtSoftCap()) return quiet(FINNIE_OUT_OF_CALLS);
+  // A configured fallback still gets a live call when Flash is at the soft cap.
+  if ((await reasonAtSoftCap()) && !fallbackProviderConfigured())
+    return quiet(FINNIE_OUT_OF_CALLS);
   const directory = await companyDirectory();
   const named = companiesMentioned(text, directory);
   const earlier = earlierCompanies(memory, open, directory);

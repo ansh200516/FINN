@@ -322,6 +322,18 @@ function namedLine(quote: string): string | null {
   if (/\bpiping\b/i.test(quote)) return "piping";
   if (/\bexports?\b/i.test(quote)) return "export";
   if (/\bjio\b/i.test(quote)) return "Jio";
+  if (/\bdomestic business\b/i.test(quote)) return "domestic";
+  if (/\bASP\b|average selling price/i.test(quote)) return "ASP";
+  if (/\b(?:this|that) (?:space|segment|business)\b/i.test(quote))
+    return "that segment";
+  if (
+    /\b(?:two|three|four|five|six)[\s-](?:to[\s-])?(?:two|three|four|five|six|seven)\s+years\b/i.test(
+      quote,
+    ) ||
+    /\b\d+\s+to\s+\d+\s+years\b/i.test(quote)
+  ) {
+    return "a multi-year build";
+  }
   const re = /\bfor\s+([A-Za-z][A-Za-z0-9]*)\b/g;
   for (const match of quote.matchAll(re)) {
     const name = match[1] ?? "";
@@ -365,15 +377,31 @@ function bandNumber(value: number, unit: string | null): string {
   return groupIndian(shown, decimals);
 }
 
+function usdMillions(n: number): string {
+  if (Math.abs(n) >= 1_000_000) {
+    const millions = n / 1_000_000;
+    return groupIndian(millions, Number.isInteger(millions) ? 0 : 1);
+  }
+  return groupIndian(n, 0);
+}
+
 function promisedText(row: PromiseSource): string {
   const unit = row.unit ?? null;
   if (unit === "USD") {
-    const n = finite(row.low) ?? finite(row.high);
-    if (n == null) return qualitativePromise(row.quote ?? "");
-    if (Math.abs(n) >= 1_000_000) {
-      const millions = n / 1_000_000;
-      return `USD ${groupIndian(millions, Number.isInteger(millions) ? 0 : 1)} million`;
+    const low = finite(row.low);
+    const high = finite(row.high);
+    if (
+      low != null &&
+      high != null &&
+      low !== high &&
+      Math.abs(low) >= 1_000_000 &&
+      Math.abs(high) >= 1_000_000
+    ) {
+      return `USD ${usdMillions(low)}–${usdMillions(high)} million`;
     }
+    const n = low ?? high;
+    if (n == null) return qualitativePromise(row.quote ?? "");
+    if (Math.abs(n) >= 1_000_000) return `USD ${usdMillions(n)} million`;
     return `USD ${groupIndian(n, 0)}`;
   }
   const suffix =
@@ -624,7 +652,10 @@ export function comparisonsFor(
     const full = (row.quote ?? "").replace(/\s+/g, " ").trim();
     const promised = promisedText(row);
     const quote = promiseSentence(full, promised);
-    const segment = namedLine(quote) ?? namedLine(full);
+    const segment =
+      namedLine(quote) ??
+      namedLine(full) ??
+      ((row.unit ?? "").toUpperCase() === "USD" ? "dollars" : null);
     if (!pool.length) {
       if (!horizon || !hasBand(row)) continue;
       out.push({
@@ -657,13 +688,16 @@ export function comparisonsFor(
       const period =
         span || marginYear ? horizon : periodLabel(horizon, latest.period);
       if (segment) {
+        const dollars = (row.unit ?? "").toUpperCase() === "USD";
         out.push({
           period,
           quote,
           promised,
-          delivered: reading
-            ? `${deliveredText(reading)} consolidated ${lineName(row)}, not ${segment}`
-            : "not the consolidated line",
+          delivered: dollars
+            ? "a dollar figure, not the consolidated rupee line"
+            : reading
+              ? `${deliveredText(reading)} consolidated ${lineName(row)}, not ${segment}`
+              : "not the consolidated line",
           verdict: "unverifiable",
         });
       } else if (!reading) {

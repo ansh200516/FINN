@@ -134,6 +134,9 @@ interface CashFact {
   /** Profit after tax printed on the same cash-flow statement. */
   patNow: number | null;
   patRaw: string | null;
+  /** Profit before tax, used when the statement does not print PAT. */
+  pbtNow: number | null;
+  pbtRaw: string | null;
 }
 
 interface BorrowFact {
@@ -151,6 +154,7 @@ interface KeptSentence {
   page: number;
   quote: string;
   letter: boolean;
+  basis?: Basis;
 }
 
 interface Facts {
@@ -240,6 +244,12 @@ const RATIO_SPECS: Array<{
     max: 2000,
   },
   { key: "inventory", re: /inventory turnover/i, min: 0.05, max: 2000 },
+  {
+    key: "nwc",
+    re: /net working/i,
+    min: 0.05,
+    max: 200,
+  },
   {
     key: "interest",
     re: /interest (?:service )?coverage|interest coverage/i,
@@ -378,9 +388,15 @@ function basisOf(page: string): Basis {
 function unitBefore(page: string, index: number): string | null {
   const w = page.slice(Math.max(0, index - 2200), index).toLowerCase();
   const marks: Array<{ re: RegExp; unit: string }> = [
-    { re: /(?:rs\.?|in)\s*crores?|` in crore/g, unit: "crore" },
-    { re: /(?:rs\.?|in)\s*(?:lakhs?|lacs?)/g, unit: "lakh" },
-    { re: /(?:rs\.?|in)\s*millions?/g, unit: "million" },
+    {
+      re: /(?:rs\.?|amount\s+in|in)\s*[`₹]?\s*crores?|` in crore/g,
+      unit: "crore",
+    },
+    {
+      re: /(?:rs\.?|amount\s+in|in)\s*[`₹]?\s*(?:lakhs?|lacs?)/g,
+      unit: "lakh",
+    },
+    { re: /(?:rs\.?|amount\s+in|in)\s*[`₹]?\s*millions?/g, unit: "million" },
   ];
   let best: { i: number; unit: string } | null = null;
   for (const m of marks) {
@@ -429,6 +445,13 @@ function prosePage(text: string): boolean {
 
 function broken(s: string): boolean {
   return (s.match(/\b[A-Z] [a-z]\b/g)?.length ?? 0) >= 1;
+}
+
+/** A caution, or a page number jammed into the next heading. */
+function disclaimer(s: string): boolean {
+  return /forward-looking|significant risk|may not prove|undue reliance|inherent risks and uncertainties|\d{2,3}\s+[A-Z][a-z]+\s+Capital\b/i.test(
+    s,
+  );
 }
 
 function boilerplate(s: string): boolean {
@@ -622,31 +645,83 @@ function isNilRest(rest: string): boolean {
   return /[–—-]/.test(rest) && /^[\s–—-]*$/.test(core);
 }
 
+/** "0.95:1" is one ratio, not 0.95 against 1. */
+function stripRatioColon(s: string): string {
+  return s.replace(/(\d+(?:\.\d+)?)\s*:\s*1\b/g, "$1");
+}
+
+/** "FY 2025-26" leaves a bare 26. That is not the ratio. */
+function yearFragment(t: NumTok, rest: string): boolean {
+  return (
+    !t.raw.includes(".") &&
+    !t.raw.includes(",") &&
+    !t.percent &&
+    t.value >= 15 &&
+    t.value <= 99 &&
+    /fy\s*20\d{2}|20\d{2}\s*[-–]\s*\d{2}/i.test(rest)
+  );
+}
+
+function ratioNums(rest: string, min: number, max: number): NumTok[] {
+  const cleaned = stripRatioColon(rest);
+  const raw = tokens(cleaned)
+    .filter((t) => !isYear(t))
+    .filter((t) => !yearFragment(t, cleaned))
+    .filter((t) => t.value >= min && t.value <= max);
+  const pair = tidyRatio(raw);
+  if (pair.length === 2) return pair;
+  if (raw.length === 1 && raw[0]?.raw.includes(".")) return raw;
+  return [];
+}
+
+/** Column headers "FY 2024-25 FY 2025-26" put the older year first. */
+function olderYearFirst(before: string): boolean {
+  const years = [...before.matchAll(/FY\s*(20\d{2})\s*[-–]\s*(\d{2})/gi)];
+  if (years.length < 2) return false;
+  const a = years[years.length - 2];
+  const b = years[years.length - 1];
+  if (!a || !b || a.index == null || b.index == null) return false;
+  if (b.index - a.index > 40) return false;
+  return Number(a[1]) < Number(b[1]);
+}
+
+function ratioWindow(lines: string[], i: number, specRe: RegExp): string {
+  let blob = lines[i] ?? "";
+  const ready = (text: string) => {
+    const m = specRe.exec(text);
+    specRe.lastIndex = 0;
+    if (!m) return false;
+    const rest = cutAtNextRatio(text.slice(m.index + m[0].length));
+    return ratioNums(rest, -1e9, 1e9).length === 2;
+  };
+  if (ready(blob)) return blob;
+  for (let k = 1; k <= 6 && i + k < lines.length; k++) {
+    const next = lines[i + k] ?? "";
+    if (RATIO_SPECS.some((s) => s.re !== specRe && s.re.test(next))) break;
+    blob = `${blob} ${next}`;
+    if (ready(blob)) return blob;
+  }
+  return blob;
+}
+
 function extractRatios(page: PullPage, into: RatioFact[]): void {
   const lines = page.text.split(/\r?\n/);
+  const onRatioPage =
+    /financial ratio|additional regulatory|ratio analysis/i.test(page.text);
   for (let i = 0; i < lines.length; i++) {
     const own = lines[i] ?? "";
-    const next = lines[i + 1] ?? "";
-    const line =
-      tidyRatio(tokens(own).filter((t) => !isYear(t))).length === 2 ||
-      NEXT_RATIO.test(next)
-        ? own
-        : [own, next].filter(Boolean).join(" ");
-    if (/not relevant|negligible debt|virtually debt-free/i.test(line))
-      continue;
-    const onRatioPage =
-      /financial ratio|additional regulatory|ratio analysis/i.test(page.text);
+    if (/not relevant|negligible debt|virtually debt-free/i.test(own)) continue;
     for (const spec of RATIO_SPECS) {
+      if (!spec.re.test(own)) continue;
       const held = into.findIndex((r) => r.key === spec.key);
       if (held >= 0 && (into[held]?.ratioPage || !onRatioPage)) continue;
-      if (held >= 0) into.splice(held, 1);
-      const m = spec.re.exec(line);
+      const window = ratioWindow(lines, i, spec.re);
+      if (spec.key === "nwc" && !/capital/i.test(window)) continue;
+      const m = spec.re.exec(window);
+      spec.re.lastIndex = 0;
       if (!m) continue;
-      const rest = cutAtNextRatio(line.slice(m.index + m[0].length));
-      const rawNums = tokens(rest)
-        .filter((t) => !isYear(t))
-        .filter((t) => t.value >= spec.min && t.value <= spec.max);
-      let nums = tidyRatio(rawNums);
+      const rest = cutAtNextRatio(window.slice(m.index + m[0].length));
+      let nums = ratioNums(rest, spec.min, spec.max);
       let nil = false;
       if (nums.length !== 2 && spec.key === "de" && isNilRest(rest)) {
         nums = [
@@ -655,18 +730,30 @@ function extractRatios(page: PullPage, into: RatioFact[]): void {
         ];
         nil = true;
       }
-      if (nums.length !== 2 && rawNums.length === 1 && rawNums[0]) {
-        nums = rawNums;
-      }
       if ((nums.length !== 1 && nums.length !== 2) || !nums[0]) continue;
       const fromAt = rest.toLowerCase().indexOf(" from ");
       const toAt = rest.toLowerCase().indexOf(" to ");
+      const proseOrder =
+        /\b(?:stood at|decreased to|increased to|compared to|as against)\b/i.test(
+          rest,
+        );
       if (fromAt >= 0 && toAt > fromAt && nums[0] && nums[1]) {
+        nums = [nums[1], nums[0]];
+      } else if (
+        nums.length === 2 &&
+        nums[0] &&
+        nums[1] &&
+        !proseOrder &&
+        fromAt < 0 &&
+        olderYearFirst(page.text.slice(0, page.text.indexOf(own)))
+      ) {
         nums = [nums[1], nums[0]];
       }
       const snippet = `${m[0]}${rest}`.replace(/\s+/g, " ").trim();
-      const quote = gateQuote(snippet, page.text) ?? gateQuote(line, page.text);
+      const quote =
+        gateQuote(snippet, page.text) ?? gateQuote(window, page.text);
       if (!quote) continue;
+      if (held >= 0) into.splice(held, 1);
       const prev = nums[1];
       into.push({
         key: spec.key,
@@ -713,6 +800,11 @@ function extractCash(page: PullPage, into: CashFact[]): void {
         flat,
       );
     const patTok = patM?.[1] ? tokens(patM[1])[0] : undefined;
+    const pbtM =
+      /profit before tax[^0-9(]{0,40}(\(?[\d,]+(?:\.\d+)?\)?)\s+(\(?[\d,]+(?:\.\d+)?\)?)/i.exec(
+        flat,
+      );
+    const pbtTok = pbtM?.[1] ? tokens(pbtM[1])[0] : undefined;
     into.push({
       kind: spec.kind,
       basis: basisOf(page.text),
@@ -725,6 +817,8 @@ function extractCash(page: PullPage, into: CashFact[]): void {
       quote,
       patNow: patTok && unit ? patTok.value : null,
       patRaw: patTok && unit ? patTok.raw : null,
+      pbtNow: pbtTok && unit ? pbtTok.value : null,
+      pbtRaw: pbtTok && unit ? pbtTok.raw : null,
     });
     if (spec.kind === "net") return;
   }
@@ -763,7 +857,7 @@ function extractSentences(page: PullPage, into: KeptSentence[]): void {
   for (const part of parts) {
     const quote = gateQuote(part, page.text);
     if (!quote || quote.length < 70 || quote.length > 500) continue;
-    if (broken(quote) || boilerplate(quote)) continue;
+    if (broken(quote) || boilerplate(quote) || disclaimer(quote)) continue;
     if (/\. [a-z]/.test(quote)) continue;
     if (
       /key findings|policy for determination|materiality of events|forms an integral part|reporting approach|about the report/i.test(
@@ -779,17 +873,34 @@ function extractDebtNote(page: PullPage): KeptSentence | null {
   const flat = page.text.replace(/\s+/g, " ");
   const at = flat.search(/debt-free|negligible debt/i);
   if (at < 0) return null;
-  const company = flat.lastIndexOf("The Company", at);
-  const sentenceStart = flat.lastIndexOf(". ", at) + 2;
-  const start =
-    company >= 0 && at - company < 90
-      ? company
-      : Math.max(sentenceStart, at - 60);
+  const company = Math.max(
+    flat.lastIndexOf("The Company", at),
+    flat.lastIndexOf("the Company", at),
+  );
+  const windowStart = Math.max(0, at - 240);
+  const back = flat.slice(windowStart, at);
+  const rel = Math.max(back.lastIndexOf(". "), back.lastIndexOf("! "));
+  const sentence = rel >= 0 ? windowStart + rel + 2 : -1;
+  let start =
+    sentence >= 0 && at - sentence < 280
+      ? sentence
+      : company >= 0 && at - company < 140
+        ? company
+        : Math.max(0, at - 90);
+  if (start > 0 && flat[start - 1] !== " ") {
+    const sp = flat.lastIndexOf(" ", start);
+    if (sp >= 0) start = sp + 1;
+  }
   const end = flat.indexOf(".", at);
-  const slice = flat.slice(start, end < 0 ? at + 160 : end + 1).trim();
+  const slice = flat.slice(start, end < 0 ? at + 180 : end + 1).trim();
   const quote = gateQuote(slice, page.text);
-  if (!quote || quote.length > 320) return null;
-  return { page: page.page, quote, letter: prosePage(page.text) };
+  if (!quote || quote.length > 320 || quote.length < 20) return null;
+  return {
+    page: page.page,
+    quote,
+    letter: prosePage(page.text),
+    basis: basisOf(page.text),
+  };
 }
 
 export function extractFacts(pages: PullPage[]): Facts {
@@ -848,7 +959,7 @@ function pairText(f: {
   const pct = yoy(f.now, f.prev);
   const unit = f.unit ? ` ${f.unit}` : "";
   const ch = pct == null ? "" : ` (${formatPct(pct)})`;
-  return `${f.nowRaw}${unit} against ${f.prevRaw}${ch}`;
+  return `${f.nowRaw}${unit} against ${f.prevRaw}${unit}${ch}`;
 }
 
 function ratioText(r: RatioFact, name: string): string {
@@ -893,7 +1004,7 @@ function scoreSentence(s: KeptSentence): { desc: number; mix: number } {
     /segment revenue|growth of \d|consolidated revenue grew/i.test(q)
   )
     mix += 3;
-  if (boilerplate(q) || broken(q)) return { desc: 0, mix: 0 };
+  if (boilerplate(q) || broken(q) || disclaimer(q)) return { desc: 0, mix: 0 };
   if ((q.match(/\d/g)?.length ?? 0) > 14) return { desc: 0, mix: 0 };
   return { desc, mix };
 }
@@ -910,6 +1021,60 @@ const SEGMENT_NAMES = [
 
 function inrNumber(raw: string): number {
   return Number(raw.replace(/,/g, ""));
+}
+
+function parseLabeledSegments(
+  page: PullPage,
+): { line: string; quote: string; names: string[] } | null {
+  const flat = page.text.replace(/\s+/g, " ");
+  if (!/segment revenues?/i.test(flat)) return null;
+  const re = /Segment\s*-?\s*[A-Z]\s*\(([^)]{3,90})\)\s+([\d,]+(?:\.\d+)?)/gi;
+  const hits: Array<{ name: string; raw: string; at: number }> = [];
+  for (const m of flat.matchAll(re)) {
+    const name = (m[1] ?? "").replace(/\s+/g, " ").trim();
+    const raw = m[2] ?? "";
+    if (!name || !raw) continue;
+    if (hits.some((hit) => hit.name.toLowerCase() === name.toLowerCase()))
+      continue;
+    hits.push({ name, raw, at: m.index ?? 0 });
+    if (hits.length >= 6) break;
+  }
+  if (hits.length < 2) return null;
+  const last = hits[hits.length - 1];
+  const after = flat.slice((last?.at ?? 0) + 1);
+  const totalM = /\bTotal\s+([\d,]+(?:\.\d+)?)/i.exec(after);
+  const totalRaw = totalM?.[1] ?? null;
+  const totalN = totalRaw ? inrNumber(totalRaw) : null;
+  const parts = hits.map((row) => {
+    const n = inrNumber(row.raw);
+    const share =
+      totalN && totalN > 0
+        ? ` (${formatPct((n / totalN) * 100, { signed: false })} of the printed total, computed)`
+        : "";
+    return `${row.name} ${row.raw}${share}`;
+  });
+  const start = Math.max(0, (hits[0]?.at ?? 0) - 60);
+  const endAt = totalM
+    ? (last?.at ?? 0) + 1 + (totalM.index ?? 0) + totalM[0].length
+    : (last?.at ?? 0) + 40;
+  const slice = flat.slice(start, endAt);
+  const quote =
+    gateQuote(slice, page.text) ??
+    gateQuote(flat.slice(hits[0]?.at ?? 0, endAt), page.text);
+  if (!quote) return null;
+  const head = flat.slice(Math.max(0, (hits[0]?.at ?? 0) - 280), hits[0]?.at);
+  const basis =
+    /standalone/i.test(head) && !/consolidated/i.test(head)
+      ? "Standalone"
+      : /consolidated/i.test(head)
+        ? "Consolidated"
+        : "Printed";
+  const totalBit = totalRaw ? ` Printed total ${totalRaw}.` : "";
+  return {
+    line: `${basis} segment revenue, ₹ crore: ${parts.join("; ")}.${totalBit}`,
+    quote,
+    names: hits.map((row) => row.name),
+  };
 }
 
 function parseSegmentTurnover(
@@ -1040,7 +1205,7 @@ function readingPages(input: PullInput): PullPage[] {
 function businessBlock(input: PullInput, facts: Facts): PullBlock {
   const pages = readingPages(input);
   for (const page of pages) {
-    const turnover = parseSegmentTurnover(page);
+    const turnover = parseSegmentTurnover(page) ?? parseLabeledSegments(page);
     if (!turnover) continue;
     const names = turnover.names.slice(0, 5);
     return {
@@ -1514,6 +1679,7 @@ function balanceBlock(input: PullInput, facts: Facts): PullBlock {
   const want = [
     "de",
     "current",
+    "nwc",
     "debtors",
     "inventory",
     "interest",
@@ -1525,6 +1691,7 @@ function balanceBlock(input: PullInput, facts: Facts): PullBlock {
   const names: Record<string, string> = {
     de: "Debt-equity",
     current: "Current ratio",
+    nwc: "Net working capital, % of sales",
     debtors: "Debtors turnover",
     inventory: "Inventory turnover",
     interest: "Interest coverage",
@@ -1555,7 +1722,13 @@ function balanceBlock(input: PullInput, facts: Facts): PullBlock {
     cites.push(citePage(input.period, b.page, input.reportUrl, b.quote));
   }
   if (facts.debtNote) {
-    lines.push(facts.debtNote.quote);
+    const prefix =
+      facts.debtNote.basis === "standalone"
+        ? "Standalone. "
+        : facts.debtNote.basis === "consolidated"
+          ? "Consolidated. "
+          : "";
+    lines.push(`${prefix}${facts.debtNote.quote}`);
     cites.push(
       citePage(
         input.period,
@@ -1595,9 +1768,20 @@ function balanceBlock(input: PullInput, facts: Facts): PullBlock {
     lines.push(funding.line);
     cites.push(funding.cite);
   }
+  const borrowed = groupBorrowings(readingPages(input));
+  if (borrowed) {
+    lines.push(borrowed.line);
+    cites.push(
+      citePage(input.period, borrowed.page, input.reportUrl, borrowed.quote),
+    );
+  }
   if (ratios.some((r) => r.key === "debtors" || r.key === "inventory")) {
     lines.push(
       "Debtor and inventory days above are computed. The report does not print one working-capital cycle.",
+    );
+  } else if (ratios.some((r) => r.key === "nwc")) {
+    lines.push(
+      "That working-capital figure is net working capital as a percent of sales. A debtor-inventory cycle is not printed.",
     );
   } else if (input.isBank) {
     lines.push(
@@ -1605,6 +1789,27 @@ function balanceBlock(input: PullInput, facts: Facts): PullBlock {
     );
   }
   return { title: "Balance sheet", verdict, lines, cites };
+}
+
+function groupBorrowings(
+  pages: PullPage[],
+): { line: string; page: number; quote: string } | null {
+  for (const page of pages) {
+    const flat = page.text.replace(/\s+/g, " ");
+    const m =
+      /total group borrowings[^.]{0,180}?([\d,]{4,})\s*crore[^.]{0,90}?([\d,]{4,})\s*crore/i.exec(
+        flat,
+      );
+    if (!m?.[0] || !m[1] || !m[2]) continue;
+    const quote = gateQuote(m[0], page.text);
+    if (!quote) continue;
+    return {
+      line: `Group borrowings ${m[1]} crore against ${m[2]} crore, as printed.`,
+      page: page.page,
+      quote,
+    };
+  }
+  return null;
 }
 
 function fundingLine(
@@ -1681,6 +1886,12 @@ function cashBlock(input: PullInput, facts: Facts): PullBlock {
       `Against profit of ${pat.nowRaw} ${pat.unit} on p.${pat.page}, that is ${formatPct(conv, { signed: false })} of profit turning into operating cash. The ratio is computed from those two printed lines.`,
     );
     cites.push(citePage(input.period, pat.page, input.reportUrl, pat.quote));
+  } else if (cash.pbtNow != null && cash.pbtRaw && cash.pbtNow !== 0) {
+    const conv = (cash.now / cash.pbtNow) * 100;
+    const unit = cash.unit ? ` ${cash.unit}` : "";
+    lines.push(
+      `Against profit before tax of ${cash.pbtRaw}${unit} on the same statement, that is ${formatPct(conv, { signed: false })} of profit before tax turning into operating cash. Computed from those two printed lines.`,
+    );
   } else {
     lines.push("Profit-to-cash conversion is not in the filings.");
   }
@@ -1764,6 +1975,7 @@ function narrativeBlock(input: PullInput, facts: Facts): PullBlock {
   const de = facts.ratios.find((r) => r.key === "de");
   const debtFree =
     facts.debtNote &&
+    facts.debtNote.page === de?.page &&
     /debt-free/i.test(facts.debtNote.quote) &&
     de &&
     !de.nil &&
@@ -1964,7 +2176,7 @@ function narrativeBlock(input: PullInput, facts: Facts): PullBlock {
 
 function guideSubject(g: PullGuide): string {
   const q = g.quote;
-  if (/new energy/i.test(q)) return "New energy revenue";
+  if (/new energy/i.test(q) && g.metric === "revenue") return "New energy revenue";
   if (/\bjio\b/i.test(q)) return "Jio growth";
   if (/\bpiping\b/i.test(q)) return "Piping growth";
   return METRIC_LABEL[g.metric] ?? g.metric;
@@ -1997,7 +2209,8 @@ function guidanceBlock(input: PullInput): PullBlock {
   const lines = rows.slice(0, 4).map((g) => {
     const where =
       g.docKind === "annual_report" ? "Annual report" : "Transcript";
-    return `${guideSubject(g)}, ${g.horizon ?? "no horizon stated"}, ${guideBand(g)}, ${g.status}. ${where}${g.page ? ` p.${g.page}` : ""}.`;
+    const horizon = (g.horizon ?? "no horizon stated").replace(/_/g, " ");
+    return `${guideSubject(g)}, ${horizon}, ${guideBand(g)}, ${g.status}. ${where}${g.page ? ` p.${g.page}` : ""}.`;
   });
   const first = rows[0];
   const verdict = words(

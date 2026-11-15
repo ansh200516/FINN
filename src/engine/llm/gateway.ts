@@ -9,7 +9,9 @@
  *
  * Model ladder, thinking level, per-model daily caps (80 % of RPD, Pacific
  * day), process-local RPM/TPM buckets, 60 s timeout, one jittered retry on
- * 429/500/503 then fall to the next model. See README.md in this folder.
+ * 429/500/503 then fall to the next model. A Finnie plan or answer that still
+ * cannot get through (quota, 429, credit 403, 503, or a daily cap) tries the
+ * next configured provider in providers.ts. See README.md in this folder.
  * Bulk stays MINIMAL and reason stays LOW. A Finnie call that asks for a
  * displayable thought uses MEDIUM, the next level up. LOW returns no thought
  * tokens on Gemini 3 Flash, so the summary never arrives.
@@ -31,6 +33,15 @@ import { env, isCacheOnly } from "@/lib/env";
 import { consumeThoughtParts, type ThoughtScan } from "@/lib/finnieTrace";
 import { logger } from "@/lib/logger";
 import type { LlmTask, LlmTier } from "../types";
+import {
+  configuredFallbackProviders,
+  isFailoverStatus,
+  isModelReplyFailure,
+  ProviderHttpError,
+  type ProviderTurn,
+  type RotatingProvider,
+  rotateProviders,
+} from "./providers";
 
 const log = logger.child({ mod: "engine/llm/gateway" });
 
@@ -615,6 +626,58 @@ function parseJsonLoose(text: string): unknown {
   }
 }
 
+function plannerSchema(jsonSchema: Record<string, unknown>): boolean {
+  const properties = jsonSchema.properties;
+  return (
+    properties != null &&
+    typeof properties === "object" &&
+    !Array.isArray(properties) &&
+    "calls" in properties
+  );
+}
+
+function shouldRotateFromGemini(
+  causes: Array<{ error: string; status?: number }>,
+  anyAttempted: boolean,
+  geminiReady: boolean,
+): boolean {
+  if (!geminiReady || !anyAttempted) return true;
+  if (!causes.length) return false;
+  if (causes.every((cause) => isModelReplyFailure(cause.error, cause.status))) {
+    return false;
+  }
+  return causes.some((cause) => isFailoverStatus(cause.status, cause.error));
+}
+
+function withSchemaCheck<T>(
+  provider: RotatingProvider,
+  schema: z.ZodType<T>,
+): RotatingProvider {
+  return {
+    ...provider,
+    complete: async (turn) => {
+      const output = await provider.complete(turn);
+      const text = typeof output === "string" ? output : output.text;
+      if (!text.trim()) throw new Error("empty response");
+      let value: unknown;
+      try {
+        value = parseJsonLoose(text);
+      } catch {
+        throw new Error("response is not JSON");
+      }
+      const parsed = schema.safeParse(value);
+      if (!parsed.success) {
+        throw new Error(
+          `schema validation failed: ${parsed.error.issues
+            .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+            .join("; ")}`,
+        );
+      }
+      return typeof output === "string" ? text : { ...output, text };
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // The call
 // ---------------------------------------------------------------------------
@@ -669,12 +732,15 @@ export async function callStructured<T>(
   const datePt = todayPt();
   const causes: Array<{ model: string; error: string; status?: number }> = [];
   let anyAttempted = false;
+  const finnie = o.task === "finnie";
+  const geminiReady = Boolean(env().GEMINI_API_KEY?.trim());
   const est = estimateTokens(o.prompt, o.system, parts);
   const mediaRes = parts.find(
     (p): p is Extract<LlmPart, { kind: "pdf" }> => p.kind === "pdf",
   )?.resolution;
 
   for (const model of ladder) {
+    if (finnie && !geminiReady) break;
     const state = await ledgerState(model, datePt);
     const cap = dailyCap(model);
     if (state.requests >= cap) {
@@ -783,7 +849,87 @@ export async function callStructured<T>(
     }
   }
 
-  if (!anyAttempted)
+  const planner = plannerSchema(jsonSchema);
+  const fallbacks =
+    finnie && !parts.some((part) => part.kind === "pdf")
+      ? configuredFallbackProviders().filter(
+          (provider) => !planner || provider.supportsSchema,
+        )
+      : [];
+  if (
+    fallbacks.length > 0 &&
+    shouldRotateFromGemini(causes, anyAttempted, geminiReady)
+  ) {
+    const t0 = Date.now();
+    try {
+      const turn: ProviderTurn = {
+        planner,
+        system: o.system,
+        prompt: o.prompt,
+        jsonSchema,
+        maxTokens: o.maxTokens ?? (o.tier === "bulk" ? 2048 : 4096),
+        temperature: o.temperature ?? 0,
+        signal: o.signal,
+      };
+      const hit = await rotateProviders(
+        fallbacks.map((provider) => withSchemaCheck(provider, o.schema)),
+        turn,
+      );
+      const parsed = o.schema.safeParse(parseJsonLoose(hit.text));
+      if (!parsed.success) {
+        throw new Error(
+          `schema validation failed: ${parsed.error.issues
+            .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+            .join("; ")}`,
+        );
+      }
+      const latencyMs = Date.now() - t0;
+      log.info(
+        {
+          task: o.task,
+          provider: hit.provider,
+          model: hit.model,
+          tokensIn: hit.tokensIn,
+          tokensOut: hit.tokensOut,
+          latencyMs,
+        },
+        "llm fallback ok",
+      );
+      // Finnie does not write llm_cache, including a fallback hit.
+      return {
+        data: parsed.data,
+        model: `${hit.provider}:${hit.model}`,
+        cached: false,
+        tokensIn: hit.tokensIn,
+        tokensOut: hit.tokensOut,
+        tokensThought: 0,
+        latencyMs,
+        cacheKey,
+      };
+    } catch (error) {
+      if (o.signal?.aborted) throw error;
+      const status =
+        error instanceof ProviderHttpError ? error.status : undefined;
+      const model =
+        error instanceof ProviderHttpError ? error.model : "fallback";
+      causes.push({
+        model,
+        error: errMessage(error).slice(0, 300),
+        status,
+      });
+      log.warn(
+        { task: o.task, model, status, err: errMessage(error).slice(0, 200) },
+        "llm fallback failed",
+      );
+    }
+  }
+
+  if (finnie && !geminiReady && causes.length === 0) {
+    throw new LlmCallFailed(o.task, [
+      { model: "-", error: "GEMINI_API_KEY is not set" },
+    ]);
+  }
+  if (!anyAttempted && causes.length === 0)
     throw new LlmBudgetExhausted(
       o.tier,
       ladder,

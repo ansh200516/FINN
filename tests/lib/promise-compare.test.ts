@@ -589,6 +589,73 @@ describe("promised versus delivered", () => {
     expect(exp[0]?.verdict).toBe("unverifiable");
   });
 
+  it("does not score a dollar band, a domestic CAGR, ASP, or a multi-year build as consolidated revenue", () => {
+    const dollar = comparisonsFor(quarters, [
+      {
+        quote:
+          "Five-six years is the estimate about somewhere about $ 80 million to $ 100 million of revenue in this space.",
+        metric: "revenue",
+        horizon: "medium_term",
+        low: 80000000,
+        high: 100000000,
+        unit: "USD",
+        status: "open",
+        verdict: null,
+        delivered: null,
+      },
+    ]);
+    expect(dollar[0]?.promised).toBe("USD 80–100 million");
+    expect(dollar[0]?.verdict).toBe("unverifiable");
+    expect(dollar[0]?.delivered).not.toMatch(/₹/);
+    const domestic = comparisonsFor(quarters, [
+      {
+        quote:
+          "If you look at the past, we have given a 25-plus percent CAGR on the domestic business.",
+        metric: "revenue_growth",
+        horizon: "medium_term",
+        low: 25,
+        high: 25,
+        unit: "%",
+        status: "open",
+        verdict: null,
+        delivered: null,
+      },
+    ]);
+    expect(domestic[0]?.verdict).toBe("unverifiable");
+    expect(domestic[0]?.delivered).toMatch(/not domestic/i);
+    const asp = comparisonsFor(quarters, [
+      {
+        quote: "In terms of ASP, we are in the 5% to 6% range.",
+        metric: "revenue_growth",
+        horizon: "FY27",
+        low: 5,
+        high: 6,
+        unit: "%",
+        status: "open",
+        verdict: null,
+        delivered: null,
+      },
+    ]);
+    expect(asp[0]?.verdict).toBe("unverifiable");
+    expect(asp[0]?.verdict).not.toBe("beat");
+    const build = comparisonsFor(quarters, [
+      {
+        quote:
+          "In the next two-three years we would be able to look at INR 500 to INR 600 crore top line.",
+        metric: "revenue",
+        horizon: "medium_term",
+        low: 5000000000,
+        high: 6000000000,
+        unit: "INR",
+        status: "open",
+        verdict: null,
+        delivered: null,
+      },
+    ]);
+    expect(build[0]?.verdict).toBe("unverifiable");
+    expect(build[0]?.verdict).not.toBe("beat");
+  });
+
   it("scores a full-year margin from the ledger, not one quarter", () => {
     const rows = comparisonsFor(
       [

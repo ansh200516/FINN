@@ -81,17 +81,41 @@ function guideRank(g: {
   low: number | null;
   high: number | null;
   status: string;
+  quote: string;
 }): number {
   const pri = (HEADLINE_METRICS as readonly string[]).indexOf(g.metric);
+  const quoted = /high[\s-]+teens?|\d+(?:\.\d+)?\s*%/i.test(g.quote);
   return (
     (pri < 0 ? 40 : pri) +
-    (g.low == null && g.high == null ? 12 : 0) +
-    (g.status === "open" ? 0 : 3)
+    (g.low == null && g.high == null && !quoted ? 12 : 0) +
+    (g.status === "open" ? 0 : 3) +
+    (quoted ? -6 : 0)
   );
 }
 
+function quoteNeedles(quote: string): string[] {
+  const words = quote
+    .toLowerCase()
+    .replace(/[%_]/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  const out: string[] = [];
+  const guide = words.findIndex(
+    (word) => word.startsWith("teen") || word === "jio" || word === "capex",
+  );
+  const starts = guide >= 0 ? [Math.max(0, guide - 3), 0, 6] : [0, 5, 10];
+  for (const start of starts) {
+    const phrase = words.slice(start, start + 6).join(" ");
+    if (phrase.length >= 16 && !out.includes(phrase)) out.push(phrase);
+  }
+  return out;
+}
+
 const PULL_CACHE_MS = 5 * 60_000;
-const PULL_VERSION = "mix2";
+const PULL_VERSION = "mix3";
 const PROFILE_NEEDLES = [
   "share in turnover",
   "product groups of",
@@ -101,6 +125,7 @@ const PROFILE_NEEDLES = [
   "total deposits",
   "advances stood",
   "segment revenue",
+  "reportable business segments",
 ];
 type PullCache = Map<string, { at: number; blocks: PullBlock[] }>;
 const pullCache = globalThis as { __finnPull?: PullCache };
@@ -272,9 +297,9 @@ export async function loadPullMenu(args: {
   for (const g of wanted) {
     if (guides.length >= 4 || usedMetric.has(g.metric)) continue;
     if (g.page == null) continue;
-    const source = have.get(pageKey(g.docId, g.page));
-    if (!source) continue;
-    const quote = clipQuote(g.quote, source);
+    const found = await quoteOnDocument(g.docId, g.page, g.quote, have);
+    if (!found) continue;
+    const quote = clipQuote(g.quote, found.text);
     if (!quote) continue;
     usedMetric.add(g.metric);
     guides.push({
@@ -285,7 +310,7 @@ export async function loadPullMenu(args: {
       horizon: g.horizon,
       status: g.status,
       verdict: g.verdict,
-      page: g.page,
+      page: found.page,
       quote,
       url: g.url,
       docKind: g.docKind,
@@ -345,4 +370,36 @@ export async function loadPullMenu(args: {
 
 function pageKey(docId: string, page: number): string {
   return `${docId}:${page}`;
+}
+
+/** The cited page is sometimes off by a few. Use the page that actually holds the quote. */
+async function quoteOnDocument(
+  docId: string,
+  citedPage: number,
+  quote: string,
+  have: Map<string, string>,
+): Promise<{ page: number; text: string } | null> {
+  const cited = have.get(pageKey(docId, citedPage));
+  if (cited && clipQuote(quote, cited)) return { page: citedPage, text: cited };
+  const needles = quoteNeedles(quote);
+  if (!needles.length) return null;
+  const rows = await db
+    .select({ page: documentPages.page, text: documentPages.text })
+    .from(documentPages)
+    .where(
+      and(
+        eq(documentPages.docId, docId),
+        or(
+          ...needles.map(
+            (needle) =>
+              sql`lower(${documentPages.text}) like ${`%${needle}%`}`,
+          ),
+        ),
+      ),
+    )
+    .limit(6);
+  for (const row of rows) {
+    if (clipQuote(quote, row.text)) return row;
+  }
+  return null;
 }

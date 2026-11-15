@@ -15,6 +15,7 @@ implementations, not stubs.
 - 60 s timeout; one retry with jitter on 429/503/500, then next model.
 - Content-hash cache (`llm_cache`): key = sha256(task | promptVersion | system | prompt | parts | schema). Cache hits cost nothing and are flagged `cached: true`.
 - `FINN_LLM_CACHE_ONLY=true` → never calls the API (demo safety).
+- Finnie plan and answer calls stay on the Gemini ladder first. On a daily cap, or a quota / 429 / credit 403 / 503 failure, they try the next configured provider in `providers.ts`: Groq `openai/gpt-oss-20b` (`GROQ_API_KEY`), OpenRouter `openrouter/free` (`OPENROUTER_API_KEY`), then Cerebras `qwen-3.8-27b` (`CEREBRAS_API_KEY`). An empty env var skips that provider. Those calls use the same JSON schema and do not read or write `llm_cache`. A provider that cannot take the schema is not used for the planner. Fallback responses do not invent thought summaries; the step titles already on screen stay.
 
 Budget introspection for `/status`: `remainingBudget()`.
 

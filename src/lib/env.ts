@@ -26,6 +26,10 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1).default("file:./data/finn.db"),
   DATABASE_AUTH_TOKEN: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
+  /** Finnie fallbacks. Empty or unset skips that provider. */
+  GROQ_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  CEREBRAS_API_KEY: z.string().optional(),
   /** comma-separated overrides of the model ladders */
   FINN_MODELS_BULK: z.string().optional(),
   FINN_MODELS_REASON: z.string().optional(),

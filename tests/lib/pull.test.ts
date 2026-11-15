@@ -265,4 +265,80 @@ Net cash flows from operating activities 113,506.38 127,241.84
     expect(cash).toContain("76,025.97");
     expect(cash).toMatch(/profit turning into operating cash/i);
   });
+
+  it("reads a labeled segment-revenue table and skips a disclaimer", () => {
+    const page = `There is a significant risk that the assumptions, 88 Manufacturing Capital predictions, and other forward-looking statements may not prove to be accurate.
+Financial Performance: Consolidated
+(A) GROSS SALES/INCOME FROM OPERATIONS (SEGMENT REVENUES) (in crores)
+Segment A (Unitary Cooling Products) 9,501 10,614
+Segment B (Electro-Mechanical Projects & Services) 4,053 4,157
+Segment C (Engineering Products & Services) 599 569
+Total 14,153 15,340`;
+    const blocks = composePull(
+      input({ hasTranscript: true, pages: [{ page: 78, text: page }] }),
+    );
+    const text =
+      blocks.find((b) => b.title === "Business snapshot")?.lines.join(" ") ??
+      "";
+    expect(text).toContain("Unitary Cooling Products");
+    expect(text).toContain("9,501");
+    expect(text).toContain("4,053");
+    expect(text).toContain("599");
+    expect(text).toContain("Consolidated");
+    expect(text).not.toMatch(/significant risk/i);
+  });
+
+  it("does not read a ratio colon or a fiscal-year suffix as the figure", () => {
+    const review = `At the Group level, the gross debt-to-equity ratio
+decreased to 0.95:1 as at March 31, 2026, from 1.12:1 as at
+March 31, 2025.
+Details of significant changes in key financial ratios
+Particulars FY 2024-25 FY 2025-26 % Growth
+(iii) Net Working
+Capital % of Sales
+11.0% 4.1% 62.6%
+(iv) Interest Coverage
+ratio
+6.75 9.19 36.1%
+#The significant change in the Interest Coverage Ratio for FY
+2025-26 has been due to improvement in profits.
+Total Group borrowings as at March 31, 2026, were lower at I 1,21,683 crore compared to I 1,29,559 crore as at March 31, 2025.`;
+    const standalone = `II. L&T STANDALONE
+After considering cash and cash equivalents, the Company was in a net debt-free position at the end of the year.`;
+    const blocks = composePull(
+      input({
+        hasTranscript: true,
+        pages: [
+          { page: 47, text: review },
+          { page: 48, text: standalone },
+        ],
+      }),
+    );
+    const text =
+      blocks.find((b) => b.title === "Balance sheet")?.lines.join(" ") ?? "";
+    expect(text).toContain("0.95 against 1.12");
+    expect(text).toContain("9.19 against 6.75");
+    expect(text).not.toMatch(/interest coverage 26/i);
+    expect(text).toContain("4.1% against 11.0%");
+    expect(text).toContain("1,21,683 crore against 1,29,559 crore");
+    expect(text).toContain("Standalone.");
+    expect(text).toContain("After considering");
+  });
+
+  it("keeps lakh on the cash-flow statement and converts against profit before tax", () => {
+    const page = `Consolidated Statement of Cash Flows
+(Amount in \` Lakh)
+Profit before tax 33,641.61 36,996.37
+Net cash flows from operating activities 24,015.79 71,089.40
+`;
+    const blocks = composePull(
+      input({ hasTranscript: true, pages: [{ page: 437, text: page }] }),
+    );
+    const text =
+      blocks.find((b) => b.title === "Cash quality")?.lines.join(" ") ?? "";
+    expect(text).toContain("lakh");
+    expect(text).toContain("24,015.79");
+    expect(text).toMatch(/profit before tax/i);
+    expect(text).not.toMatch(/not in the filings/i);
+  });
 });

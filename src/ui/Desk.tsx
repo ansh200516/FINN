@@ -49,55 +49,12 @@ import { ResultsGrid } from "./ResultsGrid";
 import { ThoughtRow } from "./ThoughtRow";
 import { VerdictBadge } from "./VerdictBadge";
 
-/** Height of wrapped placeholder text, so a long example stays readable. */
-function measureWrapped(el: HTMLTextAreaElement, text: string): number {
-  const width = el.clientWidth;
-  if (!width || typeof document === "undefined") return 0;
-  const style = window.getComputedStyle(el);
-  const mirror = document.createElement("div");
-  mirror.style.position = "fixed";
-  mirror.style.left = "0";
-  mirror.style.top = "0";
-  mirror.style.visibility = "hidden";
-  mirror.style.pointerEvents = "none";
-  mirror.style.boxSizing = "border-box";
-  mirror.style.width = `${width}px`;
-  mirror.style.padding = style.padding;
-  mirror.style.font = style.font;
-  mirror.style.lineHeight = style.lineHeight;
-  mirror.style.letterSpacing = style.letterSpacing;
-  mirror.style.whiteSpace = "pre-wrap";
-  mirror.style.overflowWrap = "anywhere";
-  mirror.style.wordBreak = "break-word";
-  mirror.textContent = text;
-  document.body.appendChild(mirror);
-  const height = mirror.offsetHeight;
-  mirror.remove();
-  return height;
-}
-
-/** Grow with the draft. An empty field grows with the example, up to six lines. */
-function fitComposerField(
-  el: HTMLTextAreaElement,
-  text = el.value,
-  hint = el.placeholder,
-) {
-  const shown = text.length === 0 ? hint : "";
-  if (text.length === 0 && !shown) {
+/** Grow with the draft. An empty field is sized by the example line, not this. */
+function fitComposerField(el: HTMLTextAreaElement) {
+  if (el.value.length === 0) {
     el.style.height = "";
+    el.style.maxHeight = "";
     el.style.overflowY = "hidden";
-    return;
-  }
-  if (text.length === 0) {
-    const full = measureWrapped(el, shown);
-    if (!full) {
-      el.style.height = "";
-      el.style.overflowY = "hidden";
-      return;
-    }
-    const box = composerBoxHeight(full, true);
-    el.style.height = `${box.height}px`;
-    el.style.overflowY = box.scroll ? "auto" : "hidden";
     return;
   }
   el.style.overflowY = "hidden";
@@ -192,8 +149,8 @@ export function Desk({
 
   useLayoutEffect(() => {
     const el = fieldRef.current;
-    if (el) fitComposerField(el, draft, hint.placeholder);
-  }, [draft, hint.placeholder]);
+    if (el) fitComposerField(el);
+  }, [draft]);
 
   useEffect(() => {
     const el = fieldRef.current;
@@ -424,20 +381,26 @@ export function Desk({
 
       <form
         data-composer=""
-        data-tour="chat"
         className="composer-dock"
         onSubmit={(event) => {
           event.preventDefault();
           void submit(draft);
         }}
       >
-        <div className="composer-box">
+        <div className="composer-box" data-tour="chat">
           <div className="composer-field">
             <label className="sr-only" htmlFor={inputId}>
               Ask Finnie
             </label>
             {symbol ? <span className="ticker-chip">{symbol}</span> : null}
-            <div className="composer-input-wrap">
+            <div
+              className={`composer-input-wrap${draft.length === 0 ? " is-empty" : ""}`}
+            >
+              {draft.length === 0 ? (
+                <div className="composer-ghost" aria-hidden="true">
+                  {hint.placeholder}
+                </div>
+              ) : null}
               <textarea
                 ref={fieldRef}
                 id={inputId}
@@ -452,7 +415,7 @@ export function Desk({
                 autoCapitalize="off"
                 autoCorrect="off"
                 disabled={busy || !ready}
-                className="composer-input w-full bg-transparent text-[16px] leading-[22px] font-normal text-ink outline-none placeholder:text-ink-3 disabled:opacity-70"
+                className="composer-input w-full bg-transparent text-[16px] leading-[22px] font-normal text-ink outline-none disabled:opacity-70"
               />
             </div>
             <button

@@ -48,37 +48,51 @@ export function FirstRunGuide() {
     }
     let stopped = false;
     let scrolled = false;
+    let observed: HTMLElement | null = null;
+    const apply = (el: HTMLElement) => {
+      const rect = el.getBoundingClientRect();
+      if (stopped || rect.width < 1 || rect.height < 1) return;
+      const top = Math.round(rect.top) - 4;
+      const left = Math.round(rect.left) - 4;
+      const width = Math.round(rect.width) + 8;
+      const height = Math.round(rect.height) + 8;
+      setRing((prev) =>
+        prev &&
+        prev.top === top &&
+        prev.left === left &&
+        prev.width === width &&
+        prev.height === height
+          ? prev
+          : { top, left, width, height },
+      );
+      const mid = rect.top + rect.height / 2;
+      const nextPlace = mid > window.innerHeight * 0.45 ? "top" : "bottom";
+      setPlace((prev) => (prev === nextPlace ? prev : nextPlace));
+    };
+    const observer = new ResizeObserver(() => {
+      if (observed) apply(observed);
+    });
     const measure = (scroll: boolean) => {
       const el = document.querySelector(`[data-tour="${step.target}"]`);
-      if (!(el instanceof HTMLElement)) return false;
+      if (!(el instanceof HTMLElement)) return;
+      if (observed !== el) {
+        observer.observe(el);
+        observed = el;
+      }
       if (scroll && !scrolled) {
-        el.scrollIntoView({ block: "center", inline: "nearest" });
+        el.scrollIntoView({ block: "nearest", inline: "nearest" });
         scrolled = true;
       }
-      const rect = el.getBoundingClientRect();
-      if (stopped) return true;
-      setRing({
-        top: Math.max(4, rect.top - 4),
-        left: Math.max(4, rect.left - 4),
-        width: rect.width + 8,
-        height: rect.height + 8,
-      });
-      const mid = rect.top + rect.height / 2;
-      setPlace(mid > window.innerHeight * 0.45 ? "top" : "bottom");
-      return true;
+      apply(el);
     };
-    let tries = 0;
-    const tick = window.setInterval(() => {
-      tries += 1;
-      if (measure(true) || tries > 24) window.clearInterval(tick);
-    }, 80);
-    const onMove = () => {
-      measure(false);
-    };
+    measure(true);
+    const tick = window.setInterval(() => measure(false), 150);
+    const onMove = () => measure(false);
     window.addEventListener("resize", onMove);
     window.addEventListener("scroll", onMove, true);
     return () => {
       stopped = true;
+      observer.disconnect();
       window.clearInterval(tick);
       window.removeEventListener("resize", onMove);
       window.removeEventListener("scroll", onMove, true);
